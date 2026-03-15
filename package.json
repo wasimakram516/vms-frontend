@@ -1,5 +1,5 @@
 {
-  "name": "sinan-suite-frontend",
+  "name": "sinan-vms-frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,9 +9,26 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.9",
+    "@mui/material": "^7.3.9",
+    "@mui/x-charts": "^8.27.5",
+    "@mui/x-date-pickers": "^8.27.2",
+    "ambient-cbg": "^1.0.4",
+    "axios": "^1.13.6",
+    "dayjs": "^1.11.20",
+    "flatpickr": "^4.6.13",
+    "framer-motion": "^12.36.0",
+    "html2canvas": "^1.4.1",
+    "html5-qrcode": "^2.3.8",
     "next": "16.1.6",
+    "qrcode": "^1.5.4",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-flatpickr": "^4.0.11",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "eslint": "^9",

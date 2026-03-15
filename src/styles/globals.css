@@ -1,0 +1,165 @@
+/* Import Comfortaa from Google Fonts */
+@import url("https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;700&display=swap");
+
+:root {
+  --font-primary: "Comfortaa", sans-serif;
+}
+
+html,
+body {
+  font-family: var(--font-primary);
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+}
+
+input,
+textarea,
+select,
+[contenteditable="true"],
+.MuiInputBase-input {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#__next {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.question-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 32px;
+  padding: 32px;
+  margin: 0 auto;
+  width: 100%;
+  height: auto;
+}
+
+.bubble-question {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  background: linear-gradient(135deg, #1565c0, #00acc1);
+  color: #fff;
+  border-radius: 24px;
+  padding: 16px 24px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  line-height: 1.5;
+  word-wrap: break-word;
+  font-size: inherit;
+  animation-name: fadeInUp, float;
+  animation-duration: 0.4s, var(--float-duration, 4s);
+  animation-delay: var(--fade-delay, 0s), var(--float-delay, 0s);
+  animation-timing-function: ease, ease-in-out;
+  animation-fill-mode: forwards, none;
+  animation-iteration-count: 1, infinite;
+  will-change: transform, opacity;
+  transform: scale(calc(var(--scale, 1)));
+}
+
+.bubble-question::after {
+  content: "";
+  position: absolute;
+  bottom: -12px;
+  left: 40px;
+  width: 0;
+  height: 0;
+  border: 14px solid transparent;
+  border-top-color: #1565c0;
+  border-bottom: 0;
+  margin-left: -14px;
+}
+
+/* --- RTL FIX FOR MUI OUTLINED INPUT --- */
+[dir="rtl"] .MuiOutlinedInput-root {
+  direction: rtl !important;
+}
+
+html.android-webview .MuiInputBase-input[data-android-webview-dir-mode],
+html.android-webview textarea[data-android-webview-dir-mode],
+html.android-webview [contenteditable="true"][data-android-webview-dir-mode] {
+  text-align: start !important;
+  unicode-bidi: plaintext !important;
+}
+
+html.android-webview .MuiInputBase-input[data-android-webview-dir-mode="ltr"],
+html.android-webview textarea[data-android-webview-dir-mode="ltr"] {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: plaintext !important;
+}
+
+html.android-webview .MuiOutlinedInput-root[data-android-webview-dir-mode="ltr"],
+html.android-webview .MuiFilledInput-root[data-android-webview-dir-mode="ltr"],
+html.android-webview .MuiInput-root[data-android-webview-dir-mode="ltr"] {
+  direction: ltr !important;
+}
+
+html.android-webview .MuiOutlinedInput-root[data-android-webview-dir-mode="auto"],
+html.android-webview .MuiFilledInput-root[data-android-webview-dir-mode="auto"],
+html.android-webview .MuiInput-root[data-android-webview-dir-mode="auto"] {
+  direction: inherit !important;
+}
+
+[dir="rtl"] .MuiOutlinedInput-notchedOutline {
+  text-align: right !important;
+  direction: rtl !important;
+  border-color: #128199 !important;
+}
+
+[dir="rtl"]
+  .MuiOutlinedInput-root.Mui-focused
+  .MuiOutlinedInput-notchedOutline {
+  border-color: #0077b6 !important;
+}
+
+/* ensure the legend notch stays visible */
+[dir="rtl"] .MuiOutlinedInput-notchedOutline legend {
+  float: none !important;
+  width: auto !important;
+  max-width: 100% !important;
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* --- Remove notch gap in RTL when label is empty --- */
+[dir="rtl"]
+  .MuiOutlinedInput-root:not(.Mui-focused):not(.MuiInputLabel-shrink)
+  .MuiOutlinedInput-notchedOutline
+  legend {
+  max-width: 0 !important;
+  padding: 0 !important;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, -6px, 0);
+  }
+}
