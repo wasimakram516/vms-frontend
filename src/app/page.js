@@ -8,6 +8,8 @@ import {
   Typography,
   Button,
   GlobalStyles,
+  Stack,
+  Paper,
 } from "@mui/material";
 import { useAuth } from "@/contexts/AuthContext";
 import { motion } from "framer-motion";
@@ -27,42 +29,19 @@ export default function HomePage() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  useEffect(() => {
-    if (!loading && user) {
-      if (user.role === "staff") {
-        router.replace("/staff/gate/verify");
-      } else if (user.role === "admin" || user.role === "superadmin") {
-        router.replace("/cms/dashboard");
-      }
-    }
-  }, [user, loading, router]);
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          height: "100vh",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
-  }
 
   return (
     <>
       {fontStyles}
       <Box
         sx={{
-          height: "100vh",
+          height: "91vh",
           display: "flex",
           overflow: "hidden",
         }}
       >
-        {/* Left — primary panel */}
+        {/* Left — Brand Panel */}
         <Box
           sx={{
             flex: "0 0 45%",
@@ -73,164 +52,133 @@ export default function HomePage() {
             p: 6,
             position: "relative",
             overflow: "hidden",
-            "&::before": {
-              content: '""',
-              position: "absolute",
-              top: -80,
-              right: -80,
-              width: 280,
-              height: 280,
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "50%",
-            },
-            "&::after": {
-              content: '""',
-              position: "absolute",
-              bottom: -60,
-              left: -60,
-              width: 200,
-              height: 200,
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "50%",
-            },
           }}
         >
-          {/* Headline */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={transition}
-            style={{ position: "relative", zIndex: 1 }}
           >
             <Typography
               sx={{
                 fontFamily: "'Comfortaa', cursive",
-                fontSize: "2.8rem",
+                fontSize: "3.5rem",
                 fontWeight: 800,
-                lineHeight: 1.1,
                 color: "#fff",
                 mb: 2,
               }}
             >
               Sinan VMS
             </Typography>
-            <Typography
-              sx={{
-                fontSize: 13,
-                color: "rgba(255,255,255,0.8)",
-                lineHeight: 1.7,
-                maxWidth: 240,
-                fontWeight: 500
-              }}
-            >
-              Visitor management made simple.
+            <Typography sx={{ color: "rgba(255,255,255,0.7)", maxWidth: 320, lineHeight: 1.6 }}>
+              Experience a seamless visitor journey at Sinan. Please select your visit type to proceed.
             </Typography>
           </motion.div>
         </Box>
 
-        {/* Right — action panel */}
+        {/* Right — Selection Panel */}
         <Box
           sx={{
             flex: 1,
-            bgcolor: "background.paper",
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            px: { xs: 4, md: 8 },
-            py: 4,
+            alignItems: "center",
+            px: 4,
+            bgcolor: "background.default",
           }}
         >
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
             transition={transition}
+            style={{ width: "100%", maxWidth: 450 }}
           >
             <Typography
-              sx={{
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                color: "primary.main",
-                mb: 2,
-              }}
-            >
-              Welcome
-            </Typography>
-
-            <Typography
-              sx={{
-                fontFamily: "'Comfortaa', cursive",
-                fontSize: { xs: "1.6rem", md: "2.2rem" },
-                fontWeight: 800,
-                color: "text.primary",
-                lineHeight: 1.2,
-                mb: 1.5,
-              }}
+              variant="h4"
+              fontWeight={800}
+              sx={{ mb: 1, textAlign: "center", fontFamily: "'Comfortaa', cursive" }}
             >
               Visitor Portal
             </Typography>
-
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ mb: 4, maxWidth: 300, lineHeight: 1.6, fontWeight: 500 }}
-            >
-              Choose an option below to get started with your visit or manage registrations.
+            <Typography color="text.secondary" align="center" sx={{ mb: 5 }}>
+              Choose how you would like to proceed
             </Typography>
 
-            {/* Action cards */}
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.2, maxWidth: 340 }}>
-              <Button
-                variant="contained"
-                size="large"
-                onClick={() => router.push("/register")}
+            <Stack spacing={3}>
+              {/* New Visitor Card */}
+              <Paper
+                elevation={0}
+                onClick={() => router.push("/register/details")}
                 sx={{
-                  py: 1.8,
-                  px: 2.5,
-                  borderRadius: 2,
-                  boxShadow: "0 4px 12px rgba(18,129,153,0.15)",
-                  textTransform: "none",
-                  justifyContent: "space-between",
-                  "&:hover": { boxShadow: "0 6px 20px rgba(18,129,153,0.25)" }
+                  p: 3,
+                  borderRadius: 4,
+                  border: "2px solid rgba(0,0,0,0.05)",
+                  cursor: "pointer",
+                  transition: "all 0.3s ease",
+                  "&:hover": {
+                    borderColor: "primary.main",
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 12px 24px rgba(18,129,153,0.1)",
+                  },
                 }}
-                endIcon={<ICONS.appRegister sx={{ opacity: 0.5 }} />}
               >
-                <Box sx={{ textAlign: "left" }}>
-                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: "#fff" }}>
-                    Visitor Registration
-                  </Typography>
-                  <Typography sx={{ fontSize: 10, color: "rgba(255,255,255,0.7)", fontWeight: 400 }}>
-                    Create new visit request
-                  </Typography>
-                </Box>
-              </Button>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: "primary.light", color: "primary.main" }}>
+                    <ICONS.register fontSize="large" />
+                  </Box>
+                  <Box>
+                    <Typography variant="h6" fontWeight={800}>New Visitor</Typography>
+                    <Typography variant="body2" color="text.secondary">First time visiting? Register now.</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
 
-              <Button
-                variant="outlined"
-                size="large"
-                onClick={() => router.push("/auth/login")}
+              {/* Returning Visitor Card */}
+              <Paper
+                elevation={0}
+                onClick={() => router.push("/visitor/login")}
                 sx={{
-                  py: 1.8,
-                  px: 2.5,
-                  borderRadius: 2,
-                  borderColor: "rgba(0,0,0,0.1)",
-                  borderWidth: "1.5px",
-                  color: "text.primary",
-                  "&:hover": { borderColor: "primary.main", borderWidth: "1.5px", bgcolor: "rgba(18,129,153,0.04)" },
-                  textTransform: "none",
-                  justifyContent: "space-between",
+                  p: 3,
+                  borderRadius: 4,
+                  border: "2px solid rgba(0,0,0,0.05)",
+                  cursor: "pointer",
+                  transition: "all 0.3s ease",
+                  "&:hover": {
+                    borderColor: "primary.main",
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 12px 24px rgba(18,129,153,0.1)",
+                  },
                 }}
-                endIcon={<ICONS.login sx={{ opacity: 0.5 }} />}
               >
-                <Box sx={{ textAlign: "left" }}>
-                  <Typography sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                    Staff Portal
-                  </Typography>
-                  <Typography sx={{ fontSize: 10, color: "text.disabled", fontWeight: 400 }}>
-                    Manage access & approvals
-                  </Typography>
-                </Box>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: "success.light", color: "success.main" }}>
+                    <ICONS.replay fontSize="large" />
+                  </Box>
+                  <Box>
+                    <Typography variant="h6" fontWeight={800}>Returning Visitor</Typography>
+                    <Typography variant="body2" color="text.secondary">Already have an account? Login quickly.</Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Stack>
+
+            <Box sx={{ mt: 8, textAlign: "center" }}>
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => {
+                  if (user) {
+                    if (user.role === "staff") router.push("/staff/gate/verify");
+                    else if (["admin", "superadmin"].includes(user.role)) router.push("/cms/dashboard");
+                    else router.push("/auth/login");
+                  } else {
+                    router.push("/auth/login");
+                  }
+                }}
+                sx={{ color: "text.disabled", "&:hover": { color: "primary.main" } }}
+              >
+                {user ? (["admin", "superadmin", "staff"].includes(user.role) ? "Go to Dashboard" : "Staff Login") : "Staff Login"}
               </Button>
             </Box>
           </motion.div>

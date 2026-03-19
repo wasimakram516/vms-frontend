@@ -1,33 +1,151 @@
-// Mock registration service
-export const getRegistrations = async () => {
-  return [
-    { id: "1", full_name: "Sara Ajaz", email: "sara@example.com", phone: "+965 98765432", purpose_of_visit: "Interview", status: "approved", created_at: "2026-03-15" },
-    { id: "2", full_name: "Ali Hassan", email: "ali@example.com", phone: "+965 44433221", purpose_of_visit: "Meeting", status: "pending", created_at: "2026-03-15" },
-  ];
+import api from "./api";
+
+export const getFields = async () => {
+  try {
+    const res = await api.get("/registrations/form/fields");
+    const data = res.data?.data || [];
+    return data.sort((a,b) => a.sortOrder - b.sortOrder);
+  } catch (err) {
+    console.error("Failed to fetch fields", err);
+    throw err;
+  }
 };
 
-export const createRegistration = async (data) => {
-  console.log("Mock Registration Created:", data);
+// MOCK OTP Handling
+export const sendOtp = async (target, channel = "email") => {
+  console.log(`[Mock] Sending OTP to ${target} via ${channel}...`);
+  await new Promise(r => setTimeout(r, 800));
+  return { success: true, message: "OTP sent successfully" };
+};
+
+export const verifyOtp = async (target, code) => {
+  console.log(`[Mock] Verifying OTP ${code} for ${target}`);
+  await new Promise(r => setTimeout(r, 800));
+  
+  if (code !== "1234") {
+    throw new Error("Invalid OTP code. Use 1234 for testing.");
+  }
+
+  if (target === "visitor@sinan.com" || target === "98765432") {
+    return {
+      success: true,
+      is_new_user: false,
+      user: {
+        id: "v-789",
+        role: "visitor",
+        full_name: "Sara Ajaz",
+        email: "visitor@sinan.com",
+        phone: "98765432",
+        company_name: "Sinan Tech",
+      }
+    };
+  }
+
   return {
     success: true,
-    token: `SN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-    ...data
+    is_new_user: true,
+    user: {
+      role: "visitor",
+      email: target.includes("@") ? target : null,
+      phone: !target.includes("@") ? target : null
+    }
   };
 };
 
-export const verifyRegistrationByToken = async (token) => {
-  if (token.toUpperCase().startsWith("SN-")) {
-    return {
-      token: token.toUpperCase(),
-      full_name: "Sara Ajaz",
-      purpose: "Delivery",
-      id_number: "2883392210",
-      status: "approved"
-    };
+export const createRegistration = async (payload) => {
+  try {
+    const res = await api.post("/registrations", {
+      userId: payload.user_id || undefined,
+      fieldValues: payload.field_values || {},
+      requestedDate: payload.requested_date || new Date().toISOString().split("T")[0],
+      purposeOfVisit: payload.purpose_of_visit || "",
+      requestedTimeFrom: payload.requested_time_from || "09:00:00",
+      requestedTimeTo: payload.requested_time_to || "17:00:00",
+    });
+    return res.data?.data;
+  } catch (err) {
+    console.error("Registration failed", err);
+    throw err;
   }
-  return null;
 };
 
-export const updateRegistrationStatus = async (id, status) => {
-  return { id, status, success: true };
+export const getRegistrations = async (status = null) => {
+  try {
+    const params = status && status !== "all" ? { status } : {};
+    const res = await api.get("/registrations", { params });
+    const registrations = res.data?.data || res.data || [];
+    
+    return Array.isArray(registrations) ? registrations.map(r => ({
+      id: r.id,
+      full_name: r.user?.fullName || "N/A",
+      email: r.user?.email || "N/A",
+      phone: r.user?.phone || "N/A",
+      purpose_of_visit: r.purposeOfVisit,
+      status: r.status,
+      requested_date: r.requestedDate,
+      requested_time_from: r.requestedTimeFrom,
+      requested_time_to: r.requestedTimeTo,
+      approved_date: r.approvedDate,
+      approved_time_from: r.approvedTimeFrom,
+      approved_time_to: r.approvedTimeTo,
+      created_at: r.createdAt,
+      qr_token: r.qrToken,
+      rejection_reason: r.rejectionReason,
+      ...r
+    })) : [];
+  } catch (err) {
+    console.error("Failed to fetch registrations", err);
+    return [];
+  }
+};
+
+export const getRegistrationById = async (id) => {
+  try {
+    const res = await api.get(`/registrations/${id}`);
+    const r = res.data?.data || res.data;
+    if (!r) return null;
+
+    return {
+      id: r.id,
+      full_name: r.user?.fullName || "N/A",
+      email: r.user?.email || "N/A",
+      phone: r.user?.phone || "N/A",
+      purpose_of_visit: r.purposeOfVisit,
+      status: r.status,
+      requested_date: r.requestedDate,
+      requested_time_from: r.requestedTimeFrom,
+      requested_time_to: r.requestedTimeTo,
+      approved_date: r.approvedDate,
+      approved_time_from: r.approvedTimeFrom,
+      approved_time_to: r.approvedTimeTo,
+      created_at: r.createdAt,
+      qr_token: r.qrToken,
+      rejection_reason: r.rejectionReason,
+      ...r 
+    };
+  } catch (err) {
+    console.error(`Failed to fetch registration ${id}`, err);
+    throw err;
+  }
+};
+
+export const updateRegistrationStatus = async (id, action, payload = {}) => {
+  try {
+    let endpoint = `/registrations/${id}/${action}`;
+    
+    const res = await api.patch(endpoint, payload);
+    return res.data?.data || res.data;
+  } catch (err) {
+    console.error(`Failed to ${action} registration`, err);
+    throw err;
+  }
+};
+
+export const verifyRegistrationByToken = async (token) => {
+  try {
+    const res = await api.get(`/registrations/verify/${token}`);
+    return res.data;
+  } catch (err) {
+    return null;
+  }
 };

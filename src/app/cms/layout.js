@@ -8,10 +8,9 @@ import { useEffect } from "react";
 import LoadingState from "@/components/LoadingState";
 import { GlobalStyles } from "@mui/material";
 
-export default function CmsLayout({ children }) {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+import RoleGuard from "@/components/auth/RoleGuard";
 
+export default function CmsLayout({ children }) {
   const flatpickrStyles = (
     <GlobalStyles
       styles={{
@@ -37,49 +36,23 @@ export default function CmsLayout({ children }) {
     />
   );
 
-  useEffect(() => {
-    if (
-      (!loading && !user) ||
-      (user &&
-        user.role !== "admin" &&
-        user.role !== "superadmin")
-    ) {
-      router.replace("/auth/login");
-    }
-  }, [loading, user, router]);
-
-  const isAuthorized = user && (user.role === "admin" || user.role === "superadmin");
-
-  if (loading || !isAuthorized) {
-    return (
-      <Box
-        sx={{
-          minHeight: "calc(100vh - 40px)",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <LoadingState />
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      {flatpickrStyles}
-      <Sidebar />
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: { xs: 2, sm: 3, md: 4 },
-          pt: { xs: "72px", sm: "80px", md: "88px" },
-          minWidth: 0,
-        }}
-      >
-        {children}
+    <RoleGuard allowedRoles={["admin", "superadmin"]}>
+      <Box sx={{ display: "flex", minHeight: "100vh" }}>
+        {flatpickrStyles}
+        <Sidebar />
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            p: { xs: 2, sm: 3, md: 4 },
+            pt: { xs: "72px", sm: "80px", md: "88px" },
+            minWidth: 0,
+          }}
+        >
+          {children}
+        </Box>
       </Box>
-    </Box>
+    </RoleGuard>
   );
 }

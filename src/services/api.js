@@ -1,19 +1,17 @@
 import axios from "axios";
-import { refreshToken, clearTokens } from "@/services/authService";
+import { getStoredToken, setStoredAuthData, clearStoredAuthData } from "@/utils/authStorage";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
-// Global variables to handle token refresh logic
 let isRefreshing = false;
 let failedQueue = [];
 
-// Process queued requests after token refresh
 const processQueue = (error, token = null) => {
   failedQueue.forEach((promise) => {
     if (error) {
@@ -25,66 +23,81 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Attach accessToken to each request
 api.interceptors.request.use(
   (config) => {
-    const accessToken = sessionStorage.getItem("accessToken");
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
+    const token = getStoredToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Handle expired access tokens & refresh automatically
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Skip refresh for login/refresh endpoints
-    if (
-      originalRequest.url.includes("/auth/refresh") ||
-      originalRequest.url.includes("/auth/login")
-    ) {
+    if (originalRequest.url?.includes("/auth/login") || originalRequest.url?.includes("/auth/refresh")) {
       return Promise.reject(error);
     }
 
-    // Token expired → try refresh
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
+      const hasToken = !!getStoredToken();
+      if (!hasToken) {
+        return Promise.reject(error);
+      }
+
+      if (!hasToken && typeof window !== "undefined" && window.location.pathname.startsWith("/auth/login")) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
+
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          return api(originalRequest);
-        });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return api(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
       }
 
       isRefreshing = true;
 
       try {
-        const newAccessToken = await refreshToken();
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-        processQueue(null, newAccessToken);
-        return api(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-
-        // Only force logout if backend explicitly rejects refresh
-        if (
-          refreshError.response?.status === 401 ||
-          refreshError.response?.status === 403
-        ) {
-          clearTokens();
-          window.location.href = "/auth/login";
+        const res = await axios.post(
+          `${API_BASE_URL}/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
+        
+        const newAccessToken = res.data?.accessToken || res.data?.data?.accessToken;
+        
+        if (!newAccessToken) {
+           throw new Error("No access token returned from refresh");
         }
 
-        return Promise.reject(refreshError);
+        setStoredAuthData(newAccessToken, null);
+
+        processQueue(null, newAccessToken);
+        
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return api(originalRequest);
+        
+      } catch (err) {
+        processQueue(err, null);
+        clearStoredAuthData();
+        if (typeof window !== "undefined" && window.location.pathname !== "/auth/login" && !window.location.pathname.startsWith("/auth/login")) {
+          window.location.href = "/auth/login";
+        }
+        return Promise.reject(err);
       } finally {
+
         isRefreshing = false;
       }
     }

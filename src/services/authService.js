@@ -1,65 +1,110 @@
-import api from "@/services/api";
-import withApiHandler from "@/utils/withApiHandler";
+import api from "./api";
+import axios from "axios";
+import { 
+  getStoredToken, 
+  getStoredUser, 
+  setStoredAuthData, 
+  clearStoredAuthData 
+} from "@/utils/authStorage";
 
-// Store only access token, refresh token stays in cookies
-export const getAccessToken = () => sessionStorage.getItem("accessToken");
-export const setAccessToken = (accessToken) =>
-  sessionStorage.setItem("accessToken", accessToken);
-export const setUser = (user) =>
-  sessionStorage.setItem("user", JSON.stringify(user));
-export const clearTokens = () => {
-  sessionStorage.removeItem("accessToken");
-  sessionStorage.removeItem("user");
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+
+const mapUserToFrontend = (user) => {
+  if (!user || typeof user !== "object") return null;
+  return {
+    ...user,
+    full_name: user.fullName || user.full_name || "User",
+    staff_type: user.staffType || user.staff_type || null,
+    name: user.fullName || user.full_name || user.name || "User",
+  };
 };
 
-// Login API Call
-// mock authentication system
-export const login = async (email, password) => {
-  console.log("Mock Login with:", email);
-  
-  // Hardcoded users
-  const mockUsers = {
-    "staff@sinan.com": { id: 1, name: "Gate Staff", email: "staff@sinan.com", role: "staff" },
-    "admin@sinan.com": { id: 2, name: "Platform Admin", email: "admin@sinan.com", role: "admin" },
-    "super@sinan.com": { id: 3, name: "Root Operator", email: "super@sinan.com", role: "superadmin" },
+export const getAuthData = () => {
+  return { 
+    token: getStoredToken(), 
+    user: getStoredUser() 
   };
+};
 
-  const user = mockUsers[email.toLowerCase()];
-  
-  if (user) {
-    const data = {
-      token: "mock-jwt-token-v1",
-      user: user
-    };
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
-    return data;
+export const login = async (email, password) => {
+  try {
+    const res = await api.post("/auth/login", { email, password });
+    const accessToken = res.data?.accessToken || res.data?.data?.accessToken;
+
+    if (!accessToken) {
+      throw new Error("No access token received from server");
+    }
+    
+    setStoredAuthData(accessToken, null);
+
+    const userRes = await axios.get(`${API_BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    
+    let user = userRes.data?.data || userRes.data;
+    user = mapUserToFrontend(user);
+
+    if (!user) {
+      throw new Error("Failed to fetch user profile after login");
+    }
+
+    setStoredAuthData(accessToken, user);
+
+    return { token: accessToken, user };
+  } catch (err) {
+    console.error("Login service error:", err);
+
+    if (err.response?.status !== 401) {
+       clearStoredAuthData();
+    }
+    throw new Error(err.response?.data?.message || err.message || "Invalid credentials");
   }
-  
-  throw new Error("Invalid credentials. Try staff@sinan.com or admin@sinan.com");
 };
 
 export const verifySession = async () => {
-  const user = localStorage.getItem("user");
-  if (user) return { user: JSON.parse(user) };
-  return null;
+  try {
+    const currentToken = getStoredToken();
+    if (!currentToken) {
+      return null;
+    }
+    const res = await api.get("/auth/me");
+    let user = res.data?.data || res.data;
+    user = mapUserToFrontend(user);
+
+    if (user && currentToken) {
+      setStoredAuthData(currentToken, user);
+      return { user };
+    }
+    return null;
+  } catch (err) {
+    console.error("Session verification failed:", err);
+    clearStoredAuthData();
+    return null;
+  }
 };
 
 export const logout = async () => {
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
-};
-
-// Register is not needed for now
-export const registerUser = async () => {
-  return { success: true };
+  try {
+    await api.post("/auth/logout");
+  } catch (err) {
+    console.warn("Server logout failed or skipped", err);
+  } finally {
+    clearStoredAuthData();
+    if (typeof window !== "undefined") {
+      window.location.href = "/auth/login";
+    }
+  }
 };
 
 export const refreshToken = async () => {
-  return "mock-jwt-token-v1";
+  try {
+    const res = await api.post("/auth/refresh");
+    const token = res.data?.accessToken || res.data?.data?.accessToken;
+    if (token) setStoredAuthData(token, getStoredUser());
+    return token;
+  } catch (err) {
+    clearStoredAuthData();
+    throw err;
+  }
 };
 
-export const logoutUser = async () => {
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
-};

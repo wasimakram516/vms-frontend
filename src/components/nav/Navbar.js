@@ -16,12 +16,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
-import { useGlobalConfig } from "@/contexts/GlobalConfigContext";
+
 import ICONS from "@/utils/iconUtil";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
-  const { globalConfig } = useGlobalConfig();
+
   const [anchorEl, setAnchorEl] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
   
@@ -92,7 +92,7 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "block", sm: "none" } }}
               >
-                {globalConfig?.appName || "Sinan VMS"}
+                                {"Sinan VMS"}
               </Typography>
 
               <Typography
@@ -102,7 +102,7 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "none", sm: "block" } }}
               >
-                {globalConfig?.appName || "Sinan VMS"}
+                                {"Sinan VMS"}
               </Typography>
             </Stack>
           </Link>
@@ -130,7 +130,7 @@ export default function Navbar() {
                         fontSize: "0.8rem",
                       }}
                     >
-                      {user.name
+                      {user.full_name
                         ?.split(" ")
                         .map((n) => n[0]?.toUpperCase())
                         .slice(0, 2)
@@ -167,8 +167,9 @@ export default function Navbar() {
                     </Typography>
                   </MenuItem>
                   <MenuItem>
-                    <Typography variant="body2">{user.name}</Typography>
+                    <Typography variant="body2">{user.full_name}</Typography>
                   </MenuItem>
+
                   <MenuItem
                     onClick={openLogoutConfirm}
                     sx={{ color: "error.main" }}

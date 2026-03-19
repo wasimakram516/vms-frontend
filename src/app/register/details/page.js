@@ -1,0 +1,425 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Box,
+  Button,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+  CircularProgress,
+  Divider,
+  Checkbox,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  IconButton,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormHelperText,
+  FormLabel,
+  RadioGroup,
+  Radio,
+  FormGroup,
+} from "@mui/material";
+import { useRouter } from "next/navigation";
+import { useVisitor } from "@/contexts/VisitorContext";
+import { getFields } from "@/services/registrationService";
+import { motion } from "framer-motion";
+import ICONS from "@/utils/iconUtil";
+import CountryCodeSelector from "@/components/CountryCodeSelector";
+import RichTextEditor from "@/components/RichTextEditor";
+import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE } from "@/utils/countryCodes";
+import { validatePhoneNumberByCountry } from "@/utils/phoneValidation";
+
+const transition = { duration: 0.5, ease: [0.43, 0.13, 0.23, 0.96] };
+
+export default function DetailsPage() {
+  const router = useRouter();
+  const { visitorData, setVisitorData, flowState, setFlowState } = useVisitor();
+  const [fields, setFields] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errors, setErrors] = useState({});
+  const [ndaOpen, setNdaOpen] = useState(false);
+  const [ndaAccepted, setNdaAccepted] = useState(flowState.ndaAccepted || false);
+
+  useEffect(() => {
+    const fetchFields = async () => {
+      try {
+        const f = await getFields();
+        setFields(f);
+      } catch (err) {
+        console.error("Failed to fetch fields", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchFields();
+  }, []);
+
+  const handleFieldChange = (key, value) => {
+    setVisitorData((prev) => ({
+      ...prev,
+      dynamicFields: { ...prev.dynamicFields, [key]: value },
+    }));
+    if (errors[key]) {
+      setErrors((p) => {
+        const next = { ...p };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const handleCountryCodeChange = (key, isoCode) => {
+    setVisitorData((prev) => ({
+      ...prev,
+      countryIsoCodes: { ...(prev.countryIsoCodes || {}), [key]: isoCode },
+    }));
+  };
+
+  const validate = () => {
+    const newErrors = {};
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    fields.forEach((f) => {
+      const fieldKey = f.field_key || f.fieldKey;
+      const isRequired = f.is_required || f.isRequired;
+      const inputType = f.input_type || f.inputType || "text";
+      const val = visitorData.dynamicFields[fieldKey];
+
+      if (isRequired && (!val || (Array.isArray(val) && val.length === 0))) {
+        newErrors[fieldKey] = `${f.label} is required`;
+      } else if (val && inputType === "email" && !emailRegex.test(val)) {
+        newErrors[fieldKey] = `Please enter a valid email address`;
+      } else if (val && inputType === "phone") {
+        const isoCode = visitorData.countryIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
+        const phoneValidation = validatePhoneNumberByCountry(val, isoCode);
+        if (!phoneValidation.valid) {
+          newErrors[fieldKey] = phoneValidation.error || "Invalid phone number";
+        }
+      }
+    });
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleNext = () => {
+    if (!validate() || !ndaAccepted) return;
+
+    const processedFields = { ...visitorData.dynamicFields };
+    fields.forEach((f) => {
+      const fieldKey = f.field_key || f.fieldKey;
+      const inputType = f.input_type || f.inputType || "text";
+      const val = processedFields[fieldKey];
+
+      if (inputType === "phone" && val) {
+        const isoCode = visitorData.countryIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
+        const country = getCountryCodeByIsoCode(isoCode);
+        const countryCode = country?.code || DEFAULT_COUNTRY_CODE;
+        if (!val.startsWith("+")) {
+          processedFields[fieldKey] = `${countryCode}${val}`;
+        }
+      }
+    });
+
+    setVisitorData((prev) => ({
+      ...prev,
+      dynamicFields: processedFields,
+    }));
+
+    setFlowState((prev) => ({ ...prev, ndaAccepted: true, currentStep: "booking" }));
+    router.push("/register/booking");
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ minHeight: "60vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        maxWidth: 650,
+        mx: "auto",
+        px: 2,
+        py: { xs: 2, md: 4 },
+      }}
+    >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={transition}>
+        <Paper elevation={0} sx={{ p: { xs: 2, md: 4 }, borderRadius: 4, border: "1px solid rgba(0,0,0,0.06)" }}>
+          <Stack spacing={3}>
+            <Box sx={{ textAlign: "center" }}>
+              <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
+                Tell us about yourself
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mt={1}>
+                Fill in the details below to complete your registration.
+              </Typography>
+            </Box>
+
+            <Divider />
+
+            <Stack spacing={3}>
+              {fields.map((f) => {
+                const fieldKey = f.field_key || f.fieldKey;
+                const isRequired = f.is_required || f.isRequired;
+                const inputType = f.input_type || f.inputType || "text";
+                const options = f.options_json || f.optionsJson || [];
+                const val = visitorData.dynamicFields[fieldKey] !== undefined ? visitorData.dynamicFields[fieldKey] : (inputType === "checkbox" ? [] : "");
+                const error = errors[fieldKey];
+
+                if (inputType === "select") {
+                  return (
+                    <FormControl key={f.id || fieldKey} fullWidth error={Boolean(error)} required={isRequired}>
+                      <InputLabel>{f.label}</InputLabel>
+                      <Select
+                        value={val}
+                        label={f.label}
+                        onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
+                        sx={{ borderRadius: 3, bgcolor: "rgba(0,0,0,0.01)" }}
+                      >
+                        {options.map((opt) => (
+                          <MenuItem key={opt} value={opt}>
+                            {opt}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                      {error && <FormHelperText>{error}</FormHelperText>}
+                    </FormControl>
+                  );
+                }
+
+                if (inputType === "radio") {
+                  return (
+                    <FormControl key={f.id || fieldKey} error={Boolean(error)} required={isRequired}>
+                      <FormLabel>{f.label}</FormLabel>
+                      <RadioGroup
+                        row
+                        value={val}
+                        onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
+                      >
+                        {options.map((opt) => (
+                          <FormControlLabel key={opt} value={opt} control={<Radio />} label={opt} />
+                        ))}
+                      </RadioGroup>
+                      {error && <FormHelperText>{error}</FormHelperText>}
+                    </FormControl>
+                  );
+                }
+
+                if (inputType === "checkbox") {
+                  const checkVals = Array.isArray(val) ? val : (val ? [val] : []);
+                  const handleCheckChange = (opt, checked) => {
+                    if (checked) {
+                      handleFieldChange(fieldKey, [...checkVals, opt]);
+                    } else {
+                      handleFieldChange(fieldKey, checkVals.filter((v) => v !== opt));
+                    }
+                  };
+                  return (
+                    <FormControl key={f.id || fieldKey} error={Boolean(error)} required={isRequired}>
+                      <FormLabel>{f.label}</FormLabel>
+                      <FormGroup row>
+                        {options.map((opt) => (
+                          <FormControlLabel
+                            key={opt}
+                            control={
+                              <Checkbox
+                                checked={checkVals.includes(opt)}
+                                onChange={(e) => handleCheckChange(opt, e.target.checked)}
+                              />
+                            }
+                            label={opt}
+                          />
+                        ))}
+                      </FormGroup>
+                      {error && <FormHelperText>{error}</FormHelperText>}
+                    </FormControl>
+                  );
+                }
+
+                let textType = "text";
+                if (["number", "email", "date", "time", "password", "url"].includes(inputType)) {
+                  textType = inputType;
+                }
+
+                if (inputType === "phone") {
+                  const isoCode = visitorData.countryIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
+                  return (
+                    <TextField
+                      key={f.id || fieldKey}
+                      fullWidth
+                      label={f.label}
+                      type="tel"
+                      value={val}
+                      onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
+                      required={isRequired}
+                      error={Boolean(error)}
+                      helperText={error}
+                      size="medium"
+                      placeholder={f.label}
+                      InputProps={{
+                        startAdornment: (
+                          <CountryCodeSelector
+                            value={isoCode}
+                            onChange={(iso) => handleCountryCodeChange(fieldKey, iso)}
+                          />
+                        ),
+                      }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          borderRadius: 3,
+                          bgcolor: "rgba(0,0,0,0.01)",
+                        },
+                      }}
+                    />
+                  );
+                }
+
+                if (inputType === "textarea") {
+                  return (
+                    <Box key={f.id || fieldKey}>
+                      <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: error ? "error.main" : "text.secondary" }}>
+                        {f.label} {isRequired && "*"}
+                      </Typography>
+                      <RichTextEditor
+                        value={val}
+                        onChange={(html) => handleFieldChange(fieldKey, html)}
+                        placeholder={f.label}
+                      />
+                      {error && <FormHelperText error>{error}</FormHelperText>}
+                    </Box>
+                  );
+                }
+
+                if (inputType === "file") {
+                  return (
+                    <Box key={f.id || fieldKey}>
+                      <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: error ? "error.main" : "text.secondary" }}>
+                        {f.label} {isRequired && "*"}
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        type="file"
+                        onChange={(e) => handleFieldChange(fieldKey, e.target.files[0])}
+                        error={Boolean(error)}
+                        helperText={error}
+                        size="medium"
+                        inputProps={{ accept: "*/*" }}
+                        sx={{
+                          "& .MuiOutlinedInput-root": {
+                            borderRadius: 3,
+                            bgcolor: "rgba(0,0,0,0.01)",
+                          },
+                        }}
+                      />
+                    </Box>
+                  );
+                }
+
+                return (
+                  <TextField
+                    key={f.id || fieldKey}
+                    fullWidth
+                    label={f.label}
+                    type={textType}
+                    value={val}
+                    onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
+                    required={isRequired}
+                    error={Boolean(error)}
+                    helperText={error}
+                    size="medium"
+                    placeholder={f.label}
+                    InputLabelProps={["date", "time"].includes(inputType) ? { shrink: true } : {}}
+                    sx={{
+                      "& .MuiOutlinedInput-root": {
+                        borderRadius: 3,
+                        bgcolor: "rgba(0,0,0,0.01)",
+                      },
+                    }}
+                  />
+                );
+              })}
+            </Stack>
+
+            <Divider />
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={ndaAccepted}
+                  onChange={(e) => setNdaAccepted(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={
+                <Typography variant="body2" fontWeight={600}>
+                  I have read and agree to the{" "}
+                  <Typography
+                    component="span"
+                    color="primary.main"
+                    sx={{ textDecoration: "underline", cursor: "pointer" }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setNdaOpen(true);
+                    }}
+                  >
+                    terms & conditions
+                  </Typography>
+                </Typography>
+              }
+            />
+
+            <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => router.push("/")}
+                sx={{ py: 1.5, borderRadius: 2 }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                fullWidth
+                disabled={!ndaAccepted}
+                onClick={handleNext}
+                sx={{ py: 1.5, borderRadius: 2 }}
+              >
+                Schedule Visit
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+      </motion.div>
+      {/* NDA Modal */}
+      <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" fontWeight={800} component="span" sx={{ fontFamily: "'Comfortaa', cursive" }}>
+            Non-Disclosure Agreement
+          </Typography>
+          <IconButton onClick={() => setNdaOpen(false)}>
+            <ICONS.close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ borderColor: "rgba(0,0,0,0.05)" }}>
+          <Typography variant="body2" color="text.primary" sx={{ lineHeight: 1.8, whiteSpace: "pre-line" }}>
+            {"This Non-Disclosure Agreement (the \"Agreement\") is entered into for the purpose of preventing the unauthorized disclosure of Confidential Information as defined below.\n\n" +
+              "1. Definition of Confidential Information: For purposes of this Agreement, \"Confidential Information\" shall include all information or material that has or could have commercial value or other utility in the business in which Disclosing Party is engaged.\n\n" +
+              "2. Obligations of Receiving Party: Receiving Party shall hold and maintain the Confidential Information in strictest confidence for the sole and exclusive benefit of the Disclosing Party.\n\n" +
+              "3. Legal Action: Any breach of this agreement may result in legal action and termination of access to the premises.\n\n" +
+              "By accepting, you acknowledge that you have read and understood the terms of this agreement."}
+          </Typography>
+        </DialogContent>
+      </Dialog>
+    </Box>
+  );
+}

@@ -1,105 +1,77 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
-import { logoutUser, refreshToken } from "@/services/authService";
+import { logout, verifySession } from "@/services/authService";
+import { getStoredUser } from "@/utils/authStorage";
 
 const AuthContext = createContext();
-
-// Helper: decode JWT and return ms left until expiry
-const getMsLeft = (token) => {
-  try {
-    const { exp } = JSON.parse(atob(token.split(".")[1]));
-    return exp * 1000 - Date.now();
-  } catch {
-    return null;
-  }
-};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedBusiness, setSelectedBusiness] = useState(null);
 
-  // Load user from sessionStorage on mount
   useEffect(() => {
-    const storedUser = sessionStorage.getItem("user");
-    const storedBusiness = sessionStorage.getItem("selectedBusiness");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    if (storedBusiness) {
-      setSelectedBusiness(storedBusiness);
-    }
-    setLoading(false);
-  }, []);
+    const initAuth = async () => {
+      try {
 
-  // 1. Proactive refresh loop (runs every 30s)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const token = sessionStorage.getItem("accessToken");
-      if (!token) return;
+        const localUser = getStoredUser();
+        if (localUser) {
+          setUser(localUser);
+        }
 
-      const msLeft = getMsLeft(token);
-      if (msLeft !== null && msLeft < 120000) {
-        await refreshToken();
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // 2. Resume-from-sleep/lock/mobile minimize refresh
-  useEffect(() => {
-    const onResume = async () => {
-      const token = sessionStorage.getItem("accessToken");
-      if (!token) return;
-
-      const msLeft = getMsLeft(token);
-      if (msLeft !== null && msLeft < 120000) {
-        await refreshToken();
+        const sessionData = await verifySession();
+        if (sessionData) {
+          setUser(sessionData.user);
+        } else {
+          setUser(null);
+        }
+      } catch (err) {
+        console.error("Auth initialization failed:", err);
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
     };
 
-    // Covers desktop tab changes + window focus
-    window.addEventListener("visibilitychange", onResume);
-    window.addEventListener("focus", onResume);
+    initAuth();
+  }, []);
 
-    // Covers mobile browsers (iOS Safari / Android Chrome) when app is minimized
-    window.addEventListener("pageshow", onResume);
-
-    return () => {
-      window.removeEventListener("visibilitychange", onResume);
-      window.removeEventListener("focus", onResume);
-      window.removeEventListener("pageshow", onResume);
-    };
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedBusiness = sessionStorage.getItem("selectedBusiness");
+      if (storedBusiness) {
+        setSelectedBusiness(storedBusiness);
+      }
+    }
   }, []);
 
   const handleSetUser = (userData) => {
-    if (userData) {
-      sessionStorage.setItem("user", JSON.stringify(userData));
-    } else {
-      sessionStorage.removeItem("user");
-    }
     setUser(userData);
   };
 
   const handleSetSelectedBusiness = (businessSlug) => {
-    if (businessSlug) {
-      sessionStorage.setItem("selectedBusiness", businessSlug);
-    } else {
-      sessionStorage.removeItem("selectedBusiness");
+    if (typeof window !== "undefined") {
+      if (businessSlug) {
+        sessionStorage.setItem("selectedBusiness", businessSlug);
+      } else {
+        sessionStorage.removeItem("selectedBusiness");
+      }
     }
     setSelectedBusiness(businessSlug);
   };
 
-  const logout = async () => {
+  const logoutAction = async () => {
     try {
-      await logoutUser();
+      await logout();
     } catch (error) {
       console.error("Logout failed:", error);
     } finally {
-      handleSetUser(null);
+      setUser(null);
       handleSetSelectedBusiness(null);
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth/login";
+      }
     }
   };
 
@@ -110,7 +82,7 @@ export const AuthProvider = ({ children }) => {
         setUser: handleSetUser,
         selectedBusiness,
         setSelectedBusiness: handleSetSelectedBusiness,
-        logout,
+        logout: logoutAction,
         loading
       }}
     >

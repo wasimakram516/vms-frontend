@@ -22,7 +22,6 @@ import RichTextEditor from "@/components/RichTextEditor";
 import QRCode from "qrcode";
 import ICONS from "@/utils/iconUtil";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
-import { useGlobalConfig } from "@/contexts/GlobalConfigContext";
 
 const A6_WIDTH_PT = 297.6;
 const A6_HEIGHT_PT = 419.5;
@@ -41,7 +40,6 @@ const translations = {
         save: "Save",
         cancel: "Cancel",
     },
-    ,
 };
 
 const BadgeRichTextEditor = ({
@@ -101,9 +99,7 @@ const BadgeRichTextEditor = ({
             .trim();
 
         const isBold = /<(strong|b)>/i.test(html) || /font-weight:\s*(bold|700|800|900)/i.test(html);
-
         const isItalic = /<(em|i)>/i.test(html) || /font-style:\s*italic/i.test(html);
-
         const isUnderline = /<u>/i.test(html) || /text-decoration:\s*underline/i.test(html);
 
         const colorMatch = html.match(/color:\s*([^;'"]+)/i) || html.match(/color="([^"]+)"/i);
@@ -178,27 +174,13 @@ const BadgeRichTextEditor = ({
             formatting.fontFamily !== lastFormattingRef.current.fontFamily;
 
         if (hasChanges) {
-            if (onTextChange) {
-                onTextChange(formatting.text);
-            }
-            if (onFontSizeChange) {
-                onFontSizeChange(formatting.fontSize);
-            }
-            if (onColorChange) {
-                onColorChange(formatting.color);
-            }
-            if (onBoldChange) {
-                onBoldChange(formatting.isBold);
-            }
-            if (onItalicChange) {
-                onItalicChange(formatting.isItalic);
-            }
-            if (onUnderlineChange) {
-                onUnderlineChange(formatting.isUnderline);
-            }
-            if (onFontFamilyChange) {
-                onFontFamilyChange(formatting.fontFamily);
-            }
+            if (onTextChange) onTextChange(formatting.text);
+            if (onFontSizeChange) onFontSizeChange(formatting.fontSize);
+            if (onColorChange) onColorChange(formatting.color);
+            if (onBoldChange) onBoldChange(formatting.isBold);
+            if (onItalicChange) onItalicChange(formatting.isItalic);
+            if (onUnderlineChange) onUnderlineChange(formatting.isUnderline);
+            if (onFontFamilyChange) onFontFamilyChange(formatting.fontFamily);
 
             lastFormattingRef.current = formatting;
         }
@@ -243,9 +225,7 @@ const BadgeRichTextEditor = ({
                     });
                 });
             }
-
-            return () => {
-            };
+            return () => {};
         }
     }, [onAlignmentChange]);
 
@@ -300,9 +280,7 @@ const BadgeRichTextEditor = ({
                 xInput.value = x;
                 xInput.oninput = (e) => {
                     const val = parseFloat(e.target.value) || 0;
-                    if (val >= 0 && val <= 100) {
-                        onXChange(val);
-                    }
+                    if (val >= 0 && val <= 100) onXChange(val);
                 };
                 xInputRef.current = xInput;
 
@@ -336,9 +314,7 @@ const BadgeRichTextEditor = ({
                 yInput.value = y;
                 yInput.oninput = (e) => {
                     const val = parseFloat(e.target.value) || 0;
-                    if (val >= 0 && val <= 100) {
-                        onYChange(val);
-                    }
+                    if (val >= 0 && val <= 100) onYChange(val);
                 };
                 yInputRef.current = yInput;
 
@@ -358,7 +334,6 @@ const BadgeRichTextEditor = ({
                 fontLabel.style.color = 'rgba(0, 0, 0, 0.6)';
                 fontLabel.style.fontWeight = '400';
                 fontLabel.style.whiteSpace = 'nowrap';
-                fontLabel.style.minWidth = 'auto';
 
                 const fontSelect = document.createElement('select');
                 fontSelect.className = 'font-family-select';
@@ -386,9 +361,7 @@ const BadgeRichTextEditor = ({
                 });
 
                 fontSelect.onchange = (e) => {
-                    if (onFontFamilyChange) {
-                        onFontFamilyChange(e.target.value);
-                    }
+                    if (onFontFamilyChange) onFontFamilyChange(e.target.value);
                 };
 
                 fontContainer.appendChild(fontLabel);
@@ -403,26 +376,18 @@ const BadgeRichTextEditor = ({
         };
 
         const timeoutId = setTimeout(injectInputs, 100);
-
-        return () => {
-            clearTimeout(timeoutId);
-        };
+        return () => clearTimeout(timeoutId);
     }, [t, onXChange, onYChange, onFontFamilyChange, fontFamily, availableFonts, x, y]);
 
     useEffect(() => {
-        if (xInputRef.current && document.activeElement !== xInputRef.current) {
-            xInputRef.current.value = x;
-        }
+        if (xInputRef.current && document.activeElement !== xInputRef.current) xInputRef.current.value = x;
     }, [x]);
 
     useEffect(() => {
-        if (yInputRef.current && document.activeElement !== yInputRef.current) {
-            yInputRef.current.value = y;
-        }
+        if (yInputRef.current && document.activeElement !== yInputRef.current) yInputRef.current.value = y;
     }, [y]);
 
     const htmlValue = buildHTML(text || "", fontSize || 14, color || "#000000", isBold || false, isItalic || false, isUnderline || false, alignment || "left", fontFamily || "Arial");
-
     const isUpdatingFromPropsRef = useRef(false);
 
     useEffect(() => {
@@ -442,24 +407,11 @@ const BadgeRichTextEditor = ({
                         isUnderline: isUnderline || false,
                         fontFamily: fontFamily || "Arial",
                     };
-                    setTimeout(() => {
-                        isUpdatingFromPropsRef.current = false;
-                    }, 0);
+                    setTimeout(() => { isUpdatingFromPropsRef.current = false; }, 0);
                 }
             }
         }
     }, [text, fontSize, color, isBold, isItalic, isUnderline, alignment]);
-
-    useEffect(() => {
-        if (editorContainerRef.current) {
-            const editor = editorContainerRef.current.querySelector('[contenteditable="true"]');
-            if (editor) {
-                const currentHTML = editor.innerHTML;
-                const formatting = extractFormatting(currentHTML);
-                lastFormattingRef.current = formatting;
-            }
-        }
-    }, []);
 
     return (
         <Box>
@@ -487,16 +439,15 @@ export default function BadgeCustomizationModal({
     badgeCustomizations = {},
 }) {
     const t = translations.en || {};
-  const dir = "ltr";
-    const { fonts: availableFonts } = useGlobalConfig();
+    const dir = "ltr";
+    const availableFonts = []; 
+    
     const [customizations, setCustomizations] = useState({});
     const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
     const scrollableContainerRef = useRef(null);
 
     const setScrollableContainerRef = (node) => {
-        if (scrollableContainerRef.current !== node) {
-            scrollableContainerRef.current = node;
-        }
+        if (scrollableContainerRef.current !== node) scrollableContainerRef.current = node;
     };
 
     useEffect(() => {
@@ -506,7 +457,6 @@ export default function BadgeCustomizationModal({
                 const field = allFields.find((f) => f.inputName === fieldName);
                 if (field) {
                     const existing = badgeCustomizations[fieldName];
-
                     if (existing?.content && typeof existing.content === 'string' && existing.content.includes('<')) {
                         const html = existing.content;
                         const text = html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
@@ -517,7 +467,6 @@ export default function BadgeCustomizationModal({
                         const isBold = /<(strong|b)>/i.test(html);
                         const isItalic = /<(em|i)>/i.test(html);
                         const isUnderline = /<u>/i.test(html);
-
                         const fontFamilyMatch = html.match(/font-family:\s*([^;'"]+)/i);
                         const fontFamily = fontFamilyMatch ? fontFamilyMatch[1].trim().replace(/['"]/g, '') : "Arial";
 
@@ -558,7 +507,6 @@ export default function BadgeCustomizationModal({
                     size: existingQr?.size !== undefined ? existingQr.size : (existingQr?.width || 70),
                 };
             }
-
             setCustomizations(initialCustomizations);
         }
     }, [open, selectedFields, allFields, showQrOnBadge, badgeCustomizations]);
@@ -584,103 +532,25 @@ export default function BadgeCustomizationModal({
     }, [customizations._qrCode?.size, showQrOnBadge]);
 
     useEffect(() => {
-        if (!open || !availableFonts || availableFonts.length === 0) return;
-
-        const styleId = 'badge-customization-fonts';
-        let styleElement = document.getElementById(styleId);
-
-        if (!styleElement) {
-            styleElement = document.createElement('style');
-            styleElement.id = styleId;
-            document.head.appendChild(styleElement);
-        }
-
-        let fontFaceCSS = '';
-
-        availableFonts.forEach(font => {
-            if (font.files && font.files.length > 0) {
-                const fontVariants = new Map();
-
-                font.files.forEach(file => {
-                    const fontPath = file.path.startsWith('/') ? file.path : `/${file.path}`;
-                    const variantKey = `${file.weight || 400}-${file.style || 'normal'}`;
-
-                    if (!fontVariants.has(variantKey)) {
-                        fontVariants.set(variantKey, []);
-                    }
-                    fontVariants.get(variantKey).push({
-                        weight: file.weight || 400,
-                        style: file.style || 'normal',
-                        path: fontPath
-                    });
-                });
-
-                fontVariants.forEach((variants, key) => {
-                    if (variants.length > 0) {
-                        const firstVariant = variants[0];
-                        const format = firstVariant.path.endsWith('.otf') ? 'opentype' : 'truetype';
-
-                        fontFaceCSS += `
-@font-face {
-  font-family: "${font.family}";
-  src: url("${firstVariant.path}") format("${format}");
-  font-weight: ${firstVariant.weight};
-  font-style: ${firstVariant.style};
-  font-display: swap;
-}
-`;
-                    }
-                });
-            }
-        });
-
-        styleElement.textContent = fontFaceCSS;
-
-        return () => {
-        };
-    }, [open, availableFonts]);
-
-    useEffect(() => {
         if (open) {
             const container = scrollableContainerRef.current;
-
             if (container) {
-                const resetScroll = () => {
-                    if (container) {
-                        container.scrollTop = 0;
-                    }
-                };
-
+                const resetScroll = () => { if (container) container.scrollTop = 0; };
                 resetScroll();
-
                 requestAnimationFrame(() => {
                     resetScroll();
-                    requestAnimationFrame(() => {
-                        resetScroll();
-                    });
+                    requestAnimationFrame(() => resetScroll());
                 });
-
-                const timeouts = [
-                    setTimeout(resetScroll, 0),
-                    setTimeout(resetScroll, 10),
-                    setTimeout(resetScroll, 50),
-                ];
-
-                return () => {
-                    timeouts.forEach(clearTimeout);
-                };
+                const timeouts = [setTimeout(resetScroll, 0), setTimeout(resetScroll, 10), setTimeout(resetScroll, 50)];
+                return () => timeouts.forEach(clearTimeout);
             }
         }
     }, [open]);
 
-
     const handleFieldChange = (fieldName, key, value) => {
         setCustomizations((prev) => ({
             ...prev,
-            [fieldName]: {
-                ...prev[fieldName],
-                [key]: value,
-            },
+            [fieldName]: { ...prev[fieldName], [key]: value },
         }));
     };
 
@@ -699,72 +569,27 @@ export default function BadgeCustomizationModal({
             maxWidth="lg"
             fullWidth
             dir={dir}
-            TransitionProps={{
-                onEntered: () => {
-                    const container = scrollableContainerRef.current;
-                    if (container) {
-                        container.scrollTop = 0;
-                        requestAnimationFrame(() => {
-                            if (container) {
-                                container.scrollTop = 0;
-                            }
-                        });
-                    }
-                },
-            }}
-            PaperProps={{
-                sx: {
-                    height: "90vh",
-                    maxHeight: "90vh",
-                },
-            }}
+            PaperProps={{ sx: { height: "90vh", maxHeight: "90vh" } }}
         >
-            <DialogTitle
-                sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    fontWeight: "bold",
-                    px: 3,
-                    pt: 3,
-                }}
-            >
-                <Typography fontWeight="bold" fontSize="1.25rem">
-                    {t.title}
-                </Typography>
-                <IconButton onClick={onClose} size="small">
-                    <ICONS.close />
-                </IconButton>
+            <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: "bold", px: 3, pt: 3 }}>
+                <Typography fontWeight="bold" fontSize="1.25rem" component="span">{t.title}</Typography>
+                <IconButton onClick={onClose} size="small"><ICONS.close /></IconButton>
             </DialogTitle>
 
             <DialogContent sx={{ p: 0, display: "flex", height: "calc(90vh - 120px)", overflow: "hidden" }}>
                 <Box
                     ref={setScrollableContainerRef}
-                    sx={{
-                        width: "50%",
-                        borderRight: "1px solid",
-                        borderColor: "divider",
-                        overflowY: "auto",
-                        p: 3,
-                    }}
+                    sx={{ width: "50%", borderRight: "1px solid", borderColor: "divider", overflowY: "auto", p: 3 }}
                 >
                     <Stack spacing={3}>
                         {selectedFields.map((fieldName) => {
                             const field = allFields.find((f) => f.inputName === fieldName);
                             if (!field) return null;
-
-                            const customization = customizations[fieldName] || {
-                                content: `<p>Sample ${fieldName}</p>`,
-                                x: 0,
-                                y: 0,
-                                alignment: "left",
-                            };
+                            const customization = customizations[fieldName] || { text: `Sample ${fieldName}`, x: 0, y: 0, alignment: "left" };
 
                             return (
                                 <Box key={fieldName}>
-                                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                                        {fieldName}
-                                    </Typography>
+                                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>{fieldName}</Typography>
                                     <BadgeRichTextEditor
                                         text={customization.text || `Sample ${fieldName}`}
                                         fontSize={customization.fontSize || 14}
@@ -798,268 +623,57 @@ export default function BadgeCustomizationModal({
                             );
                         })}
 
-                        {showQrOnBadge && (
+                        {showQrOnBadge && customizations._qrCode && (
                             <Box>
-                                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                                    {t.qrCode}
-                                </Typography>
-                                <Box sx={{ display: "flex", gap: 2 }}>
-                                    <TextField
-                                        label={t.xAxis}
-                                        type="number"
-                                        value={customizations._qrCode?.x !== null && customizations._qrCode?.x !== undefined ? customizations._qrCode.x : 5}
-                                        onChange={(e) => {
-                                            const inputVal = e.target.value;
-                                            if (inputVal === "") {
-                                                handleFieldChange("_qrCode", "x", "");
-                                                return;
-                                            }
-                                            const val = parseFloat(inputVal);
-                                            if (!isNaN(val) && val >= 0 && val <= 100) {
-                                                handleFieldChange("_qrCode", "x", val);
-                                            }
-                                        }}
-                                        onBlur={(e) => {
-                                            const inputVal = e.target.value.trim();
-                                            if (inputVal === "" || isNaN(parseFloat(inputVal))) {
-                                                handleFieldChange("_qrCode", "x", 5);
-                                            } else {
-                                                const val = parseFloat(inputVal);
-                                                if (val < 0 || val > 100) {
-                                                    handleFieldChange("_qrCode", "x", 5);
-                                                }
-                                            }
-                                        }}
-                                        size="small"
-                                        sx={{ flex: 1 }}
-                                        inputProps={{ min: 0, max: 100, step: 0.1 }}
-                                    />
-                                    <TextField
-                                        label={t.yAxis}
-                                        type="number"
-                                        value={customizations._qrCode?.y !== null && customizations._qrCode?.y !== undefined ? customizations._qrCode.y : 85}
-                                        onChange={(e) => {
-                                            const inputVal = e.target.value;
-                                            if (inputVal === "") {
-                                                handleFieldChange("_qrCode", "y", "");
-                                                return;
-                                            }
-                                            const val = parseFloat(inputVal);
-                                            if (!isNaN(val) && val >= 0 && val <= 100) {
-                                                handleFieldChange("_qrCode", "y", val);
-                                            }
-                                        }}
-                                        onBlur={(e) => {
-                                            const inputVal = e.target.value.trim();
-                                            if (inputVal === "" || isNaN(parseFloat(inputVal))) {
-                                                handleFieldChange("_qrCode", "y", 85);
-                                            } else {
-                                                const val = parseFloat(inputVal);
-                                                if (val < 0 || val > 100) {
-                                                    handleFieldChange("_qrCode", "y", 85);
-                                                }
-                                            }
-                                        }}
-                                        size="small"
-                                        sx={{ flex: 1 }}
-                                        inputProps={{ min: 0, max: 100, step: 0.1 }}
-                                    />
-                                    <TextField
-                                        label={t.qrSize}
-                                        type="number"
-                                        value={customizations._qrCode?.size !== null && customizations._qrCode?.size !== undefined ? customizations._qrCode.size : 70}
-                                        onChange={(e) => {
-                                            const inputVal = e.target.value;
-                                            if (inputVal === "") {
-                                                handleFieldChange("_qrCode", "size", "");
-                                                return;
-                                            }
-                                            const val = parseInt(inputVal);
-                                            if (!isNaN(val) && val >= 0) {
-                                                handleFieldChange("_qrCode", "size", val);
-                                            }
-                                        }}
-                                        onBlur={(e) => {
-                                            const inputVal = e.target.value.trim();
-                                            if (inputVal === "" || isNaN(parseInt(inputVal))) {
-                                                handleFieldChange("_qrCode", "size", 70);
-                                            } else {
-                                                const val = parseInt(inputVal);
-                                                if (val < 10 || val > 200) {
-                                                    handleFieldChange("_qrCode", "size", 70);
-                                                }
-                                            }
-                                        }}
-                                        size="small"
-                                        sx={{ flex: 1 }}
-                                        inputProps={{ min: 10, max: 200, step: 1 }}
-                                    />
-                                </Box>
+                                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>{t.qrCode}</Typography>
+                                <Stack direction="row" spacing={2}>
+                                    <TextField label={t.xAxis} type="number" value={customizations._qrCode.x} onChange={(e) => handleFieldChange("_qrCode", "x", parseFloat(e.target.value))} />
+                                    <TextField label={t.yAxis} type="number" value={customizations._qrCode.y} onChange={(e) => handleFieldChange("_qrCode", "y", parseFloat(e.target.value))} />
+                                    <TextField label={t.qrSize} type="number" value={customizations._qrCode.size} onChange={(e) => handleFieldChange("_qrCode", "size", parseFloat(e.target.value))} />
+                                </Stack>
                             </Box>
                         )}
                     </Stack>
                 </Box>
 
-                <Box
-                    sx={{
-                        width: "50%",
-                        bgcolor: "grey.100",
-                        display: "flex",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        p: 0,
-                        m: 0,
-                        overflow: "auto",
-                    }}
-                >
-                    <Box
-                        sx={{
-                            width: previewWidth,
-                            height: previewHeight,
-                            bgcolor: "white",
-                            position: "relative",
-                            boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-                            border: "1px solid #ddd",
-                            overflow: "hidden",
-                            m: 0,
-                        }}
-                    >
-                        <Box
-                            sx={{
-                                width: A6_WIDTH_PX,
-                                height: A6_HEIGHT_PX,
-                                bgcolor: "white",
-                                position: "relative",
-                                transform: `scale(${PREVIEW_SCALE})`,
-                                transformOrigin: "top left",
-                            }}
-                        >
-                            {selectedFields.map((fieldName) => {
-                                const customization = customizations[fieldName];
-                                if (!customization) return null;
-
-                                const yPercent = customization.y || 0;
-                                const alignment = customization.alignment || "left";
-                                const text = customization.text || `Sample ${fieldName}`;
-                                const fontSize = customization.fontSize || 14;
-                                const color = customization.color || "#000000";
-                                const isBold = customization.isBold || false;
-                                const isItalic = customization.isItalic || false;
-                                const isUnderline = customization.isUnderline || false;
-                                const fontFamily = customization.fontFamily || "Arial";
-
-                                let leftStyle = {};
-                                let textAlignStyle = {};
-                                let widthStyle = {};
-
-                                if (alignment === "center") {
-
-                                    leftStyle = { left: "5%" };
-                                    textAlignStyle = { textAlign: "center" };
-                                    widthStyle = { width: "90%", maxWidth: "90%" };
-                                } else if (alignment === "right") {
-                                    leftStyle = { right: "0%" };
-                                    textAlignStyle = { textAlign: "right" };
-                                    widthStyle = { maxWidth: "90%" };
-                                } else {
-                                    leftStyle = { left: `${customization.x || 0}%` };
-                                    textAlignStyle = { textAlign: "left" };
-                                    widthStyle = { maxWidth: "90%" };
-                                }
-
-                                return (
-                                    <Box
-                                        key={fieldName}
-                                        sx={{
-                                            position: "absolute",
-                                            top: `${yPercent}%`,
-                                            fontSize: `${fontSize}px`,
-                                            fontFamily: `"${fontFamily}", sans-serif`,
-                                            lineHeight: 1.0,
-                                            color: color,
-                                            fontWeight: isBold ? "bold" : "normal",
-                                            fontStyle: isItalic ? "italic" : "normal",
-                                            textDecoration: isUnderline ? "underline" : "none",
-                                            margin: 0,
-                                            padding: 0,
-                                            display: "block",
-                                            boxSizing: "border-box",
-                                            height: "auto",
-                                            minHeight: 0,
-                                            ...leftStyle,
-                                            ...textAlignStyle,
-                                            ...widthStyle,
-                                        }}
-                                    >
-                                        {text}
-                                    </Box>
-                                );
-                            })}
-
-                            {showQrOnBadge && qrCodeDataUrl && customizations._qrCode && (
-                                <Box
+                <Box sx={{ flex: 1, bgcolor: "grey.100", display: "flex", alignItems: "center", justifyContent: "center", p: 2 }}>
+                    <Box sx={{ width: previewWidth, height: previewHeight, bgcolor: "white", boxShadow: 3, position: "relative", overflow: "hidden" }}>
+                        {selectedFields.map((fieldName) => {
+                            const c = customizations[fieldName];
+                            if (!c) return null;
+                            return (
+                                <Typography
+                                    key={fieldName}
                                     sx={{
                                         position: "absolute",
-                                        left: `${customizations._qrCode.x ?? 5}%`,
-                                        top: `${customizations._qrCode.y ?? 85}%`,
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        alignItems: "center",
+                                        left: `${c.x}%`,
+                                        top: `${c.y}%`,
+                                        transform: "translate(-50%, -50%)",
+                                        fontSize: `${(c.fontSize || 14) * PREVIEW_SCALE}px`,
+                                        color: c.color || "#000000",
+                                        fontWeight: c.isBold ? "bold" : "normal",
+                                        fontStyle: c.isItalic ? "italic" : "normal",
+                                        textDecoration: c.isUnderline ? "underline" : "none",
+                                        fontFamily: c.fontFamily || "Arial",
+                                        textAlign: c.alignment || "left",
+                                        whiteSpace: "nowrap",
                                     }}
                                 >
-                                    <Box
-                                        component="img"
-                                        src={qrCodeDataUrl}
-                                        alt="QR Code"
-                                        sx={{
-                                            width: `${customizations._qrCode.size ?? 70}px`,
-                                            height: `${customizations._qrCode.size ?? 70}px`,
-                                        }}
-                                    />
-                                    <Typography
-                                        variant="caption"
-                                        sx={{
-                                            fontSize: `${((customizations._qrCode.size ?? 70) / 70) * 9}px`,
-                                            fontWeight: "bold",
-                                            color: "#0077b6",
-                                            letterSpacing: 0.7,
-                                            marginTop: "2px",
-                                        }}
-                                    >
-                                        SAMPLE_TOKEN
-                                    </Typography>
-                                </Box>
-                            )}
-                        </Box>
+                                    {c.text}
+                                </Typography>
+                            );
+                        })}
+                        {showQrOnBadge && qrCodeDataUrl && customizations._qrCode && (
+                            <Box component="img" src={qrCodeDataUrl} sx={{ position: "absolute", left: `${customizations._qrCode.x}%`, top: `${customizations._qrCode.y}%`, width: customizations._qrCode.size * PREVIEW_SCALE, height: customizations._qrCode.size * PREVIEW_SCALE, transform: "translate(-50%, -50%)" }} />
+                        )}
                     </Box>
                 </Box>
             </DialogContent>
 
-            <DialogActions sx={{ px: 3, pb: 3 }}>
-                <Stack direction="row" spacing={2} sx={{ width: "100%", justifyContent: "flex-end" }}>
-                    <Button
-                        variant="outlined"
-                        onClick={onClose}
-                        startIcon={<ICONS.close />}
-                        sx={{
-                            ...getStartIconSpacing(dir),
-                        }}
-                    >
-                        {t.cancel}
-                    </Button>
-                    <Button
-                        variant="contained"
-                        onClick={handleSave}
-                        startIcon={<ICONS.save />}
-                        sx={{
-                            ...getStartIconSpacing(dir),
-                        }}
-                    >
-                        {t.save}
-                    </Button>
-                </Stack>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+                <Button onClick={onClose} variant="outlined">{t.cancel}</Button>
+                <Button onClick={handleSave} variant="contained" color="primary">{t.save}</Button>
             </DialogActions>
         </Dialog>
     );
 }
-

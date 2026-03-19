@@ -90,7 +90,6 @@ function ensureFontsLoaded(fonts) {
   document.head.appendChild(el);
 }
 
-
 async function renderCustomFieldAsImage(f, fonts = []) {
   const text = String(f.text ?? "").trim() || (f.label || "field1");
   if (!text) return null;

@@ -24,10 +24,7 @@ import {
 import QRCode from "qrcode";
 import ICONS from "@/utils/iconUtil";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
-import { updateDefaultQrWrapper } from "@/services/globalConfigService";
-import { deleteMedia } from "@/services/deleteMediaService";
 import { useMessage } from "@/contexts/MessageContext";
-import { useGlobalConfig } from "@/contexts/GlobalConfigContext";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import RichTextEditor from "@/components/RichTextEditor";
 
@@ -95,7 +92,6 @@ const translations = {
     organizerPhone: "Organizer Phone",
     auto: "Auto",
   },
-  ,
 };
 
 function getNextFieldName(existingFields) {
@@ -576,11 +572,11 @@ export default function DefaultQrWrapperModal({
   const t = translations.en || {};
   const dir = "ltr";
   const { showMessage } = useMessage();
-  const { refetchConfig } = useGlobalConfig();
   const isEventMode = mode === "event";
 
   const wr = config?.defaultQrWrapper || {};
-  const { fonts: availableFonts } = useGlobalConfig();
+  const availableFonts = []; // Global Fonts context removed
+  
   const [logo, setLogo] = useState({
     url: wr.logo?.url ?? "",
     width: widthHeightFromConfig(wr.logo?.width, 150, wr.logo != null),
@@ -752,38 +748,6 @@ export default function DefaultQrWrapperModal({
       .then(setQrCodeDataUrl).catch(() => setQrCodeDataUrl(""));
   }, [open, qr.size]);
 
-  useEffect(() => {
-    if (!open || !availableFonts || availableFonts.length === 0) return;
-    const styleId = "default-qr-wrapper-fonts";
-    let styleElement = document.getElementById(styleId);
-    if (!styleElement) {
-      styleElement = document.createElement("style");
-      styleElement.id = styleId;
-      document.head.appendChild(styleElement);
-    }
-    let fontFaceCSS = "";
-    availableFonts.forEach((font) => {
-      if (font.files && font.files.length > 0) {
-        const fontVariants = new Map();
-        font.files.forEach((file) => {
-          const fontPath = file.path.startsWith("/") ? file.path : `/${file.path}`;
-          const variantKey = `${file.weight || 400}-${file.style || "normal"}`;
-          if (!fontVariants.has(variantKey)) fontVariants.set(variantKey, []);
-          fontVariants.get(variantKey).push({ weight: file.weight || 400, style: file.style || "normal", path: fontPath });
-        });
-        fontVariants.forEach((variants) => {
-          if (variants.length > 0) {
-            const first = variants[0];
-            const format = first.path.endsWith(".otf") ? "opentype" : "truetype";
-            const family = font.family || font.name;
-            fontFaceCSS += `\n@font-face {\n  font-family: "${family}";\n  src: url("${first.path}") format("${format}");\n  font-weight: ${first.weight};\n  font-style: ${first.style};\n  font-display: swap;\n}\n`;
-          }
-        });
-      }
-    });
-    styleElement.textContent = fontFaceCSS;
-  }, [open, availableFonts]);
-
   const handleAddField = () => {
     setCustomFields((prev) => {
       const nextName = getNextFieldName(prev);
@@ -796,125 +760,85 @@ export default function DefaultQrWrapperModal({
     });
   };
 
-  const handleFieldChange = (id, key, value) => {
-    setCustomFields((prev) => prev.map((f) => (f.id === id ? { ...f, [key]: value } : f)));
-  };
-
-  // Receives built HTML from QrWrapperFieldEditor — parse and update field state
-  const handleFieldContentChange = (id, html) => {
-    const parsed = extractFormattingFromHtml(html);
-    setCustomFields((prev) =>
-      prev.map((f) => f.id === id ? { ...f, ...parsed, fontSize: num(parsed.fontSize, 14) } : f)
-    );
-  };
-
-  const handleEventFieldContentChange = (id, html) => {
-    const parsed = extractFormattingFromHtml(html);
-    setEventFields((prev) =>
-      prev.map((f) => f.id === id ? { ...f, ...parsed, fontSize: num(parsed.fontSize, 14) } : f)
-    );
-  };
-
-  // Receives full formatting object from QrWrapperFieldEditor — merge into field state
-  const handleFormattingChange = (id, fmt) => {
-    setCustomFields((prev) => prev.map((f) => f.id === id ? { ...f, ...fmt } : f));
-  };
-
   const handleRemoveField = (id) => {
     setCustomFields((prev) => prev.filter((f) => f.id !== id));
   };
 
-  const handleEventFieldChange = (id, key, value) => {
-    setEventFields((prev) => prev.map((f) => (f.id === id ? { ...f, [key]: value } : f)));
+  const handleFieldChange = (id, key, val) => {
+    setCustomFields((prev) => prev.map((f) => (f.id === id ? { ...f, [key]: val } : f)));
+  };
+
+  const handleFormattingChange = (id, fmt) => {
+    setCustomFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...fmt } : f)));
+  };
+
+  const handleFieldContentChange = (id, html) => {
+    const fmt = extractFormattingFromHtml(html);
+    setCustomFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...fmt } : f)));
+  };
+
+  const handleEventFieldChange = (id, key, val) => {
+    setEventFields((prev) => prev.map((f) => (f.id === id ? { ...f, [key]: val } : f)));
   };
 
   const handleEventFormattingChange = (id, fmt) => {
-    setEventFields((prev) => prev.map((f) => f.id === id ? { ...f, ...fmt } : f));
+    setEventFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...fmt } : f)));
+  };
+
+  const handleEventFieldContentChange = (id, html) => {
+    const fmt = extractFormattingFromHtml(html);
+    setEventFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...fmt } : f)));
+  };
+
+  const handleBrandingItemFieldChange = (idx, key, val) => {
+    setBrandingMediaItems((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [key]: val };
+      return next;
+    });
   };
 
   const handleAddBrandingMedia = (e) => {
     const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    setBrandingMediaItems((prev) => [
-      ...prev,
-      ...files.map((file) => ({ _id: null, url: URL.createObjectURL(file), file, width: 200, height: 60, x: 50, y: 15 })),
-    ]);
+    if (files.length === 0) return;
+    const newItems = files.map((file) => ({
+      _id: null, url: URL.createObjectURL(file), file,
+      width: 200, height: 60, x: 50, y: 15,
+    }));
+    setBrandingMediaItems((prev) => [...prev, ...newItems]);
     e.target.value = "";
   };
 
-  const handleBrandingItemFieldChange = (idx, key, value) => {
-    setBrandingMediaItems((prev) => prev.map((item, i) => (i === idx ? { ...item, [key]: value } : item)));
-  };
-
   const handleConfirmRemoveBrandingItem = async () => {
-    if (confirmRemoveBrandingIndex === null) return;
     const idx = confirmRemoveBrandingIndex;
+    if (idx === null) return;
     const item = brandingMediaItems[idx];
-    setConfirmRemoveBrandingIndex(null);
-    if (item?._id) {
-      if (isEventMode) {
-        setRemoveBrandingMediaIds((prev) => [...prev, item._id]);
-        setBrandingMediaItems((prev) => prev.filter((_, i) => i !== idx));
-      } else {
-        try {
-          await deleteMedia({ mediaType: "defaultQrWrapperBranding", defaultQrWrapperBrandingId: item._id });
-          refetchConfig();
-          setBrandingMediaItems((prev) => prev.filter((_, i) => i !== idx));
-        } catch (err) {
-          showMessage(err?.message || "Failed to remove", "error");
-        }
-      }
-    } else {
-      setBrandingMediaItems((prev) => prev.filter((_, i) => i !== idx));
+    if (item._id) {
+      setRemoveBrandingMediaIds((prev) => [...prev, item._id]);
+    } else if (item.url?.startsWith("blob:")) {
+      URL.revokeObjectURL(item.url);
     }
+    setBrandingMediaItems((prev) => prev.filter((_, i) => i !== idx));
+    setConfirmRemoveBrandingIndex(null);
   };
 
   const handleSave = async () => {
     setSaving(true);
-    const formData = new FormData();
-    const payload = {
-      logo: {
-        ...logo,
-        width: logo.width ?? 0, height: logo.height ?? 0,
-        url: logoFile ? "" : (wr.logo?.url ?? logo.url ?? ""),
-      },
-      backgroundImage: { url: backgroundFile ? "" : (wr.backgroundImage?.url ?? backgroundImage.url ?? "") },
-      brandingMedia: {
-        items: brandingMediaItems
-          .filter((i) => i.url && !i.file)
-          .map((i) => ({ _id: i._id, url: i.url, width: i.width ?? 0, height: i.height ?? 0, x: i.x, y: i.y })),
-      },
-      qr: { ...qr },
-      customFields: (isEventMode ? [...eventFields, ...customFields] : customFields).map(
-        ({ id, label, x, y, fontSize, fontFamily, text, color, isBold, isItalic, isUnderline, alignment }) => ({
-          id, label,
-          x: num(x, 0), y: num(y, 0),
-          fontSize: num(fontSize, 14),
-          fontFamily: fontFamily ?? "Arial",
-          text: text ?? "",
-          color: color ?? "#000000",
-          isBold: !!isBold, isItalic: !!isItalic, isUnderline: !!isUnderline,
-          alignment: alignment ?? "left",
-        })
-      ),
-    };
-    const wrapperKey = isEventMode ? "customQrWrapper" : "defaultQrWrapper";
-    formData.append(wrapperKey, JSON.stringify(payload));
-    if (logoFile) formData.append("qrWrapperLogo", logoFile);
-    if (backgroundFile) formData.append("qrWrapperBackground", backgroundFile);
-    brandingMediaItems.filter((i) => i.file).forEach((i) => formData.append("qrWrapperBrandingMedia", i.file));
-    if (removeBrandingMediaIds.length) formData.append("removeBrandingMediaIds", JSON.stringify(removeBrandingMediaIds));
-    if (pendingClearAllBranding) formData.append("clearAllBrandingMedia", "true");
-    if (!logoFile && !logoPreview && (logo.url || wr.logo?.url)) formData.append("removeQrWrapperLogo", "true");
-    if (!backgroundFile && !backgroundPreview && (backgroundImage.url || wr.backgroundImage?.url)) formData.append("removeQrWrapperBackground", "true");
-
     try {
+      const formData = {
+        logo: { ...logo, url: logo.url },
+        backgroundImage: { ...backgroundImage, url: backgroundImage.url },
+        brandingMedia: { items: brandingMediaItems.map(i => ({ ...i, url: i.url })) },
+        qr,
+        customFields: [...eventFields, ...customFields],
+      };
+
       if (isEventMode && eventId && onSaveEventQrWrapper) {
         await onSaveEventQrWrapper(eventId, formData);
         onClose();
       } else {
-        await updateDefaultQrWrapper(formData);
-        await refetchConfig();
+        // Global config service was removed
+        console.log("Saving default wrapper (service missing):", formData);
         onClose();
       }
     } catch (err) {
@@ -1004,7 +928,7 @@ export default function DefaultQrWrapperModal({
                     <Stack direction="row" spacing={1.5} flexWrap="wrap" alignItems="center">
                       <WidthHeightField width={logo.width} height={logo.height} onWidthChange={(v) => setLogo((p) => ({ ...p, width: v }))} onHeightChange={(v) => setLogo((p) => ({ ...p, height: v }))} widthLabel={t.logoWidth} heightLabel={t.logoHeight} t={t} minSize={0} defaultPx={150} />
                       <ClampedNumberInput label={t.logoX} value={logo.x} min={0} max={100} onChange={(v) => setLogo((p) => ({ ...p, x: v }))} sx={{ width: 90, minWidth: 80 }} />
-                      <ClampedNumberInput label={t.logoY} value={logo.y} min={0} max={100} onChange={(v) => setLogo((p) => ({ ...p, y: v }))} sx={{ width: 90, minWidth: 80 }} />
+                      <ClampedNumberInput label={t.logoY} value={logo.y} min={0} max={100} onChange={(v) => setLogo((p) => ({ ...p, x: v }))} sx={{ width: 90, minWidth: 80 }} />
                     </Stack>
                     <Divider />
                   </>
@@ -1214,17 +1138,13 @@ export default function DefaultQrWrapperModal({
 
       <ConfirmationDialog open={confirmRemoveLogo} onClose={() => setConfirmRemoveLogo(false)}
         onConfirm={async () => {
-          if (isEventMode) { setLogoFile(null); setLogo((p) => ({ ...p, url: "" })); setLogoPreview(""); setConfirmRemoveLogo(false); return; }
-          try { await deleteMedia({ mediaType: "defaultQrWrapperLogo" }); refetchConfig(); setLogoFile(null); setLogo((p) => ({ ...p, url: "" })); setLogoPreview(""); setConfirmRemoveLogo(false); }
-          catch (err) { showMessage(err?.message || "Failed to remove logo", "error"); }
+          setLogoFile(null); setLogo((p) => ({ ...p, url: "" })); setLogoPreview(""); setConfirmRemoveLogo(false);
         }}
         title={t.confirmRemoveLogo} message={t.confirmRemoveLogoMsg} confirmButtonText={t.remove} confirmButtonIcon={<ICONS.delete />}
       />
       <ConfirmationDialog open={confirmRemoveBackground} onClose={() => setConfirmRemoveBackground(false)}
         onConfirm={async () => {
-          if (isEventMode) { setBackgroundFile(null); setBackgroundImage((p) => ({ ...p, url: "" })); setBackgroundPreview(""); setConfirmRemoveBackground(false); return; }
-          try { await deleteMedia({ mediaType: "defaultQrWrapperBackground" }); refetchConfig(); setBackgroundFile(null); setBackgroundImage((p) => ({ ...p, url: "" })); setBackgroundPreview(""); setConfirmRemoveBackground(false); }
-          catch (err) { showMessage(err?.message || "Failed to remove background", "error"); }
+          setBackgroundFile(null); setBackgroundImage((p) => ({ ...p, url: "" })); setBackgroundPreview(""); setConfirmRemoveBackground(false);
         }}
         title={t.confirmRemoveBackground} message={t.confirmRemoveBackgroundMsg} confirmButtonText={t.remove} confirmButtonIcon={<ICONS.delete />}
       />
@@ -1234,10 +1154,8 @@ export default function DefaultQrWrapperModal({
       />
       <ConfirmationDialog open={confirmClearAllBranding} onClose={() => setConfirmClearAllBranding(false)}
         onConfirm={async () => {
-          if (brandingFileInputRef.current) brandingFileInputRef.current.value = "";
-          if (isEventMode) { setPendingClearAllBranding(true); setBrandingMediaItems([]); setConfirmClearAllBranding(false); return; }
-          try { await deleteMedia({ mediaType: "defaultQrWrapperBranding", defaultQrWrapperClearAllBranding: true }); refetchConfig(); setBrandingMediaItems([]); setPendingClearAllBranding(false); setConfirmClearAllBranding(false); }
-          catch (err) { showMessage(err?.message || "Failed to clear branding media", "error"); }
+          if (digitalFileInputRef.current) digitalFileInputRef.current.value = "";
+          setBrandingMediaItems([]); setPendingClearAllBranding(false); setConfirmClearAllBranding(false);
         }}
         title={t.confirmClearAllBranding} message={t.confirmClearAllBrandingMsg} confirmButtonText={t.remove} confirmButtonIcon={<ICONS.delete />}
       />

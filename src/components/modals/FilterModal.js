@@ -16,7 +16,6 @@ const Transition = forwardRef(function Transition(props, ref) {
 const FilterDialog = ({ open, onClose, title, children }) => {
   const dir = "ltr";
 
-
   const hasChildren =
     !!children &&
     (!Array.isArray(children) ||

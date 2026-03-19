@@ -1,11 +1,10 @@
 "use client";
 
-import { useGlobalConfig } from "@/contexts/GlobalConfigContext";
 import { Box, Divider, Typography } from "@mui/material";
 import Image from "next/image";
 
 export default function Footer() {
-  const appName = useGlobalConfig()?.globalConfig?.appName;
+  const appName = "Sinan VMS";
 
   return (
     <Box

@@ -24,6 +24,7 @@ const getNavItems = () => {
     { label: "Registrations", icon: ICONS.appRegister, path: "/cms/registrations" },
     { label: "Approvals", icon: ICONS.checkCircle, path: "/cms/approvals" },
     { label: "Fields", icon: ICONS.form, path: "/cms/fields" },
+    { label: "Users", icon: ICONS.people, path: "/cms/users" },
   ];
 
   return base;

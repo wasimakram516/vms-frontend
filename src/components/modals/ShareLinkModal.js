@@ -21,7 +21,7 @@ import { useMessage } from "@/contexts/MessageContext";
 import slugify from "@/utils/slugify";
 import ICONS from "@/utils/iconUtil";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
-import { useGlobalConfig } from "@/contexts/GlobalConfigContext";
+
 import { downloadDefaultQrWrapperAsImage, hasDefaultQrWrapperDesign, hasWrapperDesign } from "@/utils/defaultQrWrapperDownload";
 
 const translations = {
@@ -51,12 +51,12 @@ export default function ShareLinkModal({
   const { showMessage } = useMessage();
   const t = translations.en || {};
   const dir = "ltr";
-  const { globalConfig } = useGlobalConfig();
+  const globalConfig = null;
 
   const downloadName = `${slugify(name)}.png`;
   const qrValue = qrUrl || url;
   const hasCustomDesign = useCustomQrCode && customQrWrapper && hasWrapperDesign(customQrWrapper);
-  const hasDefaultDesign = hasDefaultQrWrapperDesign(globalConfig);
+  const hasDefaultDesign = false;
 
   const handleCopyLink = async () => {
     try {

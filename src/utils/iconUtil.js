@@ -71,6 +71,7 @@ import {
   Logout as LogoutIcon,
   Login as LoginIcon,
   PersonAdd as RegisterIcon,
+  Lock as LockIcon,
 } from "@mui/icons-material";
 
 // File & Media
@@ -179,6 +180,7 @@ const ICONS = {
   hide: VisibilityOffIcon,
   history: HistoryIcon,
   home: HomeIcon,
+  lock: LockIcon,
   Language: LanguageIcon,
   list: ListIcon,
   menu: MenuIcon,

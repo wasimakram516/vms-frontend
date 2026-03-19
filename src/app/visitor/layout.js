@@ -1,6 +1,6 @@
 import { Container } from "@mui/material";
 
-export default function RegisterLayout({ children }) {
+export default function VisitorLayout({ children }) {
   return (
     <Container 
       maxWidth="lg" 
@@ -9,7 +9,7 @@ export default function RegisterLayout({ children }) {
         minHeight: "calc(100vh - 70px)",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "center",
+        justifyContent: "center"
       }}
     >
       {children}

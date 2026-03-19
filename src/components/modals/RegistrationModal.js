@@ -27,7 +27,6 @@ import { DEFAULT_COUNTRY_CODE, DEFAULT_ISO_CODE, COUNTRY_CODES, getCountryCodeBy
 import { normalizePhone } from "@/utils/phoneUtils";
 import { validatePhoneNumber } from "@/utils/phoneValidation";
 
-
 export default function RegistrationModal({
     open,
     onClose,
@@ -162,7 +161,6 @@ export default function RegistrationModal({
         if (!hasCustomFields && field.inputName === "Phone") return true;
         return false;
     };
-
 
     const validateFields = () => {
         const errors = {};

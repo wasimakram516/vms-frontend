@@ -12,6 +12,7 @@ export default function DateTimeFieldFlatpickr({
   required = false,
   helperText,
   minDate,
+  placeholder,
 }) {
   return (
     <Box>
@@ -30,6 +31,7 @@ export default function DateTimeFieldFlatpickr({
           time_24hr: true,
         }}
         onChange={(selectedDates) => onChange?.(selectedDates?.[0] || null)}
+        placeholder={placeholder}
       />
       {helperText ? <FormHelperText>{helperText}</FormHelperText> : null}
     </Box>

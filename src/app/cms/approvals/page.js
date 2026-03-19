@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -21,57 +21,149 @@ import {
   Button,
   TextField,
   Avatar,
-  Alert,
   Chip,
   Divider,
   Grid,
+  CircularProgress,
+  TablePagination,
+  InputAdornment,
+  MenuItem,
 } from "@mui/material";
-import DateTimeFieldFlatpickr from "@/components/forms/DateTimeFieldFlatpickr";
+import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
+import dayjs from "dayjs";
+import { useMessage } from "@/contexts/MessageContext";
 import ICONS from "@/utils/iconUtil";
 
-const MOCK_PENDING = [
-  { id: "2", full_name: "Sara Aijaz",  email: "sara@example.com",   phone: "+96598765432", purpose_of_visit: "Interview",  requested_date: "2026-03-16", requested_time: "10:30 AM", created_at: "2026-03-14 10:30", requested_dt: "2026-03-16T10:30:00" },
-  { id: "6", full_name: "Ali Hassan",   email: "ali@example.com",   phone: "+96577788899", purpose_of_visit: "Interview",  requested_date: "2026-03-18", requested_time: "02:00 PM", created_at: "2026-03-14 14:30", requested_dt: "2026-03-18T14:00:00" },
-  { id: "7", full_name: "Omar Ali",     email: "omar@example.com",   phone: "+96544433221", purpose_of_visit: "Meeting",    requested_date: "2026-03-19", requested_time: "09:00 AM", created_at: "2026-03-14 15:00", requested_dt: "2026-03-19T09:00:00" },
+import { getRegistrations, updateRegistrationStatus, getRegistrationById } from "@/services/registrationService";
+
+const TIME_SLOTS = [
+  "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"
 ];
 
 export default function CmsApprovalsPage() {
-  const [rows, setRows] = useState(MOCK_PENDING);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [fetchingProfile, setFetchingProfile] = useState(false);
+  const [loadingId, setLoadingId] = useState(null);
   
-  // Approval scheduling state
-  const [scheduledDt, setScheduledDt] = useState(null);
+  const [scheduledDate, setScheduledDate] = useState(null);
+  const [scheduledFrom, setScheduledFrom] = useState("09:00");
+  const [scheduledTo, setScheduledTo] = useState("18:00");
+  const { showMessage } = useMessage();
 
-  const [toast, setToast] = useState(null); // { msg, type }
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  const showToast = (msg, type = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
+  const fetchPending = async () => {
+    setLoading(true);
+    try {
+      const data = await getRegistrations("pending");
+      setRows(data);
+    } catch (err) {
+      console.error("Failed to fetch pending approvals", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const openApprove = (row) => {
-    setApproveTarget(row);
-    setScheduledDt(row.requested_dt || new Date());
+  useEffect(() => {
+    fetchPending();
+  }, []);
+
+  const filtered = useMemo(() => {
+    return rows.filter((r) =>
+      [r.full_name, r.email].join(" ").toLowerCase().includes(search.toLowerCase())
+    ).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  }, [rows, search]);
+
+  const pagedRows = useMemo(() => {
+    return filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  }, [filtered, page, rowsPerPage]);
+
+  const openApprove = async (row) => {
+    setFetchingProfile(true);
+    setLoadingId(row.id);
+    try {
+      const fullReg = await getRegistrationById(row.id);
+      setApproveTarget(fullReg);
+      if (fullReg.requested_date) {
+        setScheduledDate(dayjs(fullReg.requested_date));
+        setScheduledFrom(fullReg.requested_time_from?.substring(0, 5) || "09:00");
+        setScheduledTo(fullReg.requested_time_to?.substring(0, 5) || "18:00");
+      } else {
+        setScheduledDate(dayjs());
+        setScheduledFrom("09:00");
+        setScheduledTo("18:00");
+      }
+    } catch (err) {
+      showMessage("Failed to fetch fresh data for approval", "error");
+    } finally {
+      setFetchingProfile(false);
+      setLoadingId(null);
+    }
   };
 
-  const handleApprove = () => {
-    const dt = scheduledDt instanceof Date ? scheduledDt : new Date(scheduledDt);
-    const dateStr = dt.toLocaleDateString();
-    const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    setRows((prev) => prev.filter((r) => r.id !== approveTarget.id));
-    showToast(`${approveTarget.full_name}'s registration has been approved for ${dateStr} at ${timeStr}.`);
-    setApproveTarget(null);
+  const handleTimeChange = (type, value) => {
+    if (type === "scheduledFrom") {
+      setScheduledFrom(value);
+      if (scheduledTo <= value) {
+        const fromIndex = TIME_SLOTS.indexOf(value);
+        if (fromIndex !== -1 && fromIndex + 1 < TIME_SLOTS.length) {
+          setScheduledTo(TIME_SLOTS[fromIndex + 1]);
+        }
+      }
+    } else {
+      setScheduledTo(value);
+    }
   };
 
-  const handleReject = () => {
+  const getDuration = () => {
+    if (!scheduledFrom || !scheduledTo) return 0;
+    return dayjs(`2000-01-01 ${scheduledTo}`).diff(dayjs(`2000-01-01 ${scheduledFrom}`), 'minute');
+  };
+
+  const handleApprove = async () => {
+    if (!scheduledDate) {
+      showMessage("Please select a date.", "warning");
+      return;
+    }
+    try {
+      const payload = {
+        approvedDate: scheduledDate.format("YYYY-MM-DD"),
+        approvedTimeFrom: `${scheduledFrom}:00`,
+        approvedTimeTo: `${scheduledTo}:00`, 
+      };
+      
+      await updateRegistrationStatus(approveTarget.id, "approve", payload);
+      showMessage(`${approveTarget.full_name}'s registration has been approved.`, "success");
+      setApproveTarget(null);
+      fetchPending();
+    } catch (err) {
+      showMessage("Failed to approve registration", "error");
+    }
+  };
+
+  const handleReject = async () => {
     if (!rejectReason.trim()) return;
-    setRows((prev) => prev.filter((r) => r.id !== rejectTarget.id));
-    showToast(`${rejectTarget.full_name}'s registration has been rejected.`, "warning");
-    setRejectTarget(null);
-    setRejectReason("");
+    try {
+      await updateRegistrationStatus(rejectTarget.id, "reject", { rejectionReason: rejectReason });
+      showMessage(`${rejectTarget.full_name}'s registration has been rejected.`, "warning");
+      setRejectTarget(null);
+      setRejectReason("");
+      fetchPending();
+    } catch (err) {
+      showMessage("Failed to reject registration", "error");
+    }
+  };
+
+  const handleChangePage = (event, newPage) => setPage(newPage);
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
   };
 
   return (
@@ -80,7 +172,7 @@ export default function CmsApprovalsPage() {
         <Box>
           <Typography variant="h4" fontWeight={800}>Approvals</Typography>
           <Typography color="text.secondary" variant="body2" mt={0.5}>
-            Review and approve or reject pending visitor requests. You can adjust the visit schedule before final approval.
+            Review and manage incoming visitor requests.
           </Typography>
         </Box>
         <Chip
@@ -92,39 +184,56 @@ export default function CmsApprovalsPage() {
         />
       </Stack>
 
-      {toast && (
-        <Alert severity={toast.type === "warning" ? "warning" : "success"} sx={{ mb: 2, borderRadius: 2 }} onClose={() => setToast(null)}>
-          {toast.msg}
-        </Alert>
-      )}
+      <Paper elevation={0} sx={{ borderRadius: 4, border: "1px solid rgba(0,0,0,0.07)", overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.03)" }}>
+        <Box sx={{ p: 2, borderBottom: "1px solid rgba(0,0,0,0.06)", bgcolor: "rgba(0,0,0,0.01)" }}>
+          <TextField
+            size="small"
+            placeholder="Search pending requests..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            sx={{ width: { xs: "100%", sm: 320 } }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <ICONS.search sx={{ fontSize: 18, color: "text.secondary" }} />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Box>
 
-      <Paper elevation={0} sx={{ borderRadius: 3, border: "1px solid rgba(0,0,0,0.07)", overflow: "hidden" }}>
-        <TableContainer>
-          <Table>
-            <TableHead sx={{ bgcolor: "rgba(0,0,0,0.02)" }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Visitor</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Purpose</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Requested Slot</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Submitted At</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.length === 0 ? (
+        <TableContainer sx={{ minHeight: 400 }}>
+          {loading ? (
+            <Stack alignItems="center" justifyContent="center" sx={{ py: 10 }}>
+              <CircularProgress size={32} />
+              <Typography variant="caption" sx={{ mt: 1 }}>Loading pending requests...</Typography>
+            </Stack>
+          ) : (
+            <Table>
+              <TableHead sx={{ bgcolor: "rgba(0,0,0,0.02)" }}>
                 <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 6, color: "text.secondary" }}>
-                    <ICONS.checkCircle sx={{ fontSize: 40, display: "block", mx: "auto", mb: 1, color: "success.light" }} />
-                    <Typography variant="body2">All caught up! No pending approvals.</Typography>
-                  </TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Visitor</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Purpose</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Requested Slot</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Submitted At</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
                 </TableRow>
-              ) : (
-                rows.map((row) => (
+              </TableHead>
+              <TableBody>
+                {pagedRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center" sx={{ py: 8, color: "text.secondary" }}>
+                      <ICONS.checkCircle sx={{ fontSize: 40, display: "block", mx: "auto", mb: 1, color: "success.light", opacity: 0.5 }} />
+                      <Typography variant="body2">{search ? "No matches found" : "All caught up! No pending approvals."}</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                pagedRows.map((row) => (
                   <TableRow key={row.id} hover>
                     <TableCell>
                       <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <Avatar sx={{ width: 34, height: 34, fontSize: "0.8rem", bgcolor: "warning.light", color: "warning.dark", fontWeight: 700 }}>
-                          {row.full_name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+                        <Avatar sx={{ width: 34, height: 34, fontSize: "0.85rem", bgcolor: "warning.light", color: "warning.dark", fontWeight: 700 }}>
+                          {row.full_name?.split(" ").map((n) => n[0]).slice(0, 2).join("")}
                         </Avatar>
                         <Box>
                           <Typography variant="body2" fontWeight={600}>{row.full_name}</Typography>
@@ -132,22 +241,33 @@ export default function CmsApprovalsPage() {
                         </Box>
                       </Stack>
                     </TableCell>
-                    <TableCell><Typography variant="body2">{row.purpose_of_visit}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={500}>{row.purpose_of_visit}</Typography></TableCell>
                     <TableCell>
                       <Box>
-                        <Typography variant="body2" fontWeight={600}>{row.requested_date}</Typography>
-                        <Typography variant="caption" color="text.secondary">{row.requested_time}</Typography>
+                        <Typography variant="body2" fontWeight={600} sx={{ lineHeight: 1.2 }}>{row.requested_date}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {row.requested_time_from} - {row.requested_time_to}
+                        </Typography>
                       </Box>
                     </TableCell>
-                    <TableCell><Typography variant="body2" color="text.secondary">{row.created_at}</Typography></TableCell>
+                    <TableCell><Typography variant="caption" color="text.secondary">{row.created_at}</Typography></TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Tooltip title="Review & Approve">
-                          <IconButton size="small" color="success" onClick={() => openApprove(row)}>
-                            <ICONS.check fontSize="small" />
+                        <Tooltip title="Approve & Adjust Schedule">
+                          <IconButton 
+                            size="small" 
+                            color="success" 
+                            onClick={() => openApprove(row)}
+                            disabled={fetchingProfile}
+                          >
+                            {(fetchingProfile && loadingId === row.id) ? (
+                              <CircularProgress size={16} color="inherit" />
+                            ) : (
+                              <ICONS.check fontSize="small" />
+                            )}
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Reject">
+                        <Tooltip title="Reject Request">
                           <IconButton size="small" color="error" onClick={() => { setRejectTarget(row); setRejectReason(""); }}>
                             <ICONS.close fontSize="small" />
                           </IconButton>
@@ -157,38 +277,45 @@ export default function CmsApprovalsPage() {
                   </TableRow>
                 ))
               )}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          )}
         </TableContainer>
+
+        <TablePagination
+          rowsPerPageOptions={[5, 10, 25]}
+          component="div"
+          count={filtered.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          sx={{ 
+            borderTop: "1px solid rgba(0,0,0,0.06)",
+            "& .MuiTablePagination-select": { pr: 4 },
+            "& .MuiTablePagination-selectIcon": { right: 4 }
+          }}
+        />
       </Paper>
 
-      {/* Approve Confirm & Schedule */}
+      {/* Reverted Approve Confirm & Schedule Dialog */}
       <Dialog 
         open={!!approveTarget} 
         onClose={() => setApproveTarget(null)} 
         maxWidth="sm" 
         fullWidth 
-        PaperProps={{ 
-          sx: { 
-            borderRadius: 4, 
-            boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
-            overflow: "hidden" 
-          } 
-        }}
+        PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
       >
         <DialogTitle sx={{ py: 2.5, px: 3 }}>
-          <Typography variant="h6" fontWeight={700}>Approve & Schedule</Typography>
+          <Typography variant="h6" fontWeight={700} component="span">Approve & Schedule</Typography>
         </DialogTitle>
         <Divider />
-        <DialogContent sx={{ p: 4, overflow: "hidden" }}>
-          {/* Visitor Summary Card */}
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3, mb: 3, bgcolor: "rgba(18,129,153,0.02)", borderColor: "rgba(18,129,153,0.1)" }}>
+        <DialogContent sx={{ p: 4 }}>
+          <Box sx={{ mb: 3, p: 2, borderRadius: 2, bgcolor: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.04)" }}>
             <Stack direction="row" spacing={2} alignItems="center">
-              <Avatar sx={{ width: 44, height: 44, bgcolor: "success.light", color: "success.dark", fontSize: "1.1rem" }}>
-                {approveTarget?.full_name[0]}
-              </Avatar>
+              <Avatar sx={{ width: 44, height: 44, bgcolor: "primary.light" }}>{approveTarget?.full_name?.[0]}</Avatar>
               <Box>
-                <Typography variant="subtitle1" fontWeight={700} sx={{ lineHeight: 1.2 }}>{approveTarget?.full_name}</Typography>
+                <Typography variant="subtitle1" fontWeight={700}>{approveTarget?.full_name}</Typography>
                 <Typography variant="caption" color="text.secondary">{approveTarget?.email}</Typography>
               </Box>
             </Stack>
@@ -203,71 +330,122 @@ export default function CmsApprovalsPage() {
                 <Typography variant="body2" fontWeight={500}>{approveTarget?.requested_date}</Typography>
               </Box>
             </Stack>
-          </Paper>
-          
+          </Box>
+
           <Box>
-            <Typography variant="subtitle2" sx={{ mb: 1.2, color: "text.primary" }}>Review and Adjust Schedule</Typography>
-            <DateTimeFieldFlatpickr 
-              label="Finalized Arrival Time"
-              value={scheduledDt}
-              onChange={(dt) => setScheduledDt(dt)}
-              helperText={`Currently set for: ${approveTarget?.requested_date} at ${approveTarget?.requested_time}`}
-            />
+            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700, color: "text.primary" }}>Review and Adjust Schedule</Typography>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={7}>
+                <Box
+                  sx={{
+                    border: "1px solid rgba(0,0,0,0.05)",
+                    borderRadius: 4,
+                    bgcolor: "rgba(0,0,0,0.01)",
+                    "& .MuiDateCalendar-root": { width: "100%", height: "auto", maxHeight: "330px" },
+                  }}
+                >
+                  <DateCalendar
+                    value={scheduledDate}
+                    onChange={(newDate) => setScheduledDate(newDate)}
+                    disablePast
+                  />
+                </Box>
+              </Grid>
+
+              <Grid item xs={12} sm={5}>
+                <Stack spacing={2}>
+                  <TextField 
+                    select fullWidth size="small" label="From" 
+                    value={scheduledFrom} 
+                    onChange={(e) => handleTimeChange("scheduledFrom", e.target.value)}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3 } }}
+                  >
+                    {TIME_SLOTS.slice(0, -1).map((slot) => (
+                      <MenuItem key={slot} value={slot}>{slot}</MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField 
+                    select fullWidth size="small" label="To" 
+                    value={scheduledTo} 
+                    onChange={(e) => handleTimeChange("scheduledTo", e.target.value)}
+                    sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3 } }}
+                  >
+                    {TIME_SLOTS.map((slot) => (
+                      <MenuItem key={slot} value={slot} disabled={slot <= scheduledFrom}>{slot}</MenuItem>
+                    ))}
+                  </TextField>
+
+                  <Box sx={{ mt: 1, p: 2, bgcolor: "primary.main", borderRadius: 3, color: "white", boxShadow: "0 4px 12px rgba(18,129,153,0.15)" }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <ICONS.info sx={{ fontSize: 16 }} />
+                      <Typography variant="caption" fontWeight={700} sx={{ fontSize: 12 }}>
+                        Visit duration: {getDuration()} min
+                      </Typography>
+                    </Stack>
+                  </Box>
+                  
+                  <Typography variant="caption" color="text.secondary" sx={{ fontStyle: "italic", px: 0.5 }}>
+                    Adjust based on availability.
+                  </Typography>
+                </Stack>
+              </Grid>
+            </Grid>
           </Box>
 
           <Box sx={{ mt: 3, px: 2, py: 1.2, borderRadius: 2, bgcolor: "rgba(2,136,209,0.04)", display: "flex", alignItems: "center", gap: 1.5 }}>
             <ICONS.info sx={{ fontSize: 18, color: "info.main" }} />
-            <Typography variant="caption" color="info.dark" fontWeight={500} sx={{ lineHeight: 1.3 }}>
-              Visitor will receive an automated email with this confirmed time and their QR token.
+            <Typography variant="caption" color="info.dark" fontWeight={500}>
+              The visitor will be notified of their confirmed time.
             </Typography>
           </Box>
         </DialogContent>
         <Divider />
         <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button 
-            variant="text" 
-            onClick={() => setApproveTarget(null)} 
-            sx={{ px: 3, fontWeight: 600, color: "text.secondary" }}
-          >
-            Cancel
-          </Button>
+          <Button onClick={() => setApproveTarget(null)} sx={{ px: 3, fontWeight: 600 }}>Cancel</Button>
           <Button 
             variant="contained" 
             color="success" 
-            onClick={handleApprove} 
-            sx={{ 
-              borderRadius: "10px", 
-              px: 4, 
-              py: 0.8,
-              fontWeight: 700,
-              boxShadow: "0 4px 12px rgba(46,125,50,0.15)"
-            }}
+            onClick={handleApprove}
+            sx={{ borderRadius: "10px", px: 4, fontWeight: 700 }}
           >
             Finalize & Approve
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Reject Dialog */}
-      <Dialog open={!!rejectTarget} onClose={() => setRejectTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-        <DialogTitle>Reject Registration</DialogTitle>
+      {/* Reverted Reject Confirm Dialog */}
+      <Dialog 
+        open={!!rejectTarget} 
+        onClose={() => setRejectTarget(null)} 
+        maxWidth="xs" 
+        fullWidth 
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }} component="h2">Reject Registration</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" mb={2}>
-            Provide a reason for rejecting <strong>{rejectTarget?.full_name}</strong>&apos;s registration.
+          <Typography variant="body2" mb={2} color="text.secondary">
+            Are you sure you want to reject <strong>{rejectTarget?.full_name}</strong>?
           </Typography>
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            label="Rejection Reason"
-            placeholder="e.g. Missing documentation, unauthorized visit..."
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
+          <TextField 
+             fullWidth 
+             multiline 
+             rows={3} 
+             label="Rejection Reason"
+             placeholder="e.g. Missing documentation..."
+             value={rejectReason}
+             onChange={(e) => setRejectReason(e.target.value)}
           />
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-          <Button variant="outlined" onClick={() => setRejectTarget(null)}>Cancel</Button>
-          <Button variant="contained" color="error" startIcon={<ICONS.close />} onClick={handleReject} disabled={!rejectReason.trim()}>
+        <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
+          <Button onClick={() => setRejectTarget(null)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            color="error" 
+            startIcon={<ICONS.close />}
+            onClick={handleReject} 
+            disabled={!rejectReason.trim()}
+          >
             Reject
           </Button>
         </DialogActions>

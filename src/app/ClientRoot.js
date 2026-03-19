@@ -4,11 +4,11 @@ import ThemeRegistry from "@/styles/themeRegistry";
 import { MessageProvider } from "@/contexts/MessageContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ClientLayout from "@/utils/ClientLayout";
-import { GlobalConfigProvider } from "@/contexts/GlobalConfigContext";
 import Script from "next/script";
 import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useEffect } from "react";
+import { VisitorProvider } from "@/contexts/VisitorContext";
 
 export default function ClientRoot({ children }) {
   useEffect(() => {
@@ -129,15 +129,15 @@ export default function ClientRoot({ children }) {
   return (
     <>
       <MessageProvider>
-        <GlobalConfigProvider>
-          <ThemeRegistry>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <AuthProvider>
+        <ThemeRegistry>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <AuthProvider>
+              <VisitorProvider>
                 <ClientLayout>{children}</ClientLayout>
-              </AuthProvider>
-            </LocalizationProvider>
-          </ThemeRegistry>
-        </GlobalConfigProvider>
+              </VisitorProvider>
+            </AuthProvider>
+          </LocalizationProvider>
+        </ThemeRegistry>
       </MessageProvider>
 
       <Script src="/BrowserPrint-3.1.250.min.js" strategy="afterInteractive" />

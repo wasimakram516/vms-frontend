@@ -1,23 +1,91 @@
-// Mock user service
-export const getAllStaffUsers = async () => {
-  return [
-    { id: 1, name: "Gate Staff", email: "staff@sinan.com", role: "staff" },
-  ];
+import api from "./api";
+
+const mapUserToFrontend = (user) => ({
+  id: user.id,
+  full_name: user.fullName,
+  email: user.email,
+  role: user.role,
+  phone: user.phone,
+  staff_type: user.staffType,
+  status: user.status,
+  created_at: user.createdAt,
+});
+
+export const getAllUsers = async (role) => {
+  try {
+    const res = await api.get("/users", { params: { role } });
+    const users = res.data?.data || res.data || [];
+    return Array.isArray(users) ? users.map(mapUserToFrontend) : [];
+  } catch (err) {
+    console.error(err.message, err);
+    throw err;
+  }
 };
 
-export const createStaffUser = async (data) => ({ success: true });
-export const createAdminUser = async (data) => ({ success: true });
-export const createBusinessUser = async (data) => ({ success: true });
-
-export const getAllUsers = async () => {
-  return [
-    { id: 1, name: "Gate Staff", email: "staff@sinan.com", role: "staff" },
-    { id: 2, name: "Platform Admin", email: "admin@sinan.com", role: "admin" },
-    { id: 3, name: "Root Operator", email: "super@sinan.com", role: "superadmin" },
-  ];
+export const createAdminUser = async (data) => {
+  try {
+    const res = await api.post("/users/admin", {
+      fullName: data.full_name,
+      email: data.email,
+      password: data.password,
+    });
+    const userData = res.data?.data || res.data;
+    return { success: true, data: userData ? mapUserToFrontend(userData) : null };
+  } catch (err) {
+    console.error("Failed to create admin", err);
+    throw err;
+  }
 };
 
-export const getUnassignedUsers = async () => [];
-export const getUserById = async (id) => ({ id, name: "Mock User" });
-export const updateUser = async (id, data) => ({ success: true });
-export const deleteUser = async (id) => ({ success: true });
+export const createStaffUser = async (data) => {
+  try {
+    const res = await api.post("/users/staff", {
+      fullName: data.full_name,
+      email: data.email,
+      password: data.password,
+    });
+    const userData = res.data?.data || res.data;
+    return { success: true, data: userData ? mapUserToFrontend(userData) : null };
+  } catch (err) {
+    console.error("Failed to create staff", err);
+    throw err;
+  }
+};
+
+export const updateUser = async (id, data) => {
+  try {
+    const res = await api.patch(`/users/${id}`, {
+      fullName: data.full_name,
+      email: data.email,
+      role: data.role,
+      password: data.password || undefined
+    });
+    const userData = res.data?.data || res.data;
+    return { success: true, data: userData ? mapUserToFrontend(userData) : null };
+  } catch (err) {
+    console.error("Failed to update user", err);
+    throw err;
+  }
+};
+
+export const deleteUser = async (id) => {
+  try {
+    await api.delete(`/users/${id}`);
+    return { success: true };
+  } catch (err) {
+    const message = err.response?.data?.message || err.message || "Failed to delete user";
+    console.error("Failed to delete user", message);
+    throw new Error(message);
+  }
+};
+
+export const getUserById = async (id) => {
+  try {
+    const res = await api.get(`/users/${id}`);
+    const userData = res.data?.data || res.data;
+    return userData ? mapUserToFrontend(userData) : null;
+  } catch (err) {
+    console.error("Failed to get user", err);
+    throw err;
+  }
+};

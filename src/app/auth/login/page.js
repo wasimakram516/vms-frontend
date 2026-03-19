@@ -16,7 +16,6 @@ import ICONS from "@/utils/iconUtil";
 import { login } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMessage } from "@/contexts/MessageContext";
-import { useGlobalConfig } from "@/contexts/GlobalConfigContext";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
 
@@ -32,7 +31,6 @@ export default function LoginPage() {
   const router = useRouter();
   const { user, setUser, loading: authLoading } = useAuth();
   const { showMessage } = useMessage();
-  const { globalConfig } = useGlobalConfig();
 
   // Redirect if already logged in
   useEffect(() => {
@@ -78,7 +76,7 @@ export default function LoginPage() {
         router.push("/cms/dashboard");
       }
     } catch (err) {
-      showMessage("Sign in failed. Please check your admin credentials.", "error");
+      showMessage(err.message, "error");
     } finally {
       setLoading(false);
     }
@@ -220,7 +218,7 @@ export default function LoginPage() {
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
                 Enter your credentials to access the{" "}
-                <strong>{globalConfig?.appName || "Sinan VMS"}</strong> portal.
+                <strong>{"Sinan VMS"}</strong> portal.
               </Typography>
 
               <TextField

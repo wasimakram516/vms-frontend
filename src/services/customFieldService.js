@@ -1,10 +1,42 @@
-// Mock custom fields service
+import api from "./api";
+
 export const getCustomFields = async () => {
-  return [
-    { id: "1", field_key: "full_name", label: "Full Name", input_type: "text", is_required: true, is_active: true, sort_order: 1 },
-    { id: "2", field_key: "email", label: "Email Address", input_type: "email", is_required: true, is_active: true, sort_order: 2 },
-    { id: "3", field_key: "phone", label: "Phone Number", input_type: "phone", is_required: false, is_active: true, sort_order: 3 },
-    { id: "4", field_key: "company", label: "Company", input_type: "text", is_required: false, is_active: true, sort_order: 4 },
-    { id: "5", field_key: "visit_purpose", label: "Visit Purpose", input_type: "select", is_required: true, is_active: true, sort_order: 5, options_json: ["Meeting", "Delivery", "Interview", "Other"] },
-  ];
+  try {
+    const res = await api.get("/custom-fields");
+    const data = res.data?.data || [];
+    return data.sort((a,b) => a.sortOrder - b.sortOrder);
+  } catch (err) {
+    console.error("Failed to fetch custom fields", err);
+    return [];
+  }
+};
+
+export const createCustomField = async (data) => {
+  try {
+    const res = await api.post("/custom-fields", data);
+    return res.data?.data;
+  } catch (err) {
+    console.error("Failed to create custom field", err);
+    throw err;
+  }
+};
+
+export const updateCustomField = async (id, data) => {
+  try {
+    const res = await api.patch(`/custom-fields/${id}`, data);
+    return res.data?.data;
+  } catch (err) {
+    console.error("Failed to update custom field", err);
+    throw err;
+  }
+};
+
+export const deleteCustomField = async (id) => {
+  try {
+    await api.delete(`/custom-fields/${id}`);
+    return true;
+  } catch (err) {
+    console.error("Failed to delete custom field", err);
+    throw err;
+  }
 };

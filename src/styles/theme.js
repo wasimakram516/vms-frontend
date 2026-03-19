@@ -46,7 +46,7 @@ const theme = createTheme({
   shape: { borderRadius: 8 },
 
   components: {
-    // === Buttons ===
+    
     MuiButton: {
       styleOverrides: {
         root: {
@@ -58,7 +58,6 @@ const theme = createTheme({
           transition: "all 0.3s ease",
         },
 
-        // === CONTAINED VARIANTS ===
         containedPrimary: {
           backgroundColor: "#0077b6",
           color: "#ffffff",
@@ -97,7 +96,6 @@ const theme = createTheme({
           },
         },
 
-        // === OUTLINED VARIANTS ===
         outlinedPrimary: {
           color: "#0077b6",
           borderColor: "#0077b6",
@@ -133,7 +131,6 @@ const theme = createTheme({
       },
     },
 
-    // === Paper Variants ===
     MuiPaper: {
       styleOverrides: {
         root: {},
@@ -158,7 +155,6 @@ const theme = createTheme({
       ],
     },
 
-    // === Inputs Direction & Alignment ===
     MuiInputBase: {
       styleOverrides: {
         input: {
@@ -180,7 +176,6 @@ const theme = createTheme({
       },
     },
 
-    // === Floating Label (RTL + Notched Outline Flip) ===
     MuiInputLabel: {
       styleOverrides: {
         root: {
@@ -199,7 +194,6 @@ const theme = createTheme({
       },
     },
 
-    // === Outlined Input Fix for RTL Notch ===
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
@@ -222,7 +216,6 @@ const theme = createTheme({
       },
     },
 
-    // === Select Fields ===
     MuiSelect: {
       styleOverrides: {
         root: {

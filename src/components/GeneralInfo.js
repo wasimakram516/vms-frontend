@@ -19,7 +19,6 @@ import {
   Phone as PhoneIcon,
 } from "@mui/icons-material";
 import { useRouter } from "next/navigation";
-import { useGlobalConfig } from "@/contexts/GlobalConfigContext";
 
 export default function GeneralInfo({
   title,
@@ -31,7 +30,7 @@ export default function GeneralInfo({
 }) {
   const router = useRouter();
   const theme = useTheme();
-  const { globalConfig } = useGlobalConfig();
+  const globalConfig = null;
   const dir = "ltr";
   const align = "left";
 
