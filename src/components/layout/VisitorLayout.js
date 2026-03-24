@@ -3,9 +3,10 @@
 import { Box, Typography, GlobalStyles } from "@mui/material";
 import { motion } from "framer-motion";
 import { useColorMode } from "@/contexts/ThemeContext";
-import bgImage from "../../../public/bgImage.png";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
+const backgroundImageUrl = "/bgImage.webp";
+const brandLogoSrc = "/logo-light.png";
 
 const fontStyles = (
   <GlobalStyles
@@ -26,7 +27,7 @@ export default function VisitorLayout({
   const isDark = mode === "dark";
 
   const brandGradient = isDark 
-    ? "linear-gradient(135deg, #000000 0%, #1a1a1a 100%)" 
+    ? "linear-gradient(135deg, #121922 0%, #1c2530 100%)" 
     : "linear-gradient(135deg, #000000 0%, #333333 100%)";
 
   return (
@@ -36,17 +37,20 @@ export default function VisitorLayout({
         sx={{
           height: "100%",
           display: "flex",
+          flexDirection: { xs: "column", md: "row" },
           position: "relative",
           overflow: "hidden",
+          bgcolor: { xs: "background.paper", md: "transparent" },
         }}
       >
         {/* Left / Background Panel */}
         <Box
           sx={{
-            position: { xs: "absolute", md: "relative" },
+            position: "relative",
             top: 0, left: 0, right: 0, bottom: 0,
-            flex: { md: "0 0 45%" },
-            background: bgImage ? `url(${bgImage.src})` : brandGradient,
+            flex: { xs: "0 0 auto", md: "0 0 45%" },
+            minHeight: { xs: 300, sm: 340, md: "auto" },
+            background: `url(${backgroundImageUrl})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
             display: "flex",
@@ -71,35 +75,54 @@ export default function VisitorLayout({
             transition={transition}
             style={{ position: "relative", zIndex: 1 }}
           >
-            <Typography
+            <Box
               sx={{
-                fontFamily: "'Comfortaa', cursive",
-                fontSize: { xs: "2rem", md: "3rem" },
-                fontWeight: 800,
-                color: "#fff",
-                mb: { xs: 1, md: 2 },
-                lineHeight: 1.1,
-                textAlign: { xs: "center", md: "left" },
-                opacity: { xs: 0.9, md: 1 },
-                position: { xs: "absolute", md: "relative" },
-                top: { xs: 40, md: "auto" },
-                width: { xs: "100%", md: "auto" },
-                left: { xs: 0, md: "auto" },
+                position: "relative",
+                width: "100%",
                 zIndex: { xs: 2, md: 1 },
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                textAlign: "center",
               }}
             >
-              {title}
-            </Typography>
-            <Typography 
-              sx={{ 
-                color: "rgba(255,255,255,0.8)", 
-                maxWidth: { md: 320 }, 
-                lineHeight: 1.6,
-                display: { xs: "none", md: "block" }
-              }}
-            >
-              {subtitle}
-            </Typography>
+              <Box
+                component="img"
+                src={brandLogoSrc}
+                alt="Sinan VMS logo"
+                sx={{
+                  width: { xs: 190, md: 280 },
+                  height: { xs: 190, md: 280 },
+                  mb: { xs: 2, md: 3 },
+                  objectFit: "contain",
+                  filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.28))",
+                }}
+              />
+              <Typography
+                sx={{
+                  fontFamily: "'Comfortaa', cursive",
+                  fontSize: { xs: "2rem", md: "3rem" },
+                  fontWeight: 800,
+                  color: "#fff",
+                  mb: { xs: 1, md: 2 },
+                  lineHeight: 1.1,
+                  opacity: { xs: 0.9, md: 1 },
+                  display: { xs: "none", md: "block" },
+                }}
+              >
+                {title}
+              </Typography>
+              <Typography 
+                sx={{ 
+                  color: "rgba(255,255,255,0.8)", 
+                  maxWidth: 320, 
+                  lineHeight: 1.6,
+                  display: { xs: "none", md: "block" },
+                }}
+              >
+                {subtitle}
+              </Typography>
+            </Box>
           </motion.div>
         </Box>
 
@@ -108,9 +131,16 @@ export default function VisitorLayout({
           sx={{
             flex: 1,
             overflowY: "auto",
-            bgcolor: { md: "background.default" },
+            bgcolor: { xs: "background.paper", md: "background.default" },
             zIndex: 1,
             position: "relative",
+            mt: { xs: -4, md: 0 },
+            borderTopLeftRadius: { xs: 32, md: 0 },
+            borderTopRightRadius: { xs: 32, md: 0 },
+            boxShadow: {
+              xs: "0 -16px 32px rgba(9, 18, 31, 0.18)",
+              md: "none",
+            },
           }}
         >
           <Box
@@ -118,10 +148,10 @@ export default function VisitorLayout({
               minHeight: "100%",
               display: "flex",
               flexDirection: "column",
-              justifyContent: justifyContent, 
+              justifyContent: { xs: "flex-start", md: justifyContent }, 
               alignItems: "center",
-              py: { xs: 4, md: 8 }, 
-              px: { xs: 2, md: 4 },
+              py: { xs: 3.5, md: 8 }, 
+              px: { xs: 3, md: 4 },
             }}
           >
             <motion.div
@@ -133,12 +163,22 @@ export default function VisitorLayout({
               <Box 
                 sx={{ 
                   width: "100%", 
-                  backdropFilter: "blur(20px)",
-                  bgcolor: isDark ? "rgba(26, 26, 26, 0.85)" : "rgba(255, 255, 255, 0.9)", 
-                  p: { xs: 3, md: 5 },
-                  borderRadius: 6,
-                  boxShadow: 24,
-                  border: "1px solid",
+                  backdropFilter: { xs: "none", md: "blur(20px)" },
+                  background: {
+                    xs: "transparent",
+                    md: isDark
+                      ? "linear-gradient(180deg, rgba(34, 43, 55, 0.92) 0%, rgba(22, 29, 38, 0.9) 100%)"
+                      : "rgba(255, 255, 255, 0.9)",
+                  },
+                  p: { xs: 0, md: 5 },
+                  borderRadius: { xs: 0, md: 6 },
+                  boxShadow: {
+                    xs: "none",
+                    md: isDark
+                      ? "0 24px 44px rgba(5, 10, 18, 0.3), inset 0 1px 0 rgba(255,255,255,0.08)"
+                      : 24,
+                  },
+                  border: { xs: "none", md: "1px solid" },
                   borderColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
                 }}
               >

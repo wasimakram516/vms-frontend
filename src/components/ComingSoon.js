@@ -9,6 +9,7 @@ import {
 } from "@mui/material";
 import ConstructionRoundedIcon from "@mui/icons-material/ConstructionRounded";
 import { useRouter } from "next/navigation";
+import ICONS from "@/utils/iconUtil";
 
 export default function ComingSoon() {
   const router = useRouter();
@@ -45,18 +46,20 @@ export default function ComingSoon() {
         <Button
           variant="contained"
           size="large"
+          startIcon={<ICONS.home />}
           onClick={() => router.push("/cms")}
           sx={{ textTransform: "none", px: 4, py: 1.5, fontWeight: 500 }}
         >
-          Go to Dashboard
+          Dashboard
         </Button>
         <Button
           variant="outlined"
           size="large"
+          startIcon={<ICONS.back />}
           onClick={() => router.back()}
           sx={{ textTransform: "none", px: 4, py: 1.5, fontWeight: 500 }}
         >
-          Go Back
+          Back
         </Button>
       </Stack>
 

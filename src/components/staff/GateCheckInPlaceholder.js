@@ -7,11 +7,11 @@ import {
   Button,
   Card,
   CardContent,
-  Grid,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import Grid from "@mui/material/Grid";
 import QrScanner from "@/components/QrScanner";
 import ICONS from "@/utils/iconUtil";
 
@@ -32,7 +32,7 @@ export default function GateCheckInPlaceholder() {
 
   return (
     <Grid container spacing={3}>
-      <Grid item xs={12} md={7}>
+      <Grid size={{ xs: 12, md: 7 }}>
         <Card>
           <CardContent>
             <Typography variant="h6" fontWeight={700} gutterBottom>
@@ -50,7 +50,7 @@ export default function GateCheckInPlaceholder() {
               >
                 Open Scanner
               </Button>
-              <Button variant="outlined" onClick={() => setShowScanner(false)}>
+              <Button variant="outlined" startIcon={<ICONS.close />} onClick={() => setShowScanner(false)}>
                 Close Scanner
               </Button>
             </Stack>
@@ -74,6 +74,7 @@ export default function GateCheckInPlaceholder() {
               />
               <Button
                 variant="contained"
+                startIcon={<ICONS.checkCircle />}
                 onClick={() =>
                   setResult({
                     visitorName: "Visitor Name",
@@ -89,7 +90,7 @@ export default function GateCheckInPlaceholder() {
         </Card>
       </Grid>
 
-      <Grid item xs={12} md={5}>
+      <Grid size={{ xs: 12, md: 5 }}>
         <Card>
           <CardContent>
             <Typography variant="h6" fontWeight={700} gutterBottom>

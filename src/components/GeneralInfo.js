@@ -19,6 +19,7 @@ import {
   Phone as PhoneIcon,
 } from "@mui/icons-material";
 import { useRouter } from "next/navigation";
+import ICONS from "@/utils/iconUtil";
 
 export default function GeneralInfo({
   title,
@@ -98,6 +99,7 @@ export default function GeneralInfo({
           <Button
             variant="contained"
             size="large"
+            startIcon={<ICONS.next />}
             sx={{ mt: 4 }}
             onClick={() => router.push(ctaHref)}
           >

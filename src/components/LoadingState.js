@@ -1,27 +1,19 @@
 "use client";
 
-import { Box, CircularProgress } from "@mui/material";
+import SinanLoader from "@/components/SinanLoader";
 
-/**
- * Displays a fullscreen loading spinner.
- * Can be used as a loading state placeholder for full-page content.
- */
-export default function LoadingState({ size }) {
-  if (size) {
-    return <CircularProgress size={size} color="inherit" />;// For smaller loading size
-  }
+const DEFAULT_LOADING_COPY = {
+  title: "Loading Sinan VMS",
+  description: "Preparing your experience...",
+};
+
+export default function LoadingState({ fullScreen = true, ...props }) {
   return (
-    <Box
-      sx={{
-        bgcolor: "background.default",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        p: 4,
-        textAlign: "center",
-      }}
-    >
-      <CircularProgress />
-    </Box>
+    <SinanLoader
+      fullScreen={fullScreen}
+      title={props.title ?? DEFAULT_LOADING_COPY.title}
+      description={props.description ?? DEFAULT_LOADING_COPY.description}
+      {...props}
+    />
   );
 }

@@ -4,12 +4,12 @@ import { useEffect, useId, useRef, useState } from "react";
 import {
   Box,
   Typography,
-  CircularProgress,
   IconButton,
   Tooltip,
   Button,
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
+import LoadingState from "@/components/LoadingState";
 
 const CAMERA_SELECTIONS = {
   AUTO_DEFAULT: "__auto_default__",
@@ -339,16 +339,17 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
         />
 
         {loading && (
-          <Box
+          <LoadingState
+            cardMaxWidth={340}
+            skeletonLines={2}
             sx={{
-              position: "absolute", inset: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              backgroundColor: "rgba(0,0,0,0.6)", flexDirection: "row", zIndex: 2,
+              position: "absolute",
+              inset: 0,
+              zIndex: 2,
+              backgroundColor: "rgba(0,0,0,0.62)",
+              backdropFilter: "blur(8px)",
             }}
-          >
-            <CircularProgress color="inherit" />
-            <Typography ml={2} color="#fff">Initializing camera...</Typography>
-          </Box>
+          />
         )}
 
         {!loading && (
@@ -379,6 +380,7 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
                     key={camera.id || `camera-${index}`}
                     size="small"
                     variant={isSelected ? "contained" : "outlined"}
+                    startIcon={<ICONS.camera />}
                     disabled={loading}
                     onClick={() => { void handleCameraChange(camera.id); }}
                     sx={{

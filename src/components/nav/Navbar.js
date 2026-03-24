@@ -23,6 +23,7 @@ import ICONS from "@/utils/iconUtil";
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useColorMode();
+  const brandLogo = mode === "dark" ? "/logo-mark-light.png" : "/logo-mark-dark.png";
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -86,13 +87,24 @@ export default function Navbar() {
               spacing={1}
               sx={{ cursor: "pointer", width: { xs: 180, sm: "auto" } }}
             >
+              <Box
+                component="img"
+                src={brandLogo}
+                alt="Sinan VMS logo mark"
+                sx={{
+                  width: { xs: 30, sm: 34 },
+                  height: { xs: 30, sm: 34 },
+                  objectFit: "contain",
+                  flexShrink: 0,
+                }}
+              />
               <Typography
                 variant="body1"
                 color="text.primary"
                 noWrap
                 sx={{ display: { xs: "block", sm: "none" } }}
               >
-                                {"Sinan VMS"}
+                {"Sinan VMS"}
               </Typography>
 
               <Typography
@@ -102,7 +114,7 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "none", sm: "block" } }}
               >
-                                {"Sinan VMS"}
+                {"Sinan VMS"}
               </Typography>
             </Stack>
           </Link>

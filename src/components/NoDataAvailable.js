@@ -1,32 +1,80 @@
 "use client";
 
 import { Box, Typography } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import AppCard from "@/components/cards/AppCard";
 import ICONS from "@/utils/iconUtil";
 
-const translations = {
-  en: {
-    noData: "No data available to display.",
-  },
-  ,
-};
-
-export default function NoDataAvailable({color = "#ccc"}) {
-  const t = translations.en || {};
+export default function NoDataAvailable({
+  title = "No data available",
+  description = "There is nothing to display right now.",
+  minHeight = 280,
+  compact = false,
+  sx = {},
+}) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+  const EmptyIcon = ICONS.empty;
 
   return (
-    <Box
+    <AppCard
+      interactive={false}
+      role="status"
       sx={{
-        mt: 8,
-        textAlign: "center",
+        minHeight,
+        px: { xs: 2.5, sm: 3.5 },
+        py: compact ? 4 : 6,
+        borderRadius: 4,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        ...sx,
       }}
     >
-      <ICONS.empty sx={{ fontSize: 72, mb: 2, color }} />
-      <Typography sx={{ color }} variant="h6">
-        {t.noData}
+      <Box
+        aria-hidden="true"
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          mb: compact ? 2 : 3,
+        }}
+      >
+        <EmptyIcon
+          sx={{
+            fontSize: compact ? 42 : 52,
+            color: isDark
+              ? alpha(theme.palette.common.white, 0.78)
+              : alpha(theme.palette.text.primary, 0.5),
+          }}
+        />
+      </Box>
+
+      <Typography
+        variant={compact ? "h6" : "h5"}
+        fontWeight={800}
+        sx={{
+          mb: 1,
+          fontSize: compact ? "1.05rem" : { xs: "1.2rem", sm: "1.35rem" },
+        }}
+      >
+        {title}
       </Typography>
-    </Box>
+
+      {description ? (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            maxWidth: 380,
+            lineHeight: 1.65,
+          }}
+        >
+          {description}
+        </Typography>
+      ) : null}
+    </AppCard>
   );
 }

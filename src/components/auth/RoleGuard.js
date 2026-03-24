@@ -3,7 +3,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { Box, CircularProgress } from "@mui/material";
+import LoadingState from "@/components/LoadingState";
 
 /**
  * RoleGuard Component
@@ -32,18 +32,7 @@ export default function RoleGuard({ children, allowedRoles = [] }) {
   }, [user, loading, allowedRoles, router, pathname]);
 
   if (loading || !user || (allowedRoles.length > 0 && !allowedRoles.includes(user.role))) {
-    return (
-      <Box 
-        sx={{ 
-          display: "flex", 
-          justifyContent: "center", 
-          alignItems: "center", 
-          minHeight: "100vh" 
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingState />;
   }
 
   return children;
