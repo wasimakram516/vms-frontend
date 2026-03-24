@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import ICONS from "@/utils/iconUtil";
+import LoadingState from "@/components/LoadingState";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import { login } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
@@ -87,18 +88,7 @@ export default function LoginPage() {
   };
 
   if (authLoading || user) {
-    return (
-      <Box
-        sx={{
-          minHeight: "calc(100vh - 64px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingState />;
   }
 
   return (
@@ -169,6 +159,7 @@ export default function LoginPage() {
           variant="contained"
           size="large"
           disabled={loading}
+          startIcon={loading ? <CircularProgress size={22} color="inherit" /> : <ICONS.login />}
           sx={{
             py: 1.5,
             borderRadius: 30,
@@ -176,11 +167,7 @@ export default function LoginPage() {
             fontWeight: 700,
           }}
         >
-          {loading ? (
-            <CircularProgress size={22} color="inherit" />
-          ) : (
-            "Sign in"
-          )}
+          {loading ? "Signing..." : "Login"}
         </Button>
       </Box>
     </VisitorLayout>

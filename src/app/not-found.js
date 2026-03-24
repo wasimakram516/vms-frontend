@@ -72,7 +72,7 @@ export default function NotFoundPage() {
             onClick={() => router.back()}
             sx={{ py: 1.5, borderRadius: 30 }}
           >
-            Go Back
+            Back
           </Button>
           <Button
             variant="contained"

@@ -1,10 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Box } from "@mui/material";
-import { useAuth } from "@/contexts/AuthContext";
-import LoadingState from "@/components/LoadingState";
 
 import RoleGuard from "@/components/auth/RoleGuard";
 

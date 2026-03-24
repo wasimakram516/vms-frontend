@@ -8,7 +8,6 @@ import {
   Stack,
   TextField,
   Typography,
-  CircularProgress,
   Divider,
   Checkbox,
   FormControlLabel,
@@ -34,17 +33,16 @@ import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import RichTextEditor from "@/components/RichTextEditor";
+import LoadingState from "@/components/LoadingState";
+import NoDataAvailable from "@/components/NoDataAvailable";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE } from "@/utils/countryCodes";
 import { validatePhoneNumberByCountry } from "@/utils/phoneValidation";
-import { useColorMode } from "@/contexts/ThemeContext";
 
 const transition = { duration: 0.5, ease: [0.43, 0.13, 0.23, 0.96] };
 
 export default function DetailsPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, flowState, setFlowState } = useVisitor();
-  const { mode } = useColorMode();
-  const isDark = mode === "dark";
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState({});
@@ -144,11 +142,7 @@ export default function DetailsPage() {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ minHeight: "60vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingState />;
   }
 
   return (
@@ -172,12 +166,12 @@ export default function DetailsPage() {
 
           <Stack spacing={3}>
             {fields.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: "center", bgcolor: "action.hover", borderRadius: 4, border: "1px dashed", borderColor: "divider" }}>
-                <ICONS.info sx={{ fontSize: 40, color: "text.secondary", opacity: 0.5, mb: 1 }} />
-                <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300, mx: "auto" }}>
-                  Registration is currently unavailable. Please contact the administrator.
-                </Typography>
-              </Box>
+              <NoDataAvailable
+                title="Registration unavailable"
+                description="Registration is currently unavailable. Please contact the administrator."
+                compact
+                minHeight={220}
+              />
             ) : (
               fields.map((f) => {
                 const fieldKey = f.field_key || f.fieldKey;
@@ -393,6 +387,7 @@ export default function DetailsPage() {
             <Button
               variant="outlined"
               fullWidth
+              startIcon={<ICONS.cancel />}
               onClick={() => router.push("/")}
               sx={{ py: 1.5, borderRadius: 30 }}
             >
@@ -402,10 +397,11 @@ export default function DetailsPage() {
               variant="contained"
               fullWidth
               disabled={!ndaAccepted}
+              startIcon={<ICONS.event />}
               onClick={handleNext}
               sx={{ py: 1.5, borderRadius: 30 }}
             >
-              Schedule Visit
+              Schedule
             </Button>
           </Stack>
         </Stack>

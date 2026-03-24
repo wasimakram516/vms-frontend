@@ -4,60 +4,87 @@ import { useState, useRef, useEffect } from "react";
 import {
   Box,
   Button,
-  Paper,
   Stack,
   Typography,
   CircularProgress,
-  Divider,
-  alpha 
+  alpha,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { verifyOtp } from "@/services/registrationService";
-import { motion } from "framer-motion";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 
-const transition = { duration: 0.5, ease: [0.43, 0.13, 0.23, 0.96] };
+const OTP_LENGTH = 6;
 
 export default function RegisterOtpPage() {
   const router = useRouter();
   const { showMessage } = useMessage();
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
-  const [otp, setOtp] = useState(["", "", "", ""]);
+  const [otp, setOtp] = useState(() => Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
-  const inputRefs = [useRef(), useRef(), useRef(), useRef()];
+  const inputRefs = useRef([]);
 
   useEffect(() => {
-    if (otp.join("").length === 4 && !loading) {
+    if (otp.join("").length === OTP_LENGTH && !loading) {
       handleVerify();
     }
-  }, [otp]);
+  }, [otp, loading]);
+
+  const fillOtp = (startIndex, rawValue) => {
+    const digits = rawValue.replace(/\D/g, "");
+    if (!digits) return;
+
+    const nextOtp = [...otp];
+    let lastFilledIndex = startIndex;
+
+    digits
+      .slice(0, OTP_LENGTH - startIndex)
+      .split("")
+      .forEach((digit, offset) => {
+        const targetIndex = startIndex + offset;
+        nextOtp[targetIndex] = digit;
+        lastFilledIndex = targetIndex;
+      });
+
+    setOtp(nextOtp);
+    inputRefs.current[Math.min(lastFilledIndex + 1, OTP_LENGTH - 1)]?.focus();
+  };
 
   const handleChange = (index, value) => {
     if (!/^\d*$/.test(value)) return;
+    if (value.length > 1) {
+      fillOtp(index, value);
+      return;
+    }
+
     const newOtp = [...otp];
-    newOtp[index] = value.slice(-1);
+    newOtp[index] = value;
     setOtp(newOtp);
 
-    if (value && index < 3) {
-      inputRefs[index + 1].current?.focus();
+    if (value && index < OTP_LENGTH - 1) {
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (index, e) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
-      inputRefs[index - 1].current?.focus();
+      inputRefs.current[index - 1]?.focus();
     }
     if (e.key === "Enter") {
       handleVerify();
     }
   };
 
+  const handlePaste = (e) => {
+    e.preventDefault();
+    fillOtp(0, e.clipboardData.getData("text"));
+  };
+
   const handleVerify = async () => {
     const code = otp.join("");
-    if (code.length < 4 || loading) return;
+    if (code.length < OTP_LENGTH || loading) return;
 
     setLoading(true);
     try {
@@ -97,7 +124,7 @@ export default function RegisterOtpPage() {
             Verify Identity
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>
-            We've sent a code to <Typography component="span" fontWeight={700} color="text.primary">{visitorData.identity || "your device"}</Typography>
+            We've sent a 6-digit code to <Typography component="span" fontWeight={700} color="text.primary">{visitorData.identity || "your device"}</Typography>
           </Typography>
         </Box>
 
@@ -106,15 +133,18 @@ export default function RegisterOtpPage() {
             <Box
               key={i}
               component="input"
-              ref={inputRefs[i]}
+              ref={(node) => {
+                inputRefs.current[i] = node;
+              }}
               value={digit}
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
+              onPaste={handlePaste}
               maxLength={1}
               autoComplete="one-time-code"
               autoFocus={i === 0}
               sx={{
-                width: { xs: 45, sm: 55 },
+                width: { xs: 42, sm: 52 },
                 height: { xs: 55, sm: 65 },
                 textAlign: "center",
                 fontSize: "1.2rem",
@@ -140,9 +170,10 @@ export default function RegisterOtpPage() {
           size="large"
           disabled={loading}
           onClick={handleVerify}
+          startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <ICONS.checkCircle />}
           sx={{ py: 1.8, borderRadius: 30, fontWeight: 700 }}
         >
-          {loading ? <CircularProgress size={24} color="inherit" /> : "Verify and Continue"}
+          {loading ? "Verifying..." : "Verify"}
         </Button>
 
         <Typography variant="caption" color="text.secondary" align="center">
@@ -166,10 +197,11 @@ export default function RegisterOtpPage() {
           variant="text"
           fullWidth
           size="small"
+          startIcon={<ICONS.back />}
           onClick={() => router.back()}
           sx={{ color: "text.disabled", textTransform: "none" }}
         >
-          Back to Identity
+          Back
         </Button>
       </Stack>
     </VisitorLayout>

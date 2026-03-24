@@ -8,12 +8,12 @@ import {
   Stack,
   Typography,
   Divider,
-  Grid,
   MenuItem,
   TextField,
   CircularProgress,
   alpha 
 } from "@mui/material";
+import Grid from "@mui/material/Grid";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
@@ -177,13 +177,14 @@ export default function BookingPage() {
             <Button
               variant="contained"
               fullWidth
+              startIcon={<ICONS.home />}
               onClick={() => {
                 resetVisitorFlow();
                 router.push("/");
               }}
               sx={{ py: 1.5, borderRadius: 30 }}
             >
-              Back to Home
+              Home
             </Button>
           </motion.div>
         </Box>
@@ -210,7 +211,7 @@ export default function BookingPage() {
         <Divider />
 
         <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, px: 2 }}>
               1. Select Date
             </Typography>
@@ -231,7 +232,7 @@ export default function BookingPage() {
             </Box>
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
               2. Select Time Range
             </Typography>
@@ -258,19 +259,21 @@ export default function BookingPage() {
             variant="outlined"
             fullWidth
             disabled={submitting}
+            startIcon={<ICONS.back />}
             onClick={() => router.back()}
             sx={{ py: 1.5, borderRadius: 30 }}
           >
-            Go Back
+            Back
           </Button>
           <Button
             variant="contained"
             fullWidth
             disabled={submitting || !bookingData.date}
+            startIcon={submitting ? <CircularProgress size={24} color="inherit" /> : <ICONS.send />}
             onClick={handleSubmit}
             sx={{ py: 1.5, borderRadius: 30 }}
           >
-            {submitting ? <CircularProgress size={24} color="inherit" /> : "Confirm & Send Request"}
+            {submitting ? "Sending..." : "Submit"}
           </Button>
         </Stack>
       </Stack>

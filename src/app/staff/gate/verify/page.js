@@ -5,7 +5,6 @@ import {
   Box,
   Typography,
   Button,
-  CircularProgress,
   Stack,
   Container,
   Paper,
@@ -22,6 +21,7 @@ import {
 
 import QrScanner from "@/components/QrScanner";
 import ICONS from "@/utils/iconUtil";
+import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { verifyRegistrationByToken } from "@/services/registrationService";
@@ -134,6 +134,7 @@ export default function StaffVerifyPage() {
                 <Button 
                   variant="outlined" 
                   fullWidth 
+                  startIcon={<ICONS.key />}
                   onClick={() => setManualMode(true)}
                   sx={{ py: 1.5, borderRadius: 3 }}
                 >
@@ -152,8 +153,8 @@ export default function StaffVerifyPage() {
                   placeholder="e.g. SN-ABC123"
                 />
                 <Stack direction="row" spacing={1}>
-                  <Button variant="text" onClick={() => setManualMode(false)} sx={{ flex: 1 }}>Back</Button>
-                  <Button variant="contained" onClick={() => doVerify(token)} sx={{ flex: 2 }} disabled={!token.trim()}>Verify</Button>
+                  <Button variant="text" startIcon={<ICONS.back />} onClick={() => setManualMode(false)} sx={{ flex: 1 }}>Back</Button>
+                  <Button variant="contained" startIcon={<ICONS.checkCircle />} onClick={() => doVerify(token)} sx={{ flex: 2 }} disabled={!token.trim()}>Verify</Button>
                 </Stack>
               </Stack>
             )}
@@ -171,10 +172,9 @@ export default function StaffVerifyPage() {
 
         {/* Loading State */}
         {loading && (
-          <Paper elevation={0} variant="frosted" sx={{ p: 6, borderRadius: 4, textAlign: "center" }}>
-            <CircularProgress size={48} sx={{ mb: 2 }} />
-            <Typography variant="body1" color="text.secondary">Verifying registration...</Typography>
-          </Paper>
+          <LoadingState
+            cardMaxWidth={380}
+          />
         )}
 
         {/* Success / Result State */}
@@ -212,8 +212,8 @@ export default function StaffVerifyPage() {
             </List>
 
             <Stack direction="row" spacing={2} mt={4}>
-              <Button fullWidth variant="contained" color="success" onClick={reset}>Grant Access</Button>
-              <Button fullWidth variant="outlined" onClick={reset}>Finish</Button>
+              <Button fullWidth variant="contained" color="success" startIcon={<ICONS.checkCircle />} onClick={reset}>Grant</Button>
+              <Button fullWidth variant="outlined" startIcon={<ICONS.check />} onClick={reset}>Finish</Button>
             </Stack>
           </Paper>
         )}
@@ -224,7 +224,7 @@ export default function StaffVerifyPage() {
             <ICONS.errorOutline sx={{ fontSize: 64, color: "error.main", mb: 2 }} />
             <Typography variant="h6" fontWeight={700} color="error.main" gutterBottom>Verification Failed</Typography>
             <Typography variant="body2" color="text.secondary" mb={3}>{error}</Typography>
-            <Button variant="contained" color="error" fullWidth onClick={reset} sx={{ borderRadius: 3 }}>Try Again</Button>
+            <Button variant="contained" color="error" fullWidth startIcon={<ICONS.refresh />} onClick={reset} sx={{ borderRadius: 3 }}>Retry</Button>
           </Paper>
         )}
       </Box>
