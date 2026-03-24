@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   Box,
-  Grid,
   Paper,
   Typography,
   Stack,
@@ -12,6 +11,7 @@ import {
   Avatar,
   Divider,
 } from "@mui/material";
+import Grid from "@mui/material/Grid";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -92,7 +92,7 @@ export default function CmsDashboardPage() {
       {/* Primary Stats Grid */}
       <Grid container spacing={3} mb={5}>
         {STAT_CARDS.map((card, index) => (
-          <Grid item xs={12} sm={6} md={3} key={card.title}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }} key={card.title}>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -152,7 +152,7 @@ export default function CmsDashboardPage() {
       {/* Charts & Activity Section */}
       <Grid container spacing={3}>
         {/* Registration Volume Chart */}
-        <Grid item xs={12} md={8}>
+        <Grid size={{ xs: 12, md: 8 }}>
           <AppCard
             variant="frosted"
             sx={{
@@ -162,7 +162,7 @@ export default function CmsDashboardPage() {
           >
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
               <Typography variant="h6" fontWeight={700}>Registration Volume</Typography>
-              <Button size="small" variant="text" sx={{ fontWeight: 700, borderRadius: 30 }}>Export CSV</Button>
+              <Button size="small" variant="text" startIcon={<ICONS.download />} sx={{ fontWeight: 700, borderRadius: 30 }}>Export CSV</Button>
             </Stack>
             <Box sx={{ width: "100%", height: 300 }}>
               <BarChart
@@ -179,7 +179,7 @@ export default function CmsDashboardPage() {
         </Grid>
 
         {/* Recent Activity */}
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4 }}>
           <AppCard
             variant="frosted"
             sx={{
@@ -208,6 +208,7 @@ export default function CmsDashboardPage() {
             <Button
               fullWidth
               variant="outlined"
+              startIcon={<ICONS.list />}
               sx={{ mt: 4, borderRadius: 3, px: 3, py: 1, fontWeight: 700 }}
               onClick={() => router.push("/cms/registrations")}
             >
@@ -217,7 +218,7 @@ export default function CmsDashboardPage() {
         </Grid>
 
         {/* Status Distribution Pie Chart */}
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
             <AppCard
                 variant="frosted"
                 sx={{
