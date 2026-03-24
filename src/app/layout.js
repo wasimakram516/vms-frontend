@@ -8,7 +8,9 @@ export const metadata = {
   description:
     "Sinan VMS is a visitor management platform for registration, approvals, and gate check-in.",
   icons: {
-    icon: "/favicon.png",
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/logo-mark-light.png",
   },
   keywords:
     "Sinan VMS, visitor management, registrations, approvals, gate check-in",

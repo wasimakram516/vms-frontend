@@ -9,14 +9,12 @@ const ColorModeContext = createContext({ toggleColorMode: () => {} });
 export const useColorMode = () => useContext(ColorModeContext);
 
 export const ThemeContextProvider = ({ children }) => {
-  const [mode, setMode] = useState("light");
+  const [mode, setMode] = useState("dark");
 
   useEffect(() => {
     const savedMode = localStorage.getItem("sinan-vms-theme");
-    if (savedMode) {
+    if (savedMode === "light" || savedMode === "dark") {
       setMode(savedMode);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setMode("dark");
     }
   }, []);
 

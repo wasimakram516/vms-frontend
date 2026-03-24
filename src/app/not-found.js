@@ -68,6 +68,7 @@ export default function NotFoundPage() {
           <Button
             variant="outlined"
             fullWidth
+            startIcon={<ICONS.back />}
             onClick={() => router.back()}
             sx={{ py: 1.5, borderRadius: 30 }}
           >
@@ -76,6 +77,7 @@ export default function NotFoundPage() {
           <Button
             variant="contained"
             fullWidth
+            startIcon={<ICONS.home />}
             onClick={() => router.push("/")}
             sx={{ py: 1.5, borderRadius: 30 }}
           >

@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
+import LoadingState from "@/components/LoadingState";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 
 export default function HomePage() {
@@ -24,39 +25,54 @@ export default function HomePage() {
   const isDark = mode === "dark";
 
   const [view, setView] = useState("initial");
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const navigateWithLoader = (path) => {
+    setIsNavigating(true);
+    router.push(path);
+  };
 
   const handleStaffAction = () => {
     if (user) {
-      if (user.role === "staff") router.push("/staff/gate/verify");
+      if (user.role === "staff") navigateWithLoader("/staff/gate/verify");
       else if (["admin", "superadmin"].includes(user.role))
-        router.push("/cms/dashboard");
-      else router.push("/auth/login");
+        navigateWithLoader("/cms/dashboard");
+      else navigateWithLoader("/auth/login");
     } else {
-      router.push("/auth/login");
+      navigateWithLoader("/auth/login");
     }
   };
+
+  if (isNavigating) return <LoadingState />;
 
   const cardStyle = {
     p: 3,
     borderRadius: 4,
-    border: "2px solid",
-    borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+    border: "1px solid",
+    borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
     cursor: "pointer",
     transition: "all 0.3s ease",
-    bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)",
+    background: isDark
+      ? "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)"
+      : "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,249,250,0.96) 100%)",
+    boxShadow: isDark
+      ? "0 10px 24px rgba(5, 10, 18, 0.24), inset 0 1px 0 rgba(255,255,255,0.06)"
+      : "0 8px 22px rgba(15, 23, 42, 0.06)",
+    backdropFilter: isDark ? "blur(12px)" : "none",
     "&:hover": {
-      borderColor: isDark ? "rgba(255,255,255,0.2)" : "primary.main",
-      transform: "translateY(-4px)",
+      borderColor: isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)",
+      transform: "translateY(-2px)",
       boxShadow: isDark
-        ? "0 12px 32px rgba(255,255,255,0.05)"
-        : "0 12px 24px rgba(0,0,0,0.1)",
+        ? "0 14px 30px rgba(5, 10, 18, 0.3), inset 0 1px 0 rgba(255,255,255,0.09)"
+        : "0 12px 26px rgba(15, 23, 42, 0.1)",
     },
   };
 
   const iconBoxStyle = {
     p: 1.5,
     borderRadius: 3,
-    bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+    bgcolor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)",
+    boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.06)" : "none",
     color: "text.primary",
   };
 
@@ -159,7 +175,7 @@ export default function HomePage() {
             elevation={0}
             onClick={() => {
               resetVisitorFlow();
-              router.push("/register/details");
+              navigateWithLoader("/register/details");
             }}
             sx={cardStyle}
           >
@@ -182,7 +198,7 @@ export default function HomePage() {
             elevation={0}
             onClick={() => {
               resetVisitorFlow();
-              router.push("/register/returning");
+              navigateWithLoader("/register/returning");
             }}
             sx={cardStyle}
           >
