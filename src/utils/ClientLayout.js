@@ -26,10 +26,10 @@ export default function ClientLayout({ children }) {
     pathname.startsWith(prefix)
   );
 
-  return (
-    <>
-      {!hideNavbar && <Navbar />}
-      <Box sx={{ pt: hideNavbar ? 0 : 5 }}>{children}</Box>
-    </>
-  );
+return (
+  <>
+    {!hideNavbar && <Navbar />}
+    <Box>{children}</Box>
+  </>
+);
 }

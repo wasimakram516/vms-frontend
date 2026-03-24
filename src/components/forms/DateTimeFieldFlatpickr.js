@@ -1,8 +1,7 @@
-"use client";
-
 import "flatpickr/dist/themes/material_blue.css";
-import { Box, FormHelperText, Typography } from "@mui/material";
+import { Box, TextField, InputAdornment } from "@mui/material";
 import Flatpickr from "react-flatpickr";
+import ICONS from "@/utils/iconUtil";
 
 export default function DateTimeFieldFlatpickr({
   label,
@@ -13,27 +12,45 @@ export default function DateTimeFieldFlatpickr({
   helperText,
   minDate,
   placeholder,
+  dateFormat,
 }) {
   return (
-    <Box>
-      {label && (
-        <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500 }}>
-          {label}
-          {required ? " *" : ""}
-        </Typography>
-      )}
+    <Box sx={{ width: "100%" }}>
       <Flatpickr
         value={value}
         options={{
           enableTime,
-          dateFormat: enableTime ? "Y-m-d H:i" : "Y-m-d",
+          dateFormat: dateFormat || (enableTime ? "Y-m-d H:i" : "Y-m-d"),
+          altInput: true,
+          altFormat: dateFormat || (enableTime ? "d M Y, h:i K" : "d M Y"),
           minDate,
-          time_24hr: true,
+          time_24hr: false,
+          allowInput: true,
         }}
         onChange={(selectedDates) => onChange?.(selectedDates?.[0] || null)}
-        placeholder={placeholder}
+        render={({ defaultValue, value, render, ...props }, ref) => (
+          <TextField
+            {...props}
+            defaultValue={defaultValue}
+            inputRef={ref}
+            label={label}
+            placeholder={placeholder || (enableTime ? "Select Date & Time" : "Select Date")}
+            fullWidth
+            required={required}
+            helperText={helperText}
+            error={false}
+            size="medium"
+            InputProps={{
+              sx: { borderRadius: 3 },
+              startAdornment: (
+                <InputAdornment position="start">
+                  <ICONS.event fontSize="small" sx={{ opacity: 0.6 }} />
+                </InputAdornment>
+              ),
+            }}
+          />
+        )}
       />
-      {helperText ? <FormHelperText>{helperText}</FormHelperText> : null}
     </Box>
   );
 }

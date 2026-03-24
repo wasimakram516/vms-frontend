@@ -49,7 +49,7 @@ select,
   position: relative;
   width: 100%;
   max-width: 300px;
-  background: linear-gradient(135deg, #1565c0, #00acc1);
+  background: linear-gradient(135deg, #000000, #333333);
   color: #fff;
   border-radius: 24px;
   padding: 16px 24px;
@@ -75,7 +75,7 @@ select,
   width: 0;
   height: 0;
   border: 14px solid transparent;
-  border-top-color: #1565c0;
+  border-top-color: #000000;
   border-bottom: 0;
   margin-left: -14px;
 }
@@ -114,13 +114,11 @@ html.android-webview .MuiInput-root[data-android-webview-dir-mode="auto"] {
 [dir="rtl"] .MuiOutlinedInput-notchedOutline {
   text-align: right !important;
   direction: rtl !important;
-  border-color: #128199 !important;
+  border-color: currentColor !important;
 }
 
-[dir="rtl"]
-  .MuiOutlinedInput-root.Mui-focused
-  .MuiOutlinedInput-notchedOutline {
-  border-color: #0077b6 !important;
+[dir="rtl"] .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: currentColor !important;
 }
 
 /* ensure the legend notch stays visible */
@@ -133,10 +131,7 @@ html.android-webview .MuiInput-root[data-android-webview-dir-mode="auto"] {
 }
 
 /* --- Remove notch gap in RTL when label is empty --- */
-[dir="rtl"]
-  .MuiOutlinedInput-root:not(.Mui-focused):not(.MuiInputLabel-shrink)
-  .MuiOutlinedInput-notchedOutline
-  legend {
+[dir="rtl"] .MuiOutlinedInput-root:not(.Mui-focused):not(.MuiInputLabel-shrink) .MuiOutlinedInput-notchedOutline legend {
   max-width: 0 !important;
   padding: 0 !important;
 }
@@ -154,6 +149,7 @@ html.android-webview .MuiInput-root[data-android-webview-dir-mode="auto"] {
 }
 
 @keyframes float {
+
   0%,
   100% {
     transform: translate3d(0, 0, 0);

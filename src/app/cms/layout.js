@@ -26,7 +26,7 @@ export default function CmsLayout({ children }) {
             borderColor: "rgba(0,0,0,0.87)",
           },
           "&:focus": {
-            borderColor: "#128199",
+            borderColor: "primary.main",
             outline: "none",
             borderWidth: "2px",
             padding: "15.5px 13px",
@@ -38,15 +38,17 @@ export default function CmsLayout({ children }) {
 
   return (
     <RoleGuard allowedRoles={["admin", "superadmin"]}>
-      <Box sx={{ display: "flex", minHeight: "100vh" }}>
+      <Box sx={{ display: "flex", height: "calc(100vh - 64px)" }}>
         {flatpickrStyles}
         <Sidebar />
         <Box
           component="main"
           sx={{
             flexGrow: 1,
+            height: "100%",
+            overflowY: "auto",
             p: { xs: 2, sm: 3, md: 4 },
-            pt: { xs: "72px", sm: "80px", md: "88px" },
+            pt: { xs: "8px", sm: "16px", md: "24px" },
             minWidth: 0,
           }}
         >

@@ -19,8 +19,13 @@ import {
   MenuItem,
   CircularProgress,
   InputAdornment,
-  TablePagination,
+  Divider,
+  Pagination,
+  FormControl,
+  Select,
+  InputLabel,
 } from "@mui/material";
+import { useColorMode } from "@/contexts/ThemeContext";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMessage } from "@/contexts/MessageContext";
@@ -33,6 +38,7 @@ import {
   createStaffUser,
   createAdminUser,
 } from "@/services/userService";
+import AppCard from "@/components/cards/AppCard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 
 const CREATABLE_ROLES = ["admin", "staff"];
@@ -41,6 +47,8 @@ const STAFF_TYPES = ["gate", "kitchen"];
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const { showMessage } = useMessage();
+  const { mode } = useColorMode();
+  const isDark = mode === "dark";
   const isSuperAdmin = currentUser?.role === "superadmin";
 
   const [users, setUsers] = useState([]);
@@ -56,7 +64,7 @@ export default function UsersPage() {
   const [userToDelete, setUserToDelete] = useState(null);
 
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(9);
+  const [rowsPerPage, setRowsPerPage] = useState(12);
 
   const defaultForm = {
     full_name: "",
@@ -202,43 +210,60 @@ export default function UsersPage() {
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
-        <Box>
-          <Typography variant="h4" fontWeight={800}>User Management</Typography>
-          <Typography variant="body2" color="text.secondary">
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          justifyContent: "space-between",
+          alignItems: { xs: "stretch", sm: "center" },
+          mt: 2,
+          mb: 1,
+          gap: 2,
+          flexWrap: "wrap",
+        }}
+      >
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="h5" fontWeight="bold">User Management</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, opacity: 0.8 }}>
             Manage organizational users and system access roles.
           </Typography>
         </Box>
-        {isSuperAdmin && (
-          <Button
-            variant="contained"
-            startIcon={<ICONS.add />}
-            onClick={handleOpenCreate}
-            sx={{ borderRadius: 2 }}
-          >
-            Create User
-          </Button>
-        )}
-      </Stack>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            gap: 1,
+            width: { xs: "100%", sm: "auto" },
+          }}
+        >
+          {isSuperAdmin && (
+            <Button
+              variant="contained"
+              startIcon={<ICONS.add />}
+              onClick={handleOpenCreate}
+            >
+              Create User
+            </Button>
+          )}
+        </Box>
+      </Box>
+
+      <Divider sx={{ mb: 3 }} />
 
       <Stack direction={{ xs: "column", md: "row" }} spacing={2} sx={{ mb: 4 }} alignItems="center">
         <TextField
-          fullWidth
+          size="small"
+          variant="outlined"
           placeholder="Search by name or email..."
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); setPage(0); }}
           InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <ICONS.search />
-              </InputAdornment>
-            ),
-            sx: { borderRadius: 2, bgcolor: "background.paper" }
+            startAdornment: <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} />
           }}
-          sx={{ flexGrow: 1 }}
+          sx={{ minWidth: { xs: "100%", sm: 280 } }}
         />
         
-        <Stack direction="row" spacing={2} sx={{ width: { xs: "100%", md: "auto" } }}>
+        <Stack direction="row" spacing={1.5} sx={{ width: { xs: "100%", md: "auto" } }}>
           <TextField
             select
             label="Role"
@@ -249,8 +274,7 @@ export default function UsersPage() {
               if (e.target.value !== "staff") setStaffTypeFilter("all");
               setPage(0); 
             }}
-            sx={{ minWidth: 140 }}
-            InputProps={{ sx: { borderRadius: 2, bgcolor: "background.paper" } }}
+            sx={{ minWidth: 160 }}
           >
             <MenuItem value="all">All Roles</MenuItem>
             <MenuItem value="superadmin">SuperAdmin</MenuItem>
@@ -259,99 +283,154 @@ export default function UsersPage() {
             <MenuItem value="visitor">Visitor</MenuItem>
           </TextField>
 
-          {/* {roleFilter === "staff" && (
-            <TextField
-              select
-              label="Staff Type"
-              size="small"
-              value={staffTypeFilter}
-              onChange={(e) => { setStaffTypeFilter(e.target.value); setPage(0); }}
-              sx={{ minWidth: 140 }}
-              InputProps={{ sx: { borderRadius: 2, bgcolor: "background.paper" } }}
+          <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 150 } }}>
+            <InputLabel>Records per page</InputLabel>
+            <Select 
+              value={rowsPerPage} 
+              onChange={handleChangeRowsPerPage} 
+              label="Records per page"
             >
-              <MenuItem value="all">Any Type</MenuItem>
-              <MenuItem value="gate">Gate</MenuItem>
-              <MenuItem value="kitchen">Kitchen</MenuItem>
-            </TextField>
-          )} */}
+              {[6, 12, 24, 48].map((n) => (
+                <MenuItem key={n} value={n}>{n}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Stack>
       </Stack>
 
-      <Grid container spacing={3}>
-        {pagedUsers.map((u) => (
-          <Grid item xs={12} sm={6} md={4} key={u.id}>
-            <Paper 
-              elevation={0}
-              sx={{ 
-                p: 2, 
-                borderRadius: 3, 
-                border: "1px solid rgba(0,0,0,0.07)",
-                transition: "all 0.2s ease",
-                "&:hover": { boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }
-              }}
-            >
-              <Stack direction="row" spacing={2} alignItems="center">
-                <Avatar sx={{ width: 48, height: 48, bgcolor: "primary.light" }}>
-                  {u.full_name[0]}
-                </Avatar>
-                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                  <Typography variant="subtitle1" noWrap sx={{ fontWeight: 600 }}>
-                    {u.full_name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" noWrap>
-                    {u.email}
-                  </Typography>
-                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                    <Chip
-                      label={u.role}
-                      size="small"
-                      color={getRoleColor(u.role)}
-                      variant="outlined"
-                      sx={{ fontWeight: 600 }}
-                    />
-                    {u.role === "staff" && u.staff_type && (
-                      <Chip label={u.staff_type} size="small" variant="tonal" />
-                    )}
-                  </Stack>
-                </Box>
-                {isSuperAdmin && u.id !== currentUser.id && (
-                  <Stack direction="row">
-                    <IconButton color="primary" onClick={() => handleOpenEdit(u)} size="small">
-                      <ICONS.edit fontSize="small" />
-                    </IconButton>
-                    <IconButton color="error" onClick={() => handleDeleteClick(u)} size="small">
-                      <ICONS.delete fontSize="small" />
-                    </IconButton>
-                  </Stack>
-                )}
-              </Stack>
-            </Paper>
+      <Grid container spacing={3} justifyContent="center">
+        {pagedUsers.length === 0 ? (
+          <Grid item xs={12}>
+            <Box sx={{ py: 12, textAlign: "center", bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)", borderRadius: 6, border: "2px dashed", borderColor: "divider" }}>
+              <ICONS.empty sx={{ fontSize: 60, opacity: 0.2, mb: 2 }} />
+              <Typography variant="h6" fontWeight={700}>No users found</Typography>
+              <Typography variant="body2" color="text.secondary">Try adjusting your filters or create a new user.</Typography>
+            </Box>
           </Grid>
-        ))}
+        ) : (
+          pagedUsers.map((u) => (
+            <Grid item xs={12} sm={6} md={4} key={u.id}>
+              <AppCard sx={{ height: "100%", display: "flex", flexDirection: "column", maxWidth: 380, mx: "auto" }}>
+                {/* Header: Exact match to registrations */}
+                <Box
+                  sx={{
+                    background: isDark 
+                      ? "linear-gradient(to right, rgba(255,255,255,0.05), rgba(255,255,255,0.08))"
+                      : "linear-gradient(to right, #f5f5f5, #fafafa)",
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
+                    p: 2,
+                  }}
+                >
+                   <Stack spacing={0.6}>
+                      <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+                        <Avatar sx={{ 
+                          width: 40, 
+                          height: 40, 
+                          bgcolor: isDark ? "#fff" : "#000", 
+                          color: isDark ? "#000" : "#fff", 
+                          fontSize: "1rem",
+                          fontWeight: 800 
+                        }}>
+                          {u.full_name?.split(" ").map(n => n[0]).slice(0, 2).join("") || "?"}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="subtitle1" fontWeight={800} noWrap sx={{ lineHeight: 1.2 }}>
+                            {u.full_name}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Typography variant="caption" sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "text.secondary", fontWeight: 600 }}>
+                        <ICONS.info fontSize="inherit" sx={{ opacity: 0.7 }} />
+                        ID: #{u.id}
+                      </Typography>
+                   </Stack>
+                   <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mt: 1 }}>
+                     <Chip
+                       label={u.role.toUpperCase()}
+                       size="small"
+                       color={getRoleColor(u.role)}
+                       icon={<ICONS.person sx={{ fontSize: "12px !important" }} />}
+                       sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }}
+                     />
+                   </Stack>
+                </Box>
+
+                 {/* Body: Email and Phone rows */}
+                 <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", py: 0.8, borderBottom: "1px solid", borderColor: "divider" }}>
+                       <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
+                         <ICONS.emailOutline fontSize="small" sx={{ opacity: 0.6 }} /> Email
+                       </Typography>
+                       <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
+                         {u.email}
+                       </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", py: 0.8, borderBottom: u.phone ? "1px solid" : "none", borderColor: "divider" }}>
+                       <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
+                         <ICONS.phone fontSize="small" sx={{ opacity: 0.6 }} /> Phone
+                       </Typography>
+                       <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
+                         {u.phone || "—"}
+                       </Typography>
+                    </Box>
+                   {u.role === "staff" && u.staff_type && (
+                     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", py: 0.8, borderBottom: "none" }}>
+                        <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
+                          <ICONS.business fontSize="small" sx={{ opacity: 0.6 }} /> Staff Type
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary", textTransform: "capitalize" }}>
+                          {u.staff_type}
+                        </Typography>
+                     </Box>
+                   )}
+                </Box>
+
+                {/* Footer: Icon Buttons */}
+                {isSuperAdmin && (
+                  <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)", display: "flex", justifyContent: "flex-end", gap: 1 }}>
+                    <Tooltip title="Edit User">
+                      <IconButton 
+                        color="primary" 
+                        onClick={() => handleOpenEdit(u)} 
+                        size="small"
+                        sx={{ bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)" }}
+                      >
+                        <ICONS.edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    {u.id !== currentUser.id && (
+                      <Tooltip title="Delete User">
+                        <IconButton 
+                          color="error" 
+                          onClick={() => handleDeleteClick(u)} 
+                          size="small"
+                          sx={{ bgcolor: isDark ? "rgba(255,100,100,0.05)" : "rgba(255,0,0,0.03)" }}
+                        >
+                          <ICONS.delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+                )}
+              </AppCard>
+            </Grid>
+          ))
+        )}
       </Grid>
 
-      <TablePagination
-        rowsPerPageOptions={[6, 9, 12, 18, 24]}
-        component="div"
-        count={filteredUsers.length}
-        rowsPerPage={rowsPerPage}
-        page={page}
-        onPageChange={handleChangePage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
-        sx={{ 
-          mt: 4, 
-          borderTop: "1px solid rgba(0,0,0,0.06)",
-          "& .MuiTablePagination-select": {
-             pl: 1,
-             pr: 4,
-          },
-          "& .MuiTablePagination-selectIcon": {
-             right: 4,
-          }
-        }}
-      />
+      <Box display="flex" justifyContent="center" mt={4}>
+        {filteredUsers.length > rowsPerPage && (
+          <Pagination
+            count={Math.ceil(filteredUsers.length / rowsPerPage)}
+            page={page + 1}
+            onChange={(e, v) => setPage(v - 1)}
+            color="primary"
+          />
+        )}
+      </Box>
 
-      <Dialog open={modalOpen} onClose={() => !submitting && setModalOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={modalOpen} onClose={() => !submitting && setModalOpen(false)} fullWidth maxWidth="sm" PaperProps={{ sx: { variant: "frosted", borderRadius: 4 } }}>
         <DialogTitle sx={{ fontWeight: 700 }}>
           {isEditMode ? "Edit User" : "Create New User"}
         </DialogTitle>
@@ -394,12 +473,13 @@ export default function UsersPage() {
               fullWidth
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
+              disabled={isEditMode && form.role === "visitor"}
             >
               {CREATABLE_ROLES.map((r) => (
                 <MenuItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</MenuItem>
               ))}
               {!CREATABLE_ROLES.includes(form.role) && (
-                <MenuItem value={form.role} disabled>{form.role}</MenuItem>
+                <MenuItem value={form.role} disabled>{form.role.charAt(0).toUpperCase() + form.role.slice(1)}</MenuItem>
               )}
             </TextField>
 
@@ -421,12 +501,13 @@ export default function UsersPage() {
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setModalOpen(false)} disabled={submitting}>Cancel</Button>
+          <Button onClick={() => setModalOpen(false)} disabled={submitting} sx={{ borderRadius: 30 }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleSave}
             disabled={submitting}
             startIcon={submitting && <CircularProgress size={20} />}
+            sx={{ borderRadius: 30 }}
           >
             {submitting ? "Saving..." : isEditMode ? "Update User" : "Create User"}
           </Button>

@@ -1,91 +1,94 @@
 "use client";
 
-import { Box, Button, Container, Typography, Stack } from "@mui/material";
+import { Box, Button, Typography, Stack, Paper, Divider } from "@mui/material";
 import { useRouter } from "next/navigation";
-import Background from "@/components/Background";
+import { useColorMode } from "@/contexts/ThemeContext";
+import ICONS from "@/utils/iconUtil";
 
 export default function NotFoundPage() {
   const router = useRouter();
-
-  const handleGoHome = () => router.push("/");
+  const { mode } = useColorMode();
+  const isDark = mode === "dark";
 
   return (
-    <Container
-      maxWidth="sm"
+    <Box
       sx={{
-        height: "calc(100vh - 50px)",
+        height: "85vh",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
         alignItems: "center",
-        textAlign: "center",
+        px: 2,
+        bgcolor: "background.default",
       }}
     >
-      {/* Background */}
-      <Background/>
+      <Paper
+        elevation={0}
+        variant="frosted"
+        sx={{
+          p: { xs: 1, md: 3 },
+          maxWidth: 500,
+          width: "100%",
+          textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <Box 
+          sx={{ 
+            mb: 4, 
+            p: 3, 
+            borderRadius: "50%", 
+            bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+            color: "primary.main"
+          }}
+        >
+          <ICONS.info sx={{ fontSize: 64 }} />
+        </Box>
 
-      {/* Logo + Code */}
-      <Box sx={{ mb: 3 }}>
         <Typography
-          variant="h1"
-          fontWeight="bold"
-          sx={{ fontSize: "5rem", color: "primary.main" }}
+          variant="h2"
+          fontWeight={900}
+          gutterBottom
+          sx={{ mb: 1 }}
         >
           404
         </Typography>
-      </Box>
 
-      {/* Heading + Message */}
-      <Typography variant="h5" fontWeight="bold" gutterBottom>
-        Page Not Found
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Sorry, the page you&apos;re looking for doesn&apos;t exist or may have
-        been moved.
-      </Typography>
+        <Typography variant="h5" fontWeight={700} gutterBottom>
+          Page Not Found
+        </Typography>
 
-      {/* Actions */}
-      <Stack direction="row" spacing={2}>
-        <Button
-          variant="contained"
-          size="large"
-          onClick={handleGoHome}
-          sx={{
-            textTransform: "none",
-            px: 4,
-            py: 1.5,
-            fontWeight: 500,
-          }}
-        >
-          Go to Home
-        </Button>
-        <Button
-          variant="outlined"
-          size="large"
-          onClick={() => router.back()}
-          sx={{
-            textTransform: "none",
-            px: 4,
-            py: 1.5,
-            fontWeight: 500,
-          }}
-        >
-          Go Back
-        </Button>
-      </Stack>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 5, maxWidth: 350 }}>
+          The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.
+        </Typography>
 
-      {/* Footer Note */}
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 6 }}>
-        Powered by{" "}
-        <a
-          href="https://whitewall.om"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "inherit", fontWeight: 500, textDecoration: "none" }}
-        >
-          Sinan VMS
-        </a>
-      </Typography>
-    </Container>
+        <Stack direction="row" spacing={2} sx={{ width: "100%" }}>
+          <Button
+            variant="outlined"
+            fullWidth
+            onClick={() => router.back()}
+            sx={{ py: 1.5, borderRadius: 30 }}
+          >
+            Go Back
+          </Button>
+          <Button
+            variant="contained"
+            fullWidth
+            onClick={() => router.push("/")}
+            sx={{ py: 1.5, borderRadius: 30 }}
+          >
+            Home
+          </Button>
+        </Stack>
+
+        <Divider sx={{ width: "100%", my: 4 }} />
+
+        <Typography variant="caption" color="text.disabled">
+          Powered by <Typography component="span" variant="caption" fontWeight={700} color="text.secondary">Sinan VMS</Typography>
+        </Typography>
+      </Paper>
+    </Box>
   );
 }

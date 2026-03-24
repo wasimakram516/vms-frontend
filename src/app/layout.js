@@ -7,17 +7,20 @@ export const metadata = {
   title: "Sinan VMS",
   description:
     "Sinan VMS is a visitor management platform for registration, approvals, and gate check-in.",
+  icons: {
+    icon: "/favicon.png",
+  },
   keywords:
     "Sinan VMS, visitor management, registrations, approvals, gate check-in",
   openGraph: {
     title: "Sinan VMS",
     description:
       "Manage visitor registrations, approvals, and gate check-in in one platform.",
-    url: "https://sinan-vms.local",
+    url: "https://sinan.whitewall.solutions",
     siteName: "Sinan VMS",
     images: [
       {
-        url: "/WW.png",
+        url: "/sinan.png",
         width: 512,
         height: 512,
         alt: "Sinan VMS",
@@ -30,17 +33,26 @@ export const metadata = {
     title: "Sinan VMS",
     description:
       "Manage visitor registrations, approvals, and gate check-in in one platform.",
-    images: ["/og-image.png"],
+    images: ["/background.png"],
   },
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
+      <body style={{ margin: 0, padding: 0 }}>
         <ClientRoot>
           <Navbar />
-          <Box component="main" sx={{ pt: "22px", minHeight: "calc(100vh - 64px)" }}>
+          <Box 
+            component="main" 
+            sx={{ 
+              height: "100vh",
+              pt: "64px", 
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             {children}
           </Box>
         </ClientRoot>

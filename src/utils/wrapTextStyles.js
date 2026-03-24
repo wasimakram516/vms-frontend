@@ -5,4 +5,3 @@ export const wrapTextBox = {
   wordBreak: "break-word",
   whiteSpace: "normal",
 };
-

@@ -53,12 +53,12 @@ const ConfirmationDialog = ({
       disableScrollLock={true}
       PaperProps={{
         sx: {
-          borderRadius: 2,
+          borderRadius: 4,
           padding: 2,
           maxWidth: "500px",
           width: "100%",
-          backgroundColor: "#f9fafb",
-          boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)",
+          backgroundColor: "background.paper",
+          boxShadow: (theme) => `0px 4px 10px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.1)'}`,
         },
       }}
     >
@@ -66,7 +66,7 @@ const ConfirmationDialog = ({
         sx={{
           fontWeight: "bold",
           fontSize: "1.5rem",
-          color: "#333",
+          color: "text.primary",
           textAlign: "center",
         }}
       >
@@ -82,7 +82,7 @@ const ConfirmationDialog = ({
           <DialogContentText
             sx={{
               fontSize: "1rem",
-              color: "#555",
+              color: "text.secondary",
               lineHeight: 1.6,
             }}
           >

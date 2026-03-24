@@ -11,6 +11,7 @@ import {
   useTheme,
   useMediaQuery,
 } from "@mui/material";
+import { useColorMode } from "@/contexts/ThemeContext";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -34,6 +35,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const theme = useTheme();
+  const { mode } = useColorMode();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -84,12 +86,12 @@ export default function Sidebar() {
                   <IconButton
                     size="large"
                     sx={{
-                      color: isActive(path) ? "white" : "text.secondary",
-                      bgcolor: isActive(path) ? "primary.main" : "transparent",
-                      borderRadius: 2,
+                      color: isActive(path) ? (mode === "dark" ? "#000" : "#fff") : "text.secondary",
+                      bgcolor: isActive(path) ? (mode === "dark" ? "#fff" : "#000") : "transparent",
+                      borderRadius: 30,
                       "&:hover": {
-                        bgcolor: isActive(path) ? "primary.dark" : "action.hover",
-                        color: isActive(path) ? "white" : "primary.main",
+                        bgcolor: isActive(path) ? (mode === "dark" ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.9)") : "action.hover",
+                        color: isActive(path) ? (mode === "dark" ? "#000" : "#fff") : "primary.main",
                       },
                       transition: "all 0.2s ease",
                     }}

@@ -14,9 +14,11 @@ import {
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useColorMode } from "@/contexts/ThemeContext";
 import { motion } from "framer-motion";
 import { BarChart, PieChart } from "@mui/x-charts";
 import ICONS from "@/utils/iconUtil";
+import AppCard from "@/components/cards/AppCard";
 
 const STAT_CARDS = [
   {
@@ -24,28 +26,28 @@ const STAT_CARDS = [
     value: "1,280",
     trend: "+12.5%",
     icon: ICONS.appRegister,
-    color: "#128199",
+    color: "#000000",
   },
   {
     title: "Pending Approvals",
     value: "14",
     trend: "High Priority",
     icon: ICONS.time,
-    color: "#ed6c02",
+    color: "#000000",
   },
   {
     title: "Checked In Today",
     value: "86",
     trend: "+5.2%",
     icon: ICONS.checkin,
-    color: "#2e7d32",
+    color: "#000000",
   },
   {
     title: "Active Fields",
     value: "8",
     trend: "Optimized",
     icon: ICONS.form,
-    color: "#0077b6",
+    color: "#000000",
   },
 ];
 
@@ -58,6 +60,8 @@ const RECENT_ACTIVITY = [
 export default function CmsDashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { mode } = useColorMode();
+  const isDark = mode === "dark";
   const [greeting, setGreeting] = useState("Welcome");
 
   useEffect(() => {
@@ -94,16 +98,14 @@ export default function CmsDashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
             >
-              <Paper
-                elevation={0}
+              <AppCard
+                variant="frosted"
                 sx={{
                   p: 3,
-                  borderRadius: 4,
-                  border: "1px solid rgba(0,0,0,0.06)",
-                  boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
-                  position: "relative",
-                  overflow: "hidden",
-                  "&:hover": { boxShadow: "0 12px 32px rgba(0,0,0,0.08)", borderColor: card.color },
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center"
                 }}
               >
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
@@ -111,8 +113,8 @@ export default function CmsDashboardPage() {
                     sx={{
                       p: 1.5,
                       borderRadius: 2.5,
-                      bgcolor: `${card.color}15`,
-                      color: card.color,
+                      bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+                      color: isDark ? "#ffffff" : "#000000",
                       display: "flex",
                     }}
                   >
@@ -125,8 +127,12 @@ export default function CmsDashboardPage() {
                       height: 20,
                       fontSize: "0.7rem",
                       fontWeight: 700,
-                      bgcolor: card.trend.includes("+") ? "success.light" : "grey.100",
-                      color: card.trend.includes("+") ? "success.dark" : "text.secondary",
+                      bgcolor: card.trend.includes("+") 
+                        ? (isDark ? "rgba(46, 125, 50, 0.2)" : "success.light") 
+                        : (isDark ? "rgba(255,255,255,0.1)" : "grey.100"),
+                      color: card.trend.includes("+") 
+                        ? (isDark ? "#81c784" : "success.dark") 
+                        : (isDark ? "rgba(255,255,255,0.7)" : "text.secondary"),
                       border: "none",
                     }}
                   />
@@ -137,7 +143,7 @@ export default function CmsDashboardPage() {
                 <Typography variant="body2" color="text.secondary" fontWeight={600}>
                   {card.title}
                 </Typography>
-              </Paper>
+              </AppCard>
             </motion.div>
           </Grid>
         ))}
@@ -147,41 +153,37 @@ export default function CmsDashboardPage() {
       <Grid container spacing={3}>
         {/* Registration Volume Chart */}
         <Grid item xs={12} md={8}>
-          <Paper
-            elevation={0}
+          <AppCard
+            variant="frosted"
             sx={{
               p: 3,
-              borderRadius: 4,
-              border: "1px solid rgba(0,0,0,0.06)",
               minHeight: 400,
             }}
           >
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
               <Typography variant="h6" fontWeight={700}>Registration Volume</Typography>
-              <Button size="small" variant="text" sx={{ fontWeight: 700 }}>Export CSV</Button>
+              <Button size="small" variant="text" sx={{ fontWeight: 700, borderRadius: 30 }}>Export CSV</Button>
             </Stack>
             <Box sx={{ width: "100%", height: 300 }}>
               <BarChart
                 series={[
-                  { data: [35, 44, 24, 34, 48, 22, 19, 30, 40, 50, 45, 60], label: "Approved", color: "#128199" },
-                  { data: [51, 6, 49, 30, 15, 20, 25, 30, 35, 40, 30, 20], label: "Rejected", color: "rgba(0,0,0,0.1)" },
+                  { data: [35, 44, 24, 34, 48, 22, 19, 30, 40, 50, 45, 60], label: "Approved", color: isDark ? "#ffffff" : "#000000" },
+                  { data: [51, 6, 49, 30, 15, 20, 25, 30, 35, 40, 30, 20], label: "Rejected", color: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)" },
                 ]}
                 xAxis={[{ data: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], scaleType: "band" }]}
                 height={300}
                 slotProps={{ legend: { direction: 'row', position: { vertical: 'top', horizontal: 'middle' }, padding: 0 } }}
               />
             </Box>
-          </Paper>
+          </AppCard>
         </Grid>
 
         {/* Recent Activity */}
         <Grid item xs={12} md={4}>
-          <Paper
-            elevation={0}
+          <AppCard
+            variant="frosted"
             sx={{
               p: 3,
-              borderRadius: 4,
-              border: "1px solid rgba(0,0,0,0.06)",
               height: "100%",
               display: "flex",
               flexDirection: "column",
@@ -206,22 +208,20 @@ export default function CmsDashboardPage() {
             <Button
               fullWidth
               variant="outlined"
-              sx={{ mt: 4, borderRadius: 2, fontWeight: 700 }}
+              sx={{ mt: 4, borderRadius: 3, px: 3, py: 1, fontWeight: 700 }}
               onClick={() => router.push("/cms/registrations")}
             >
               View All Registrations
             </Button>
-          </Paper>
+          </AppCard>
         </Grid>
 
         {/* Status Distribution Pie Chart */}
         <Grid item xs={12} md={6}>
-            <Paper
-                elevation={0}
+            <AppCard
+                variant="frosted"
                 sx={{
                     p: 3,
-                    borderRadius: 4,
-                    border: "1px solid rgba(0,0,0,0.06)",
                     minHeight: 320,
                 }}
             >
@@ -231,10 +231,10 @@ export default function CmsDashboardPage() {
                         series={[
                         {
                             data: [
-                            { id: 0, value: 45, label: 'Approved', color: '#128199' },
-                            { id: 1, value: 25, label: 'Pending', color: '#ed6c02' },
-                            { id: 2, value: 15, label: 'Checked In', color: '#2e7d32' },
-                            { id: 3, value: 15, label: 'Rejected', color: '#d32f2f' },
+                              { id: 0, value: 45, label: 'Approved', color: isDark ? '#ffffff' : '#000000' },
+                              { id: 1, value: 25, label: 'Pending', color: 'rgba(128,128,128,0.5)' },
+                              { id: 2, value: 15, label: 'Checked In', color: 'rgba(128,128,128,0.3)' },
+                              { id: 3, value: 15, label: 'Rejected', color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' },
                             ],
                             innerRadius: 80,
                             paddingAngle: 5,
@@ -244,7 +244,7 @@ export default function CmsDashboardPage() {
                         height={240}
                     />
                 </Box>
-            </Paper>
+            </AppCard>
         </Grid>
 
       </Grid>

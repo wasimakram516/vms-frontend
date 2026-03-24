@@ -23,6 +23,7 @@ import {
 import QrScanner from "@/components/QrScanner";
 import ICONS from "@/utils/iconUtil";
 import { useMessage } from "@/contexts/MessageContext";
+import { useColorMode } from "@/contexts/ThemeContext";
 import { verifyRegistrationByToken } from "@/services/registrationService";
 
 const STATUS_CONFIG = {
@@ -35,6 +36,8 @@ const STATUS_CONFIG = {
 
 export default function StaffVerifyPage() {
   const { showMessage } = useMessage();
+  const { mode } = useColorMode();
+  const isDark = mode === "dark";
   const [showScanner, setShowScanner] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [token, setToken] = useState("");
@@ -103,11 +106,12 @@ export default function StaffVerifyPage() {
 
         {/* Home / Choice State */}
         {!showScanner && !loading && !result && !error && (
-          <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: "1px solid rgba(0,0,0,0.08)", textAlign: "center", bgcolor: "rgba(255,255,255,0.8)" }}>
+          <Paper elevation={0} variant="frosted" sx={{ p: 4, borderRadius: 4, textAlign: "center" }}>
             <Box
               sx={{
                 width: 72, height: 72, borderRadius: 3,
-                bgcolor: "primary.light", color: "primary.main",
+                bgcolor: isDark ? "rgba(255,255,255,0.1)" : "primary.light",
+                color: "primary.main",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 mx: "auto", mb: 3
               }}
@@ -167,7 +171,7 @@ export default function StaffVerifyPage() {
 
         {/* Loading State */}
         {loading && (
-          <Paper elevation={0} sx={{ p: 6, borderRadius: 4, border: "1px solid rgba(0,0,0,0.08)", textAlign: "center" }}>
+          <Paper elevation={0} variant="frosted" sx={{ p: 6, borderRadius: 4, textAlign: "center" }}>
             <CircularProgress size={48} sx={{ mb: 2 }} />
             <Typography variant="body1" color="text.secondary">Verifying registration...</Typography>
           </Paper>
@@ -175,7 +179,7 @@ export default function StaffVerifyPage() {
 
         {/* Success / Result State */}
         {result && (
-          <Paper elevation={0} sx={{ p: 3, borderRadius: 4, border: `1px solid ${sc.color === "success" ? "rgba(46,125,50,0.3)" : "rgba(0,0,0,0.08)"}` }}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 4, border: `1px solid ${sc.color === "success" ? (isDark ? "rgba(46,125,50,0.5)" : "rgba(46,125,50,0.3)") : "divider"}`, bgcolor: "background.paper" }}>
             <Stack direction="row" alignItems="center" spacing={2} mb={3}>
               <Box sx={{ bgcolor: `${sc.color}.light`, color: `${sc.color}.main`, p: 1, borderRadius: 2, display: "flex" }}>
                 {sc.color === "success" ? <ICONS.checkCircle /> : <ICONS.time />}
@@ -216,7 +220,7 @@ export default function StaffVerifyPage() {
 
         {/* Error State */}
         {error && (
-          <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: "1px solid rgba(211,47,47,0.2)", textAlign: "center" }}>
+          <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: `1px solid ${isDark ? "rgba(211,47,47,0.5)" : "rgba(211,47,47,0.2)"}`, textAlign: "center", bgcolor: "background.paper" }}>
             <ICONS.errorOutline sx={{ fontSize: 64, color: "error.main", mb: 2 }} />
             <Typography variant="h6" fontWeight={700} color="error.main" gutterBottom>Verification Failed</Typography>
             <Typography variant="body2" color="text.secondary" mb={3}>{error}</Typography>

@@ -1,233 +1,186 @@
 import { createTheme } from "@mui/material/styles";
 
-const theme = createTheme({
-  palette: {
-    primary: { main: "#128199" },
-    secondary: { main: "#ffcc00" },
-    background: { default: "#f9f9f9", paper: "#ffffff" },
-    text: { primary: "#033649", secondary: "#555" },
-  },
+export const getTheme = (mode) => {
+  const isDark = mode === "dark";
 
-  typography: {
-    fontFamily: "'Poppins', sans-serif",
-    h1: {
-      fontFamily: "'Comfortaa', cursive",
-      fontSize: "3rem",
-      fontWeight: "700",
+  return createTheme({
+    palette: {
+      mode,
+      primary: {
+        main: isDark ? "#ffffff" : "#000000",
+        contrastText: isDark ? "#000000" : "#ffffff",
+      },
+      secondary: {
+        main: isDark ? "#ffffff" : "#000000",
+      },
+      background: {
+        default: isDark ? "#050505" : "#f8f9fa",
+        paper: isDark ? "rgba(20, 20, 20, 0.7)" : "#ffffff",
+      },
+      text: {
+        primary: isDark ? "#ffffff" : "#000000",
+        secondary: isDark ? "rgba(255, 255, 255, 0.7)" : "rgba(0, 0, 0, 0.7)",
+        disabled: isDark ? "rgba(255, 255, 255, 0.4)" : "rgba(0, 0, 0, 0.38)",
+      },
+      divider: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.12)",
     },
-    h2: {
-      fontFamily: "'Comfortaa', cursive",
-      fontSize: "2rem",
-      fontWeight: "700",
-    },
-    h3: {
-      fontFamily: "'Comfortaa', cursive",
-      fontSize: "1.75rem",
-      fontWeight: "700",
-    },
-    h4: {
-      fontFamily: "'Comfortaa', cursive",
-      fontSize: "1.5rem",
-      fontWeight: "700",
-    },
-    h5: {
-      fontFamily: "'Comfortaa', cursive",
-      fontSize: "1.3rem",
-      fontWeight: "700",
-    },
-    h6: { fontFamily: "'Comfortaa', cursive", fontSize: "1.25rem" },
-    body1: { fontSize: "1.075rem", fontFamily: "'Poppins', sans-serif" },
-    body2: { fontSize: "0.95rem", fontFamily: "'Poppins', sans-serif" },
-    subtitle1: { fontSize: "0.9rem", fontWeight: "600" },
-    subtitle2: { fontSize: "0.8rem", fontWeight: "500" },
-    button: { textTransform: "uppercase", fontWeight: "bold" },
-  },
 
-  shape: { borderRadius: 8 },
+    typography: {
+      fontFamily: "'Comfortaa', cursive, sans-serif",
+      h1: { fontWeight: 700 },
+      h2: { fontWeight: 700 },
+      h3: { fontWeight: 700 },
+      h4: { fontWeight: 700 },
+      h5: { fontWeight: 700 },
+      h6: { fontWeight: 700 },
+      button: { textTransform: "none", fontWeight: 600 },
+    },
 
-  components: {
-    
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: "999px",
-          fontSize: "1rem",
-          padding: "10px 20px",
-          fontWeight: 600,
-          textTransform: "none",
-          transition: "all 0.3s ease",
-        },
+    shape: { borderRadius: 12 },
 
-        containedPrimary: {
-          backgroundColor: "#0077b6",
-          color: "#ffffff",
-          boxShadow: "0px 10px 32px rgba(0,0,0,0.1)",
-          "&:hover": {
-            transform: "scale(1.02)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.3)",
-          },
-        },
-        containedSecondary: {
-          backgroundColor: "#ffcc00",
-          color: "#333333",
-          boxShadow: "0px 10px 32px rgba(0,0,0,0.1)",
-          "&:hover": {
-            transform: "scale(1.02)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.3)",
-          },
-        },
-        containedError: {
-          backgroundColor: "#d32f2f",
-          color: "#ffffff",
-          boxShadow: "0px 10px 32px rgba(0,0,0,0.1)",
-          "&:hover": {
-            transform: "scale(1.02)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.3)",
-          },
-        },
-        containedInfo: {
-          backgroundColor: "#0288d1",
-          color: "#ffffff",
-          boxShadow: "0px 10px 32px rgba(0,0,0,0.1)",
-          "&:hover": {
-            backgroundColor: "#0277bd",
-            transform: "scale(1.02)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.3)",
-          },
-        },
-
-        outlinedPrimary: {
-          color: "#0077b6",
-          borderColor: "#0077b6",
-          "&:hover": {
-            backgroundColor: "rgba(0, 119, 182, 0.08)",
-            transform: "scale(1.03)",
-          },
-        },
-        outlinedSecondary: {
-          color: "#ffcc00",
-          borderColor: "#ffcc00",
-          "&:hover": {
-            backgroundColor: "rgba(255, 204, 0, 0.08)",
-            transform: "scale(1.03)",
-          },
-        },
-        outlinedError: {
-          color: "#d32f2f",
-          borderColor: "#d32f2f",
-          "&:hover": {
-            backgroundColor: "rgba(211, 47, 47, 0.08)",
-            transform: "scale(1.03)",
-          },
-        },
-        outlinedInfo: {
-          color: "#0288d1",
-          borderColor: "#0288d1",
-          "&:hover": {
-            backgroundColor: "rgba(2, 136, 209, 0.08)",
-            transform: "scale(1.03)",
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            transition: "background-color 0.3s ease, color 0.3s ease",
+            backgroundColor: isDark ? "#050505" : "#f8f9fa",
           },
         },
       },
-    },
-
-    MuiPaper: {
-      styleOverrides: {
-        root: {},
+      MuiButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: "999px",
+            padding: "8px 24px",
+            fontWeight: 700,
+            textTransform: "none",
+            transition: "all 0.2s ease-in-out",
+          },
+          containedPrimary: {
+            "&:hover": {
+              backgroundColor: isDark ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.8)",
+              transform: "translateY(-1px)",
+            },
+          },
+          outlinedPrimary: {
+            borderColor: isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)",
+            color: isDark ? "#ffffff" : "#000000",
+            "&:hover": {
+              borderColor: isDark ? "#ffffff" : "#000000",
+              backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+            },
+          },
+        },
       },
-      variants: [
-        {
-          props: { variant: "frosted" },
-          style: {
-            p: { xs: 3, sm: 4 },
-            padding: "2rem",
-            maxWidth: 800,
-            width: "100%",
-            textAlign: "center",
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            backgroundImage: "none",
+            ...(isDark && {
+              backdropFilter: "blur(12px)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+            }),
+            ...(!isDark && {
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.05)",
+              border: "1px solid rgba(0, 0, 0, 0.05)",
+            }),
+          },
+        },
+        variants: [
+          {
+            props: { variant: "frosted" },
+            style: {
+              backdropFilter: "blur(16px)",
+              backgroundColor: isDark ? "rgba(20, 20, 20, 0.6)" : "rgba(255, 255, 255, 0.8)",
+              border: isDark ? "1px solid rgba(255, 255, 255, 0.1)" : "1px solid rgba(0, 0, 0, 0.08)",
+              boxShadow: isDark ? "0 12px 40px rgba(0,0,0,0.6)" : "0 8px 32px rgba(0,0,0,0.1)",
+              borderRadius: 24,
+            },
+          },
+        ],
+      },
+      MuiTextField: {
+        defaultProps: {
+          variant: "outlined",
+          size: "small",
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: "30px",
+            backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+            transition: "all 0.2s ease",
+            "& .MuiOutlinedInput-notchedOutline": {
+              borderColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)",
+            },
+            "&:hover .MuiOutlinedInput-notchedOutline": {
+              borderColor: isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)",
+            },
+            "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+              borderColor: isDark ? "#ffffff" : "#000000",
+              borderWidth: "1px",
+            },
+            "& .MuiInputBase-input": {
+              color: isDark ? "#ffffff" : "#000000",
+            },
+          },
+          input: {
+            color: isDark ? "#ffffff !important" : "#000000 !important",
+          },
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: {
+          root: {
+            color: isDark ? "rgba(255, 255, 255, 0.7)" : "rgba(0, 0, 0, 0.7)",
+            "&.Mui-focused": {
+              color: isDark ? "#ffffff" : "#000000",
+            },
+          },
+        },
+      },
+      MuiInputBase: {
+        styleOverrides: {
+          root: {
+            color: isDark ? "#ffffff" : "#000000",
+          },
+          input: {
+            "&:-webkit-autofill": {
+              WebkitBoxShadow: isDark ? "0 0 0 1000px rgba(5,5,5,1) inset !important" : "0 0 0 1000px #ffffff inset !important",
+              WebkitTextFillColor: isDark ? "#ffffff !important" : "#000000 !important",
+            },
+          },
+        },
+      },
+      MuiCheckbox: {
+        styleOverrides: {
+          root: {
+            color: isDark ? "rgba(255, 255, 255, 0.5)" : "rgba(0, 0, 0, 0.3)",
+          },
+        },
+      },
+      MuiAppBar: {
+        styleOverrides: {
+          root: {
+            backgroundColor: isDark ? "rgba(5, 5, 5, 0.8)" : "rgba(255, 255, 255, 0.8)",
             backdropFilter: "blur(10px)",
-            backgroundColor: "rgba(255,255,255,0.6)",
-            borderRadius: 16,
-            mt: { xs: 10, sm: "15vh" },
-            mx: "auto",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+            borderBottom: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
+            color: isDark ? "#ffffff" : "#000000",
           },
         },
-      ],
-    },
-
-    MuiInputBase: {
-      styleOverrides: {
-        input: {
-          userSelect: "text",
-          WebkitUserSelect: "text",
-          unicodeBidi: "plaintext",
-          "&[dir='rtl']": {
-            direction: "rtl !important",
-            textAlign: "right !important",
-          },
-          "&[dir='ltr']": {
-            direction: "ltr !important",
-            textAlign: "left !important",
-          },
-          "&[dir='auto']": {
-            textAlign: "start !important",
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          head: {
+            fontWeight: 700,
+            backgroundColor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
           },
         },
       },
     },
+  });
+};
 
-    MuiInputLabel: {
-      styleOverrides: {
-        root: {
-          "&[dir='rtl'], [dir='rtl'] &": {
-            right: 30,
-            left: "auto",
-            textAlign: "right",
-            transformOrigin: "top right",
-          },
-          "&[dir='ltr'], [dir='ltr'] &": {
-            right: "auto",
-            textAlign: "left",
-            transformOrigin: "top left",
-          },
-        },
-      },
-    },
-
-    MuiOutlinedInput: {
-      styleOverrides: {
-        root: {
-          backgroundColor: "rgba(255,255,255,0.8)",
-          borderRadius: "30px",
-          overflow: "hidden",
-          "&&.MuiOutlinedInput-multiline": { borderRadius: "16px" },
-
-          "& .MuiOutlinedInput-notchedOutline": {
-            borderColor: "#128199",
-            borderRadius: "inherit",
-          },
-          "&:hover .MuiOutlinedInput-notchedOutline": {
-            borderColor: "#0077b6",
-          },
-          "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-            borderColor: "#0077b6",
-          },
-        },
-      },
-    },
-
-    MuiSelect: {
-      styleOverrides: {
-        root: {
-          backgroundColor: "rgba(255,255,255,0.8)",
-          borderRadius: "30px",
-          overflow: "hidden",
-          "&:focus": { backgroundColor: "rgba(255,255,255,0.9)" },
-        },
-        icon: { color: "#128199", right: 16 },
-      },
-    },
-  },
-});
-
-export default theme;
+export default getTheme("light");

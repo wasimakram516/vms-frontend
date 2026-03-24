@@ -1,20 +1,26 @@
+"use client";
+
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   IconButton,
   Slide,
+  Typography,
+  Box,
+  Divider
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 import { forwardRef } from "react";
-import EmptyBusinessState from "../EmptyBusinessState";
+import { useColorMode } from "@/contexts/ThemeContext";
 
 const Transition = forwardRef(function Transition(props, ref) {
-  return <Slide direction="left" ref={ref} {...props} />;
+  return <Slide direction="up" ref={ref} {...props} />;
 });
 
-const FilterDialog = ({ open, onClose, title, children }) => {
-  const dir = "ltr";
+const FilterModal = ({ open, onClose, title, children }) => {
+  const { mode } = useColorMode();
+  const isDark = mode === "dark";
 
   const hasChildren =
     !!children &&
@@ -23,19 +29,16 @@ const FilterDialog = ({ open, onClose, title, children }) => {
 
   return (
     <Dialog
-      dir={dir}
       open={open}
       onClose={onClose}
       keepMounted
       fullWidth
-      maxWidth="sm"
+      maxWidth="xs"
       TransitionComponent={Transition}
       PaperProps={{
         sx: {
-          borderRadius: 2,
-          minHeight: "40vh",
-          display: "flex",
-          flexDirection: "column",
+          borderRadius: 4,
+          variant: "frosted",
         },
       }}
     >
@@ -44,20 +47,30 @@ const FilterDialog = ({ open, onClose, title, children }) => {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          pb: 0,
+          px: 3,
+          py: 2,
         }}
       >
-        {title}
-        <IconButton onClick={onClose}>
+        <Typography variant="h6" fontWeight={800} component="span">
+          {title || "Filters"}
+        </Typography>
+        <IconButton onClick={onClose} size="small">
           <ICONS.close />
         </IconButton>
       </DialogTitle>
-
-      <DialogContent dividers sx={{ pt: 2, flex: 1 }}>
-        {hasChildren ? children : <EmptyBusinessState />}
+      <Divider />
+      <DialogContent sx={{ p: 3 }}>
+        {hasChildren ? (
+          children
+        ) : (
+          <Box sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
+            <ICONS.filter sx={{ fontSize: 40, opacity: 0.2, mb: 1 }} />
+            <Typography variant="body2">No filters available</Typography>
+          </Box>
+        )}
       </DialogContent>
     </Dialog>
   );
 };
 
-export default FilterDialog;
+export default FilterModal;

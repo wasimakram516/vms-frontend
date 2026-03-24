@@ -15,12 +15,14 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useColorMode } from "@/contexts/ThemeContext";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 
 import ICONS from "@/utils/iconUtil";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const { mode, toggleColorMode } = useColorMode();
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -72,9 +74,7 @@ export default function Navbar() {
       <AppBar
         position="fixed"
         sx={{
-          backgroundColor: "rgba(255, 255, 255, 0.3)",
           boxShadow: "none",
-          borderBottom: "1px solid rgba(0, 0, 0, 0.1)",
           height: "64px",
         }}
       >
@@ -107,7 +107,21 @@ export default function Navbar() {
             </Stack>
           </Link>
 
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
+              <IconButton 
+                onClick={toggleColorMode} 
+                sx={{ 
+                  color: "text.primary",
+                  bgcolor: mode === 'light' ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.05)",
+                  "&:hover": { bgcolor: mode === 'light' ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.1)" }
+                }}
+                size="small"
+              >
+                {mode === "light" ? <ICONS.dark fontSize="small" /> : <ICONS.light fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+
             {!user ? (
               <Link href="/auth/login">
                 <Tooltip title="Sign In">

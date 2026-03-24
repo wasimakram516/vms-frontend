@@ -64,6 +64,8 @@ import {
   ErrorOutline as ErrorOutlineIcon,
   CheckCircle as CheckCircleIcon,
   CheckCircleOutline as CheckCircleOutlineIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
 } from "@mui/icons-material";
 
 // Authentication
@@ -210,6 +212,8 @@ const ICONS = {
   errorOutline: ErrorOutlineIcon,
   info: InfoIcon,
   warning: WarningIcon,
+  dark: DarkModeIcon,
+  light: LightModeIcon,
 
   // Authentication
   login: LoginIcon,

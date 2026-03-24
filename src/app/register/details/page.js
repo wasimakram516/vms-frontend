@@ -31,16 +31,20 @@ import { useVisitor } from "@/contexts/VisitorContext";
 import { getFields } from "@/services/registrationService";
 import { motion } from "framer-motion";
 import ICONS from "@/utils/iconUtil";
+import VisitorLayout from "@/components/layout/VisitorLayout";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import RichTextEditor from "@/components/RichTextEditor";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE } from "@/utils/countryCodes";
 import { validatePhoneNumberByCountry } from "@/utils/phoneValidation";
+import { useColorMode } from "@/contexts/ThemeContext";
 
 const transition = { duration: 0.5, ease: [0.43, 0.13, 0.23, 0.96] };
 
 export default function DetailsPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, flowState, setFlowState } = useVisitor();
+  const { mode } = useColorMode();
+  const isDark = mode === "dark";
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState({});
@@ -59,6 +63,9 @@ export default function DetailsPage() {
       }
     };
     fetchFields();
+
+    if (!flowState.isReturning && Object.keys(visitorData.dynamicFields).length > 0) {
+    }
   }, []);
 
   const handleFieldChange = (key, value) => {
@@ -145,30 +152,34 @@ export default function DetailsPage() {
   }
 
   return (
-    <Box
-      sx={{
-        maxWidth: 650,
-        mx: "auto",
-        px: 2,
-        py: { xs: 2, md: 4 },
-      }}
+    <VisitorLayout 
+      title="Visitor Registration" 
+      subtitle="Please provide your information to ensure a smooth check-in process at Sinan."
+      maxWidth={650}
     >
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={transition}>
-        <Paper elevation={0} sx={{ p: { xs: 2, md: 4 }, borderRadius: 4, border: "1px solid rgba(0,0,0,0.06)" }}>
+      <form autoComplete="off">
+        <Stack spacing={3}>
+          <Box sx={{ textAlign: "center" }}>
+            <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
+              Tell us about yourself
+            </Typography>
+            <Typography variant="body2" color="text.secondary" mt={1}>
+              Fill in the details below to complete your registration.
+            </Typography>
+          </Box>
+
+          <Divider />
+
           <Stack spacing={3}>
-            <Box sx={{ textAlign: "center" }}>
-              <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-                Tell us about yourself
-              </Typography>
-              <Typography variant="body2" color="text.secondary" mt={1}>
-                Fill in the details below to complete your registration.
-              </Typography>
-            </Box>
-
-            <Divider />
-
-            <Stack spacing={3}>
-              {fields.map((f) => {
+            {fields.length === 0 ? (
+              <Box sx={{ py: 4, textAlign: "center", bgcolor: "action.hover", borderRadius: 4, border: "1px dashed", borderColor: "divider" }}>
+                <ICONS.info sx={{ fontSize: 40, color: "text.secondary", opacity: 0.5, mb: 1 }} />
+                <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300, mx: "auto" }}>
+                  Registration is currently unavailable. Please contact the administrator.
+                </Typography>
+              </Box>
+            ) : (
+              fields.map((f) => {
                 const fieldKey = f.field_key || f.fieldKey;
                 const isRequired = f.is_required || f.isRequired;
                 const inputType = f.input_type || f.inputType || "text";
@@ -184,7 +195,7 @@ export default function DetailsPage() {
                         value={val}
                         label={f.label}
                         onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
-                        sx={{ borderRadius: 3, bgcolor: "rgba(0,0,0,0.01)" }}
+                        sx={{ borderRadius: 30 }}
                       >
                         {options.map((opt) => (
                           <MenuItem key={opt} value={opt}>
@@ -266,6 +277,7 @@ export default function DetailsPage() {
                       helperText={error}
                       size="medium"
                       placeholder={f.label}
+                      autoComplete="off"
                       InputProps={{
                         startAdornment: (
                           <CountryCodeSelector
@@ -276,8 +288,7 @@ export default function DetailsPage() {
                       }}
                       sx={{
                         "& .MuiOutlinedInput-root": {
-                          borderRadius: 3,
-                          bgcolor: "rgba(0,0,0,0.01)",
+                          borderRadius: 30,
                         },
                       }}
                     />
@@ -316,8 +327,7 @@ export default function DetailsPage() {
                         inputProps={{ accept: "*/*" }}
                         sx={{
                           "& .MuiOutlinedInput-root": {
-                            borderRadius: 3,
-                            bgcolor: "rgba(0,0,0,0.01)",
+                            borderRadius: 30,
                           },
                         }}
                       />
@@ -338,68 +348,69 @@ export default function DetailsPage() {
                     helperText={error}
                     size="medium"
                     placeholder={f.label}
+                    autoComplete="off"
                     InputLabelProps={["date", "time"].includes(inputType) ? { shrink: true } : {}}
                     sx={{
                       "& .MuiOutlinedInput-root": {
-                        borderRadius: 3,
-                        bgcolor: "rgba(0,0,0,0.01)",
+                        borderRadius: 30,
                       },
                     }}
                   />
                 );
-              })}
-            </Stack>
-
-            <Divider />
-
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={ndaAccepted}
-                  onChange={(e) => setNdaAccepted(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label={
-                <Typography variant="body2" fontWeight={600}>
-                  I have read and agree to the{" "}
-                  <Typography
-                    component="span"
-                    color="primary.main"
-                    sx={{ textDecoration: "underline", cursor: "pointer" }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setNdaOpen(true);
-                    }}
-                  >
-                    terms & conditions
-                  </Typography>
-                </Typography>
-              }
-            />
-
-            <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
-              <Button
-                variant="outlined"
-                fullWidth
-                onClick={() => router.push("/")}
-                sx={{ py: 1.5, borderRadius: 2 }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                fullWidth
-                disabled={!ndaAccepted}
-                onClick={handleNext}
-                sx={{ py: 1.5, borderRadius: 2 }}
-              >
-                Schedule Visit
-              </Button>
-            </Stack>
+              })
+            )}
           </Stack>
-        </Paper>
-      </motion.div>
+
+          <Divider />
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={ndaAccepted}
+                onChange={(e) => setNdaAccepted(e.target.checked)}
+                color="primary"
+              />
+            }
+            label={
+              <Typography variant="body2" fontWeight={600}>
+                I have read and agree to the{" "}
+                <Typography
+                  component="span"
+                  color="primary.main"
+                  sx={{ textDecoration: "underline", cursor: "pointer" }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setNdaOpen(true);
+                  }}
+                >
+                  NDA
+                </Typography>
+              </Typography>
+            }
+          />
+
+          <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
+            <Button
+              variant="outlined"
+              fullWidth
+              onClick={() => router.push("/")}
+              sx={{ py: 1.5, borderRadius: 30 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              fullWidth
+              disabled={!ndaAccepted}
+              onClick={handleNext}
+              sx={{ py: 1.5, borderRadius: 30 }}
+            >
+              Schedule Visit
+            </Button>
+          </Stack>
+        </Stack>
+      </form>
+
       {/* NDA Modal */}
       <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -420,6 +431,6 @@ export default function DetailsPage() {
           </Typography>
         </DialogContent>
       </Dialog>
-    </Box>
+    </VisitorLayout>
   );
 }

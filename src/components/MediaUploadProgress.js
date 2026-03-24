@@ -13,18 +13,20 @@ import {
     Alert,
     Chip,
     Paper,
+    useTheme,
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 
 const MediaUploadProgress = ({ open, uploads, onClose, allowClose = false }) => {
+    const theme = useTheme();
     const allComplete = uploads.every((u) => u.percent === 100 || u.error);
     const hasErrors = uploads.some((u) => u.error);
     const uploadingCount = uploads.filter((u) => u.percent < 100 && !u.error).length;
 
     const getStatusColor = (upload) => {
-        if (upload.error) return "#d32f2f";
-        if (upload.percent === 100) return "#2e7d32";
-        return "#128199"; // Primary color
+        if (upload.error) return theme.palette.error.main;
+        if (upload.percent === 100) return theme.palette.success.main;
+        return theme.palette.primary.main;
     };
 
     const getStatusIcon = (upload) => {
@@ -32,7 +34,7 @@ const MediaUploadProgress = ({ open, uploads, onClose, allowClose = false }) => 
             return (
                 <ICONS.errorOutline
                     sx={{
-                        color: "#d32f2f",
+                        color: theme.palette.error.main,
                         fontSize: 22,
                         animation: upload.error ? "pulse 0.5s ease-in-out" : "none"
                     }}
@@ -43,7 +45,7 @@ const MediaUploadProgress = ({ open, uploads, onClose, allowClose = false }) => 
             return (
                 <ICONS.checkCircle
                     sx={{
-                        color: "#2e7d32",
+                        color: theme.palette.success.main,
                         fontSize: 22,
                         animation: "scaleIn 0.3s ease-out"
                     }}
@@ -56,7 +58,7 @@ const MediaUploadProgress = ({ open, uploads, onClose, allowClose = false }) => 
                     width: 20,
                     height: 20,
                     borderRadius: "50%",
-                    border: "2px solid #128199",
+                    border: `2px solid ${theme.palette.primary.main}`,
                     borderTopColor: "transparent",
                     animation: "spin 0.8s linear infinite",
                 }}
@@ -86,8 +88,8 @@ const MediaUploadProgress = ({ open, uploads, onClose, allowClose = false }) => 
                         justifyContent: "space-between",
                         alignItems: "center",
                         background: allComplete
-                            ? "linear-gradient(135deg, #2e7d32 0%, #4caf50 100%)"
-                            : "linear-gradient(135deg, #128199 0%, #0077b6 100%)",
+                            ? `linear-gradient(135deg, ${theme.palette.success.dark} 0%, ${theme.palette.success.main} 100%)`
+                            : `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
                         color: "#ffffff",
                         py: 2.5,
                         px: 3,
@@ -245,8 +247,8 @@ const MediaUploadProgress = ({ open, uploads, onClose, allowClose = false }) => 
                                                 bgcolor: getStatusColor(upload),
                                                 transition: "all 0.3s ease",
                                                 boxShadow: upload.percent === 100
-                                                    ? "0px 2px 8px rgba(46, 125, 50, 0.3)"
-                                                    : "0px 2px 4px rgba(18, 129, 153, 0.2)",
+                                                    ? `0px 2px 8px ${theme.palette.success.main}4d`
+                                                    : `0px 2px 4px ${theme.palette.primary.main}33`,
                                             }
                                         }}
                                     />

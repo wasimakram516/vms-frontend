@@ -141,6 +141,16 @@ export const updateRegistrationStatus = async (id, action, payload = {}) => {
   }
 };
 
+export const updateRegistration = async (id, payload) => {
+  try {
+    const res = await api.patch(`/registrations/${id}`, payload);
+    return res.data?.data || res.data;
+  } catch (err) {
+    console.error(`Failed to update registration ${id}`, err);
+    throw err;
+  }
+};
+
 export const verifyRegistrationByToken = async (token) => {
   try {
     const res = await api.get(`/registrations/verify/${token}`);

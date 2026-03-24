@@ -7,7 +7,7 @@ export const formatDate = (dateString) => {
   const date = new Date(dateString);
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
-    month: "long",
+    month: "short",
     year: "numeric",
   }).format(date);
 };
@@ -137,9 +137,39 @@ export const formatTime = (timeString, locale = "en-GB", eventTimezone = null, d
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
-  });
+  }).toUpperCase();
 
   return formatted;
+};
+
+/**
+ * Parses a 24-hour time string (HH:mm) into 12-hour components.
+ * @param {string} time24 "HH:mm"
+ * @returns {{ hour12: number, minute: string, ampm: string }}
+ */
+export const parse24To12 = (time24) => {
+  if (!time24) return { hour12: 12, minute: "00", ampm: "AM" };
+  const [h24, min] = time24.split(":").map(Number);
+  const ampm = h24 >= 12 ? "PM" : "AM";
+  const hour12 = h24 % 12 || 12;
+  return { hour12, minute: String(min || 0).padStart(2, "0"), ampm };
+};
+
+/**
+ * Converts 12-hour components back to a 24-hour time string (HH:mm).
+ * @param {number|string} hr 1-12
+ * @param {number|string} min 0-59
+ * @param {string} ampm "AM"|"PM"
+ * @returns {string} "HH:mm"
+ */
+export const convert12To24 = (hr, min, ampm) => {
+  let h24 = parseInt(hr, 10);
+  const m = String(min).padStart(2, "0");
+  
+  if (ampm === "PM" && h24 < 12) h24 += 12;
+  if (ampm === "AM" && h24 === 12) h24 = 0;
+  
+  return `${String(h24).padStart(2, "0")}:${m}`;
 };
 
 export const formatDateWithTime = (dateString, timeString, locale = "en-GB", eventTimezone = null) => {
