@@ -2,7 +2,6 @@
 import React, { useState } from "react";
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
   Button,
@@ -11,6 +10,8 @@ import {
   CircularProgress,
 } from "@mui/material";
 import slugify from "@/utils/slugify";
+import ICONS from "@/utils/iconUtil";
+import DialogHeader from "@/components/modals/DialogHeader";
 
 export default function FileUploadDialog({
   open,
@@ -71,10 +72,17 @@ export default function FileUploadDialog({
   };
 
   return (
-    <Dialog open={open} onClose={!loading ? onClose : undefined} fullWidth dir={dir}>
-      <DialogTitle sx={{ textAlign: align }}>
-        {editingFile ? t.updateFile : t.uploadNewFile}
-      </DialogTitle>
+    <Dialog
+      open={open}
+      onClose={!loading ? onClose : undefined}
+      fullWidth
+      dir={dir}
+    >
+      <DialogHeader
+        title={editingFile ? t.updateFile : t.uploadNewFile}
+        onClose={!loading ? onClose : undefined}
+        align={align}
+      />
       <DialogContent sx={{ direction: dir, textAlign: align }}>
         <Stack spacing={2} mt={1}>
           <TextField
@@ -103,22 +111,34 @@ export default function FileUploadDialog({
         </Stack>
       </DialogContent>
       <DialogActions sx={{ direction: dir }}>
-        <Button onClick={onClose} disabled={loading}>
+        <Button
+          onClick={onClose}
+          disabled={loading}
+          startIcon={<ICONS.cancel />}
+        >
           {t.cancel}
         </Button>
         <Button
           variant="contained"
           onClick={handleSubmit}
           disabled={loading || !title || (!editingFile && !file)}
-          startIcon={loading ? <CircularProgress size={18} color="inherit" /> : null}
+          startIcon={
+            loading ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : editingFile ? (
+              <ICONS.save />
+            ) : (
+              <ICONS.upload />
+            )
+          }
         >
           {loading
             ? editingFile
               ? t.updating
               : t.uploading
             : editingFile
-            ? t.update
-            : t.upload}
+              ? t.update
+              : t.upload}
         </Button>
       </DialogActions>
     </Dialog>

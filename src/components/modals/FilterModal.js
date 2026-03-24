@@ -12,16 +12,13 @@ import {
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 import { forwardRef } from "react";
-import { useColorMode } from "@/contexts/ThemeContext";
+import NoDataAvailable from "@/components/NoDataAvailable";
 
 const Transition = forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
 });
 
 const FilterModal = ({ open, onClose, title, children }) => {
-  const { mode } = useColorMode();
-  const isDark = mode === "dark";
-
   const hasChildren =
     !!children &&
     (!Array.isArray(children) ||
@@ -63,10 +60,12 @@ const FilterModal = ({ open, onClose, title, children }) => {
         {hasChildren ? (
           children
         ) : (
-          <Box sx={{ py: 4, textAlign: "center", color: "text.secondary" }}>
-            <ICONS.filter sx={{ fontSize: 40, opacity: 0.2, mb: 1 }} />
-            <Typography variant="body2">No filters available</Typography>
-          </Box>
+          <NoDataAvailable
+            title="No filters available"
+            description="This view does not have any extra filters right now."
+            compact
+            minHeight={180}
+          />
         )}
       </DialogContent>
     </Dialog>

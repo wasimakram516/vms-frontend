@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogContentText,
   DialogActions,
@@ -13,6 +12,7 @@ import {
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
+import DialogHeader from "@/components/modals/DialogHeader";
 
 const ConfirmationDialog = ({
   open,
@@ -58,20 +58,17 @@ const ConfirmationDialog = ({
           maxWidth: "500px",
           width: "100%",
           backgroundColor: "background.paper",
-          boxShadow: (theme) => `0px 4px 10px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.1)'}`,
+          boxShadow: (theme) =>
+            `0px 4px 10px ${theme.palette.mode === "dark" ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.1)"}`,
         },
       }}
     >
-      <DialogTitle
-        sx={{
-          fontWeight: "bold",
-          fontSize: "1.5rem",
-          color: "text.primary",
-          textAlign: "center",
-        }}
-      >
-        {title}
-      </DialogTitle>
+      <DialogHeader
+        title={title}
+        onClose={loading ? undefined : onClose}
+        align="center"
+        sx={{ pb: 1.25 }}
+      />
       <DialogContent>
         <Box
           sx={{

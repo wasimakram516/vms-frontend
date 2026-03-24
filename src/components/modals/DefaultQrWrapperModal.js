@@ -974,12 +974,12 @@ export default function DefaultQrWrapperModal({
                 <Typography variant="subtitle1" fontWeight={600}>{t.logo}</Typography>
                 <Stack direction="row" alignItems="center" spacing={2}>
                   {logoPreview && <Avatar src={logoPreview} variant="square" sx={{ width: 72, height: 72 }} />}
-                  <Button variant="outlined" component="label" size="small">
+                  <Button variant="outlined" component="label" size="small" startIcon={<ICONS.upload />}>
                     {t.upload}
                     <input ref={logoFileInputRef} type="file" accept="image/*" hidden onChange={(e) => { setLogoFile(e.target.files?.[0] || null); e.target.value = ""; }} />
                   </Button>
                   {logoPreview && (
-                    <Button size="small" color="error" variant="text" onClick={() => { if (logoFile) { setLogoFile(null); setLogo((p) => ({ ...p, url: "" })); setLogoPreview(""); if (logoFileInputRef.current) logoFileInputRef.current.value = ""; } else { setConfirmRemoveLogo(true); } }}>
+                    <Button size="small" color="error" variant="text" startIcon={<ICONS.delete />} onClick={() => { if (logoFile) { setLogoFile(null); setLogo((p) => ({ ...p, url: "" })); setLogoPreview(""); if (logoFileInputRef.current) logoFileInputRef.current.value = ""; } else { setConfirmRemoveLogo(true); } }}>
                       {t.remove}
                     </Button>
                   )}
@@ -994,12 +994,12 @@ export default function DefaultQrWrapperModal({
                 <Typography variant="subtitle1" fontWeight={600}>{t.backgroundImage}</Typography>
                 <Stack direction="row" alignItems="center" spacing={2}>
                   {backgroundPreview && <Avatar src={backgroundPreview} variant="square" sx={{ width: 72, height: 72 }} />}
-                  <Button variant="outlined" component="label" size="small">
+                  <Button variant="outlined" component="label" size="small" startIcon={<ICONS.upload />}>
                     {t.upload}
                     <input ref={backgroundFileInputRef} type="file" accept="image/*" hidden onChange={(e) => { setBackgroundFile(e.target.files?.[0] || null); e.target.value = ""; }} />
                   </Button>
                   {backgroundPreview && (
-                    <Button size="small" color="error" variant="text" onClick={() => { if (backgroundFile) { setBackgroundFile(null); setBackgroundImage((p) => ({ ...p, url: "" })); setBackgroundPreview(""); if (backgroundFileInputRef.current) backgroundFileInputRef.current.value = ""; } else { setConfirmRemoveBackground(true); } }}>
+                    <Button size="small" color="error" variant="text" startIcon={<ICONS.delete />} onClick={() => { if (backgroundFile) { setBackgroundFile(null); setBackgroundImage((p) => ({ ...p, url: "" })); setBackgroundPreview(""); if (backgroundFileInputRef.current) backgroundFileInputRef.current.value = ""; } else { setConfirmRemoveBackground(true); } }}>
                       {t.remove}
                     </Button>
                   )}
@@ -1008,11 +1008,11 @@ export default function DefaultQrWrapperModal({
 
                 <Typography variant="subtitle1" fontWeight={600}>{t.brandingMedia}</Typography>
                 <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1 }}>
-                  <Button variant="outlined" component="label" size="small">
+                  <Button variant="outlined" component="label" size="small" startIcon={<ICONS.upload />}>
                     {t.addBrandingMedia}
                     <input ref={brandingFileInputRef} type="file" accept="image/*,video/*" multiple hidden onChange={handleAddBrandingMedia} />
                   </Button>
-                  <Button variant="outlined" color="error" size="small" disabled={brandingMediaItems.length === 0}
+                  <Button variant="outlined" color="error" size="small" startIcon={<ICONS.clear />} disabled={brandingMediaItems.length === 0}
                     onClick={() => { const hasExisting = brandingMediaItems.some((i) => i._id); if (hasExisting) { setConfirmClearAllBranding(true); } else { brandingMediaItems.forEach((i) => { if (i.url?.startsWith("blob:")) URL.revokeObjectURL(i.url); }); setBrandingMediaItems([]); if (brandingFileInputRef.current) brandingFileInputRef.current.value = ""; } }}>
                     {t.clearAllBranding}
                   </Button>

@@ -671,8 +671,8 @@ export default function BadgeCustomizationModal({
             </DialogContent>
 
             <DialogActions sx={{ px: 3, pb: 2 }}>
-                <Button onClick={onClose} variant="outlined">{t.cancel}</Button>
-                <Button onClick={handleSave} variant="contained" color="primary">{t.save}</Button>
+                <Button onClick={onClose} variant="outlined" startIcon={<ICONS.cancel />}>{t.cancel}</Button>
+                <Button onClick={handleSave} variant="contained" color="primary" startIcon={<ICONS.save />}>{t.save}</Button>
             </DialogActions>
         </Dialog>
     );
