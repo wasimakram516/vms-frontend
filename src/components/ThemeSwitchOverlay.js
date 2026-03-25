@@ -251,6 +251,7 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
 
   const isDark = targetMode === "dark";
   const p = PALETTE[targetMode] ?? PALETTE.dark;
+  const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width:600px)").matches;
 
   return (
     <motion.div
@@ -284,7 +285,7 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
         transition={{ duration: FADE_S, ease: [0.34, 1.1, 0.64, 1] }}
         style={{
           position: "relative", zIndex: 1,
-          width: "100%", maxWidth: 400, margin: "0 16px",
+          width: "100%", maxWidth: isDesktop ? 520 : 400, margin: "0 16px",
           padding: "32px 32px 24px", borderRadius: 24,
           border: "1.5px solid transparent",
           backgroundImage: p.cardBgImg,

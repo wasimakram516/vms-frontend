@@ -154,7 +154,7 @@ export default function SinanLoader({
         interactive={false}
         sx={{
           width: "100%",
-          maxWidth: cardMaxWidth,
+          maxWidth: { xs: cardMaxWidth, sm: Math.max(cardMaxWidth, 520) },
           px: { xs: 2.5, sm: 3.5 },
           py: { xs: 3, sm: 3.5 },
           position: "relative",
