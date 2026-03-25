@@ -12,11 +12,11 @@ import {
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { useMessage } from "@/contexts/MessageContext";
-import { verifyOtp } from "@/services/registrationService";
+import { sendOtp, verifyOtp } from "@/services/registrationService";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 
-const OTP_LENGTH = 6;
+const OTP_LENGTH = 4;
 
 export default function RegisterOtpPage() {
   const router = useRouter();
@@ -24,13 +24,43 @@ export default function RegisterOtpPage() {
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
   const [otp, setOtp] = useState(() => Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
+  const [resending, setResending] = useState(false);
   const inputRefs = useRef([]);
 
   useEffect(() => {
-    if (otp.join("").length === OTP_LENGTH && !loading) {
+    const code = otp.join("");
+    if (code.length === OTP_LENGTH && !loading && visitorData.identity) {
       handleVerify();
     }
-  }, [otp, loading]);
+  }, [otp, visitorData.identity]);
+
+  useEffect(() => {
+    let interval;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
+
+  const handleResend = async () => {
+    if (resendTimer > 0 || resending || !visitorData.identity) return;
+
+    setResending(true);
+    try {
+      await sendOtp(visitorData.identity);
+      showMessage("A new code has been sent!", "success");
+      setResendTimer(60);
+      setOtp(Array(OTP_LENGTH).fill(""));
+      inputRefs.current[0]?.focus();
+    } catch (err) {
+      showMessage("Failed to resend code. Please try again later.", "error");
+    } finally {
+      setResending(false);
+    }
+  };
 
   const fillOtp = (startIndex, rawValue) => {
     const digits = rawValue.replace(/\D/g, "");
@@ -87,30 +117,54 @@ export default function RegisterOtpPage() {
     if (code.length < OTP_LENGTH || loading) return;
 
     setLoading(true);
+    console.log(`Verifying OTP: ${code} for Identity: ${visitorData.identity}`);
     try {
       const res = await verifyOtp(visitorData.identity, code);
       if (res.success) {
-        setFlowState((prev) => ({ ...prev, otpVerified: true, ndaAccepted: true, currentStep: "details" }));
-        if (res.user) {
-          setVisitorData((prev) => ({
-            ...prev,
-            userId: res.user.id,
-            fullName: res.user.full_name,
-            email: res.user.email,
-            phone: res.user.phone,
-            dynamicFields: {
+        setFlowState((prev) => ({ 
+          ...prev, 
+          otpVerified: true, 
+          ndaAccepted: true, 
+          currentStep: "details" 
+        }));
+
+        setVisitorData((prev) => {
+          const newData = { ...prev };
+          
+          if (res.user) {
+            newData.userId = res.user.id;
+            newData.fullName = res.user.fullName || prev.fullName;
+            newData.email = res.user.email || prev.email;
+            newData.phone = res.user.phone || prev.phone;
+          }
+
+          if (res.lastFieldValues) {
+            newData.dynamicFields = {
               ...prev.dynamicFields,
-              full_name: res.user.full_name || "",
-              email: res.user.email || (prev.identity?.includes("@") ? prev.identity : ""),
-              phone: res.user.phone || (!prev.identity?.includes("@") ? prev.identity : ""),
+              ...res.lastFieldValues
+            };
+            
+            if (res.user?.fullName && !newData.dynamicFields.full_name) {
+              newData.dynamicFields.full_name = res.user.fullName;
             }
-          }));
-        }
+            if (res.user?.email && !newData.dynamicFields.email) {
+              newData.dynamicFields.email = res.user.email;
+            }
+            if (res.user?.phone && !newData.dynamicFields.phone) {
+              newData.dynamicFields.phone = res.user.phone;
+            }
+          }
+
+          return newData;
+        });
+
         showMessage("Identity verified! Please confirm your details.", "success");
         router.push("/register/details");
       }
     } catch (err) {
       showMessage(err.message || "Invalid OTP", "error");
+      setOtp(Array(OTP_LENGTH).fill(""));
+      inputRefs.current[0]?.focus();
     } finally {
       setLoading(false);
     }
@@ -128,7 +182,7 @@ export default function RegisterOtpPage() {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={2} justifyContent="center" sx={{ my: 2 }}>
+        <Stack direction="row" spacing={1.5} justifyContent="center" sx={{ my: 2 }}>
           {otp.map((digit, i) => (
             <Box
               key={i}
@@ -144,20 +198,22 @@ export default function RegisterOtpPage() {
               autoComplete="one-time-code"
               autoFocus={i === 0}
               sx={{
-                width: { xs: 42, sm: 52 },
-                height: { xs: 55, sm: 65 },
+                width: { xs: 45, sm: 55 },
+                height: { xs: 45, sm: 55 },
                 textAlign: "center",
                 fontSize: "1.2rem",
                 fontWeight: 800,
-                borderRadius: 3,
+                borderRadius: 1,
                 border: (theme) => `2px solid ${alpha(theme.palette.text.primary, 0.1)}`,
                 bgcolor: (theme) => alpha(theme.palette.text.primary, 0.02),
                 color: "text.primary",
                 outline: "none",
+                transition: "all 0.2s ease",
                 "&:focus": {
                   borderColor: "primary.main",
                   bgcolor: "background.paper",
                   boxShadow: (theme) => `0 0 0 4px ${alpha(theme.palette.primary.main, 0.1)}`,
+                  transform: "scale(1.05)",
                 },
               }}
             />
@@ -181,15 +237,16 @@ export default function RegisterOtpPage() {
           <Typography 
             component="span" 
             variant="caption" 
-            onClick={() => {/* resend logic */}}
+            onClick={handleResend}
             sx={{ 
-              color: "primary.main", 
-              cursor: "pointer", 
+              color: resendTimer > 0 || resending ? "text.disabled" : "primary.main", 
+              cursor: resendTimer > 0 || resending ? "default" : "pointer", 
               fontWeight: 700,
-              "&:hover": { textDecoration: "underline" }
+              textDecoration: resendTimer > 0 || resending ? "none" : "hover",
+              "&:hover": { textDecoration: resendTimer > 0 || resending ? "none" : "underline" }
             }}
           >
-            Resend
+            {resending ? "Sending..." : resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend"}
           </Typography>
         </Typography>
 

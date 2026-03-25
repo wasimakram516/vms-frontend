@@ -3,6 +3,7 @@
 import ThemeRegistry from "@/styles/themeRegistry";
 import { MessageProvider } from "@/contexts/MessageContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SocketProvider } from "@/contexts/SocketContext";
 import ClientLayout from "@/utils/ClientLayout";
 import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -128,15 +129,17 @@ export default function ClientRoot({ children }) {
   return (
     <>
       <MessageProvider>
-        <ThemeRegistry>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <AuthProvider>
-              <VisitorProvider>
-                <ClientLayout>{children}</ClientLayout>
-              </VisitorProvider>
-            </AuthProvider>
-          </LocalizationProvider>
-        </ThemeRegistry>
+        <SocketProvider>
+          <ThemeRegistry>
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <AuthProvider>
+                <VisitorProvider>
+                  <ClientLayout>{children}</ClientLayout>
+                </VisitorProvider>
+              </AuthProvider>
+            </LocalizationProvider>
+          </ThemeRegistry>
+        </SocketProvider>
       </MessageProvider>
     </>
   );

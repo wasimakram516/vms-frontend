@@ -34,10 +34,17 @@ export default function HomePage() {
 
   const handleStaffAction = () => {
     if (user) {
-      if (user.role === "staff") navigateWithLoader("/staff/gate/verify");
-      else if (["admin", "superadmin"].includes(user.role))
+      if (user.role === "staff") {
+        if (user.staffType === "kitchen") {
+          navigateWithLoader("/staff/kitchen");
+        } else {
+          navigateWithLoader("/staff/gate/verify");
+        }
+      } else if (["admin", "superadmin"].includes(user.role)) {
         navigateWithLoader("/cms/dashboard");
-      else navigateWithLoader("/auth/login");
+      } else {
+        navigateWithLoader("/auth/login");
+      }
     } else {
       navigateWithLoader("/auth/login");
     }
@@ -154,7 +161,7 @@ export default function HomePage() {
               }
             }}
           >
-            <ICONS.back />
+            <ICONS.home />
           </IconButton>
           <Box textAlign="center">
             <Typography

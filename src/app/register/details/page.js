@@ -61,9 +61,6 @@ export default function DetailsPage() {
       }
     };
     fetchFields();
-
-    if (!flowState.isReturning && Object.keys(visitorData.dynamicFields).length > 0) {
-    }
   }, []);
 
   const handleFieldChange = (key, value) => {
@@ -396,7 +393,7 @@ export default function DetailsPage() {
             <Button
               variant="contained"
               fullWidth
-              disabled={!ndaAccepted}
+              disabled={!ndaAccepted || fields.length === 0}
               startIcon={<ICONS.event />}
               onClick={handleNext}
               sx={{ py: 1.5, borderRadius: 30 }}

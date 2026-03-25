@@ -22,6 +22,9 @@ import {
   FormControl,
   Select,
   InputLabel,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useEffect, useState, useMemo } from "react";
@@ -42,6 +45,8 @@ import DialogHeader from "@/components/modals/DialogHeader";
 import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
+import CountryCodeSelector from "@/components/CountryCodeSelector";
+import { DEFAULT_ISO_CODE } from "@/utils/countryCodes";
 
 const CREATABLE_ROLES = ["admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
@@ -72,7 +77,6 @@ export default function UsersPage() {
     full_name: "",
     email: "",
     password: "",
-    phone: "",
     role: "staff",
     staff_type: "gate",
   };
@@ -109,7 +113,6 @@ export default function UsersPage() {
       full_name: u.full_name || "",
       email: u.email || "",
       password: "",
-      phone: u.phone || "",
       role: u.role || "staff",
       staff_type: u.staff_type || "gate",
     });
@@ -156,7 +159,8 @@ export default function UsersPage() {
         showMessage(res.error || "Operation failed", "error");
       }
     } catch (error) {
-      showMessage("An error occurred", "error");
+      const message = error.response?.data?.message || error.message || "An error occurred";
+      showMessage(message, "error");
     } finally {
       setSubmitting(false);
     }
@@ -184,16 +188,62 @@ export default function UsersPage() {
   };
 
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    const filtered = users.filter((u) => {
       const matchSearch =
         u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         u.email.toLowerCase().includes(searchQuery.toLowerCase());
       const matchRole = roleFilter === "all" || u.role === roleFilter;
       const matchStaffType =
-        staffTypeFilter === "all" || u.staff_type === staffTypeFilter;
+        roleFilter !== "staff" || 
+        staffTypeFilter === "all" || 
+        (u.staff_type && u.staff_type === staffTypeFilter);
       return matchSearch && matchRole && matchStaffType;
     });
+
+    // Sort by role order: superadmin, admin, staff_gate, staff_kitchen, visitor
+    const roleOrder = { superadmin: 0, admin: 1, staff: 2, visitor: 3 };
+    return filtered.sort((a, b) => {
+      let aOrder = roleOrder[a.role] ?? 4;
+      let bOrder = roleOrder[b.role] ?? 4;
+      
+      // For staff, sort by staff_type: gate first, then kitchen
+      if (a.role === "staff" && b.role === "staff") {
+        const staffOrder = { gate: 0, kitchen: 1 };
+        aOrder = 2 + (staffOrder[a.staff_type] ?? 2);
+        bOrder = 2 + (staffOrder[b.staff_type] ?? 2);
+      }
+      
+      return aOrder - bOrder;
+    });
   }, [users, searchQuery, roleFilter, staffTypeFilter]);
+
+  const groupedUsers = useMemo(() => {
+    const groups = {
+      superadmin: [],
+      admin: [],
+      staff_gate: [],
+      staff_kitchen: [],
+      visitor: [],
+    };
+
+    filteredUsers.forEach((u) => {
+      if (u.role === "superadmin") {
+        groups.superadmin.push(u);
+      } else if (u.role === "admin") {
+        groups.admin.push(u);
+      } else if (u.role === "staff") {
+        if (u.staff_type === "gate") {
+          groups.staff_gate.push(u);
+        } else if (u.staff_type === "kitchen") {
+          groups.staff_kitchen.push(u);
+        }
+      } else {
+        groups.visitor.push(u);
+      }
+    });
+
+    return groups;
+  }, [filteredUsers]);
 
   const pagedUsers = useMemo(() => {
     return filteredUsers.slice(
@@ -201,6 +251,34 @@ export default function UsersPage() {
       page * rowsPerPage + rowsPerPage,
     );
   }, [filteredUsers, page, rowsPerPage]);
+
+  const pagedGroupedUsers = useMemo(() => {
+    const groups = {
+      superadmin: [],
+      admin: [],
+      staff_gate: [],
+      staff_kitchen: [],
+      visitor: [],
+    };
+
+    pagedUsers.forEach((u) => {
+      if (u.role === "superadmin") {
+        groups.superadmin.push(u);
+      } else if (u.role === "admin") {
+        groups.admin.push(u);
+      } else if (u.role === "staff") {
+        if (u.staff_type === "gate") {
+          groups.staff_gate.push(u);
+        } else if (u.staff_type === "kitchen") {
+          groups.staff_kitchen.push(u);
+        }
+      } else {
+        groups.visitor.push(u);
+      }
+    });
+
+    return groups;
+  }, [pagedUsers]);
 
   const handleChangePage = (event, newPage) => setPage(newPage);
   const handleChangeRowsPerPage = (event) => {
@@ -215,6 +293,8 @@ export default function UsersPage() {
       case "admin":
         return "primary";
       case "staff":
+      case "staff_gate":
+      case "staff_kitchen":
         return "secondary";
       case "visitor":
         return "success";
@@ -317,7 +397,26 @@ export default function UsersPage() {
               <MenuItem value="staff">Staff</MenuItem>
               <MenuItem value="visitor">Visitor</MenuItem>
             </TextField>
-
+            {roleFilter === "staff" && (
+              <TextField
+                select
+                label="Staff Type"
+                size="small"
+                value={staffTypeFilter}
+                onChange={(e) => {
+                  setStaffTypeFilter(e.target.value);
+                  setPage(0);
+                }}
+                sx={{ minWidth: { xs: "100%", sm: 160 } }}
+              >
+                <MenuItem value="all">All Types</MenuItem>
+                {STAFF_TYPES.map((t) => (
+                  <MenuItem key={t} value={t}>
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
             <FormControl
               size="small"
               sx={{ minWidth: { xs: "100%", sm: 160 } }}
@@ -339,246 +438,283 @@ export default function UsersPage() {
         }
       />
 
-      {pagedUsers.length === 0 ? (
+      {filteredUsers.length === 0 ? (
         <NoDataAvailable
           title="No users found"
-          description="Try adjusting your filters or create a new user."
+          description="Try adjusting your filters or search query."
         />
       ) : (
-        <ResponsiveCardGrid gap={{ xs: 3, md: 3.5 }}>
-          {pagedUsers.map((u) => (
-            <AppCard
-              key={u.id}
+        <>
+          {["superadmin", "admin", "staff_gate", "staff_kitchen", "visitor"].map((role) => {
+            const roleUsers = pagedGroupedUsers[role];
+            if (roleUsers.length === 0) return null;
+
+            const roleLabels = {
+              superadmin: "Super Admins",
+              admin: "Admins",
+              staff_gate: "Gate Staff",
+              staff_kitchen: "Kitchen Staff",
+              visitor: "Visitors",
+            };
+
+        return (
+          <Accordion
+            key={role}
+            defaultExpanded={role !== "visitor"}
+            sx={{
+              mb: 3,
+              borderRadius: "12px !important",
+              overflow: "hidden",
+              border: "1px solid",
+              borderColor: "divider",
+              "&::before": { display: "none" },
+              bgcolor: isDark ? "rgba(255,255,255,0.02)" : "#fff",
+            }}
+          >
+            <AccordionSummary
+              expandIcon={<ICONS.down />}
               sx={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                width: "100%",
+                bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)",
+                borderBottom: "1px solid",
+                borderColor: "divider",
               }}
             >
-              {/* Header: Exact match to registrations */}
-              <Box
-                sx={{
-                  background: isDark
-                    ? "linear-gradient(to right, rgba(255,255,255,0.05), rgba(255,255,255,0.08))"
-                    : "linear-gradient(to right, #f5f5f5, #fafafa)",
-                  borderBottom: "1px solid",
-                  borderColor: "divider",
-                  p: 2,
-                }}
-              >
-                <Stack spacing={0.25}>
-                  <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
-                    <Avatar
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Typography variant="h6" fontWeight={800}>
+                  {roleLabels[role]}
+                </Typography>
+                <Chip
+                  label={roleUsers.length}
+                  size="small"
+                  color={getRoleColor(role)}
+                  sx={{ fontWeight: 800 }}
+                />
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails sx={{ p: 3, bgcolor: "transparent" }}>
+              <ResponsiveCardGrid gap={{ xs: 3, md: 3.5 }}>
+                {roleUsers.map((u) => (
+                  <AppCard
+                    key={u.id}
+                    sx={{
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      width: "100%",
+                    }}
+                  >
+                    {/* Header: Exact match to registrations */}
+                    <Box
                       sx={{
-                        width: 40,
-                        height: 40,
-                        bgcolor: isDark ? "#fff" : "#000",
-                        color: isDark ? "#000" : "#fff",
-                        fontSize: "1rem",
-                        fontWeight: 800,
+                        background: isDark
+                          ? "linear-gradient(to right, rgba(255,255,255,0.05), rgba(255,255,255,0.08))"
+                          : "linear-gradient(to right, #f5f5f5, #fafafa)",
+                        borderBottom: "1px solid",
+                        borderColor: "divider",
+                        p: 2,
                       }}
                     >
-                      {u.full_name
-                        ?.split(" ")
-                        .map((n) => n[0])
-                        .slice(0, 2)
-                        .join("") || "?"}
-                    </Avatar>
-                    <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography
-                        variant="subtitle1"
-                        fontWeight={800}
-                        noWrap
-                        sx={{ lineHeight: 1.2 }}
+                      <Stack spacing={0.25}>
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          sx={{ gap: 1 }}
+                        >
+                          <Avatar
+                            sx={{
+                              width: 40,
+                              height: 40,
+                              bgcolor: isDark ? "#fff" : "#000",
+                              color: isDark ? "#000" : "#fff",
+                              fontSize: "1rem",
+                              fontWeight: 800,
+                            }}
+                          >
+                            {u.full_name
+                              ?.split(" ")
+                              .map((n) => n[0])
+                              .slice(0, 2)
+                              .join("") || "?"}
+                          </Avatar>
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography
+                              variant="subtitle1"
+                              fontWeight={800}
+                              noWrap
+                              sx={{ lineHeight: 1.2 }}
+                            >
+                              {u.full_name}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </Stack>
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={0.6}
+                        sx={{ mt: 1 }}
                       >
-                        {u.full_name}
-                      </Typography>
+                        <Chip
+                          label={u.role.toUpperCase()}
+                          size="small"
+                          color={getRoleColor(u.role)}
+                          icon={
+                            <ICONS.person sx={{ fontSize: "12px !important" }} />
+                          }
+                          sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }}
+                        />
+                        {u.role === "staff" && u.staff_type && (
+                          <Chip
+                            label={u.staff_type.toUpperCase()}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }}
+                          />
+                        )}
+                      </Stack>
                     </Box>
-                  </Stack>
-                </Stack>
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  spacing={0.6}
-                  sx={{ mt: 1 }}
-                >
-                  <Chip
-                    label={u.role.toUpperCase()}
-                    size="small"
-                    color={getRoleColor(u.role)}
-                    icon={<ICONS.person sx={{ fontSize: "12px !important" }} />}
-                    sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }}
-                  />
-                </Stack>
-              </Box>
 
-              {/* Body: Email and Phone rows */}
-              <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    py: 0.8,
-                    borderBottom: "1px solid",
-                    borderColor: "divider",
-                  }}
-                >
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 0.6,
-                      color: "text.secondary",
-                    }}
-                  >
-                    <ICONS.emailOutline
-                      fontSize="small"
-                      sx={{ opacity: 0.6 }}
-                    />{" "}
-                    Email
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontWeight: 600,
-                      ml: 2,
-                      flex: 1,
-                      textAlign: "right",
-                      color: "text.primary",
-                    }}
-                  >
-                    {u.email}
-                  </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    py: 0.8,
-                    borderBottom:
-                      u.role === "staff" && u.staff_type
-                        ? "1px solid"
-                        : "none",
-                    borderColor: "divider",
-                  }}
-                >
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 0.6,
-                      color: "text.secondary",
-                    }}
-                  >
-                    <ICONS.phone fontSize="small" sx={{ opacity: 0.6 }} /> Phone
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontWeight: 600,
-                      ml: 2,
-                      flex: 1,
-                      textAlign: "right",
-                      color: "text.primary",
-                    }}
-                  >
-                    {u.phone || "—"}
-                  </Typography>
-                </Box>
-                {u.role === "staff" && u.staff_type && (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      py: 0.8,
-                      borderBottom: "none",
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 0.6,
-                        color: "text.secondary",
-                      }}
-                    >
-                      <ICONS.business fontSize="small" sx={{ opacity: 0.6 }} />{" "}
-                      Staff Type
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontWeight: 600,
-                        ml: 2,
-                        flex: 1,
-                        textAlign: "right",
-                        color: "text.primary",
-                        textTransform: "capitalize",
-                      }}
-                    >
-                      {u.staff_type}
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-
-              {/* Footer: Icon Buttons */}
-              {isSuperAdmin && (
-                <Box
-                  sx={{
-                    p: 1.5,
-                    borderTop: "1px solid",
-                    borderColor: "divider",
-                    bgcolor: isDark
-                      ? "rgba(255,255,255,0.02)"
-                      : "rgba(0,0,0,0.01)",
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 1,
-                  }}
-                >
-                  <Tooltip title="Edit User">
-                    <IconButton
-                      color="primary"
-                      onClick={() => handleOpenEdit(u)}
-                      size="small"
-                      sx={{
-                        bgcolor: isDark
-                          ? "rgba(255,255,255,0.05)"
-                          : "rgba(0,0,0,0.03)",
-                      }}
-                    >
-                      <ICONS.edit fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  {u.id !== currentUser.id && (
-                    <Tooltip title="Delete User">
-                      <IconButton
-                        color="error"
-                        onClick={() => handleDeleteClick(u)}
-                        size="small"
+                    {/* Body: Email row */}
+                    <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
+                      <Box
                         sx={{
-                          bgcolor: isDark
-                            ? "rgba(255,100,100,0.05)"
-                            : "rgba(255,0,0,0.03)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          py: 0.8,
+                          borderBottom:
+                            u.role === "staff" && u.staff_type
+                              ? "1px solid"
+                              : "none",
+                          borderColor: "divider",
                         }}
                       >
-                        <ICONS.delete fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  )}
-                </Box>
-              )}
-            </AppCard>
-          ))}
-        </ResponsiveCardGrid>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.6,
+                            color: "text.secondary",
+                          }}
+                        >
+                          <ICONS.emailOutline
+                            fontSize="small"
+                            sx={{ opacity: 0.6 }}
+                          />{" "}
+                          Email
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            ml: 2,
+                            flex: 1,
+                            textAlign: "right",
+                            color: "text.primary",
+                          }}
+                        >
+                          {u.email}
+                        </Typography>
+                      </Box>
+
+                      {u.role === "staff" && u.staff_type && (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            py: 0.8,
+                            borderBottom: "none",
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 0.6,
+                              color: "text.secondary",
+                            }}
+                          >
+                            <ICONS.business
+                              fontSize="small"
+                              sx={{ opacity: 0.6 }}
+                            />{" "}
+                            Staff Type
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 600,
+                              ml: 2,
+                              flex: 1,
+                              textAlign: "right",
+                              color: "text.primary",
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {u.staff_type}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+
+                    {/* Footer: Icon Buttons */}
+                    {isSuperAdmin && (
+                      <Box
+                        sx={{
+                          p: 1.5,
+                          borderTop: "1px solid",
+                          borderColor: "divider",
+                          bgcolor: isDark
+                            ? "rgba(255,255,255,0.02)"
+                            : "rgba(0,0,0,0.01)",
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: 1,
+                        }}
+                      >
+                        <Tooltip title="Edit User">
+                          <IconButton
+                            color="primary"
+                            onClick={() => handleOpenEdit(u)}
+                            size="small"
+                            sx={{
+                              bgcolor: isDark
+                                ? "rgba(255,255,255,0.05)"
+                                : "rgba(0,0,0,0.03)",
+                            }}
+                          >
+                            <ICONS.edit fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        {u.id !== currentUser.id && (
+                          <Tooltip title="Delete User">
+                            <IconButton
+                              color="error"
+                              onClick={() => handleDeleteClick(u)}
+                              size="small"
+                              sx={{
+                                bgcolor: isDark
+                                  ? "rgba(255,100,100,0.05)"
+                                  : "rgba(255,0,0,0.03)",
+                              }}
+                            >
+                              <ICONS.delete fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Box>
+                    )}
+                  </AppCard>
+                ))}
+              </ResponsiveCardGrid>
+            </AccordionDetails>
+          </Accordion>
+        );
+      })}
+        </>
       )}
 
       <Box display="flex" justifyContent="center" mt={4}>
@@ -622,12 +758,6 @@ export default function UsersPage() {
               helperText={errors.email}
             />
             <TextField
-              label="Phone"
-              fullWidth
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            />
-            <TextField
               label={isEditMode ? "New Password (optional)" : "Password"}
               type="password"
               fullWidth
@@ -656,7 +786,7 @@ export default function UsersPage() {
               )}
             </TextField>
 
-            {/* {form.role === "staff" && (
+            {form.role === "staff" && (
               <TextField
                 select
                 label="Staff Type"
@@ -670,7 +800,7 @@ export default function UsersPage() {
                   <MenuItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</MenuItem>
                 ))}
               </TextField>
-            )} */}
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>

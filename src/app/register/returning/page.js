@@ -20,10 +20,6 @@ import { sendOtp } from "@/services/registrationService";
 import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
-// Future phone OTP setup:
-// import CountryCodeSelector from "@/components/CountryCodeSelector";
-// import { DEFAULT_ISO_CODE } from "@/utils/countryCodes";
-// import { validatePhoneNumberByCountry } from "@/utils/phoneValidation";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -37,16 +33,6 @@ export default function ReturningVisitorPage() {
   const [method, setMethod] = useState("email");
   const [email, setEmail] = useState(visitorData.identity?.includes("@") ? visitorData.identity : "");
   const [emailError, setEmailError] = useState("");
-  // Future phone OTP setup:
-  // const [phone, setPhone] = useState(
-  //   visitorData.identity && !visitorData.identity.includes("@")
-  //     ? visitorData.identity.replace(/^\+\d+/, "")
-  //     : ""
-  // );
-  // const [phoneIsoCode, setPhoneIsoCode] = useState(
-  //   visitorData.countryIsoCodes?.returningVisitorPhone || DEFAULT_ISO_CODE
-  // );
-  // const [phoneError, setPhoneError] = useState("");
 
   const validateEmail = (value) => {
     const trimmedValue = value.trim();
@@ -61,12 +47,6 @@ export default function ReturningVisitorPage() {
 
     return "";
   };
-
-  // Future phone OTP setup:
-  // const validatePhone = (value, isoCode) => {
-  //   const result = validatePhoneNumberByCountry(value, isoCode);
-  //   return result.valid ? "" : result.error || "Please enter a valid phone number.";
-  // };
 
   const handleNext = async () => {
     const validationError = validateEmail(email);
@@ -85,45 +65,13 @@ export default function ReturningVisitorPage() {
       setFlowState((prev) => ({ ...prev, isReturning: true, currentStep: "otp" }));
       router.push("/register/otp");
     } catch (err) {
-      showMessage("Failed to send OTP. Please try again.", "error");
+      const errorMessage = err.response?.data?.message || err.message || "Failed to send OTP";
+      showMessage(errorMessage, "error");
     } finally {
       setLoading(false);
     }
   };
-
-  // Future phone OTP setup:
-  // const handlePhoneNext = async () => {
-  //   const validationError = validatePhone(phone, phoneIsoCode);
-  //   if (validationError) {
-  //     setPhoneError(validationError);
-  //     showMessage(validationError, "error");
-  //     return;
-  //   }
-  //
-  //   const phoneResult = validatePhoneNumberByCountry(phone, phoneIsoCode);
-  //   const finalIdentity = phoneResult.normalized;
-  //
-  //   setLoading(true);
-  //   try {
-  //     await sendOtp(finalIdentity, "phone");
-  //     setVisitorData((prev) => ({
-  //       ...prev,
-  //       identity: finalIdentity,
-  //       phone: finalIdentity,
-  //       countryIsoCodes: {
-  //         ...(prev.countryIsoCodes || {}),
-  //         returningVisitorPhone: phoneIsoCode,
-  //       },
-  //     }));
-  //     setFlowState((prev) => ({ ...prev, isReturning: true, currentStep: "otp" }));
-  //     router.push("/register/otp");
-  //   } catch (err) {
-  //     showMessage("Failed to send OTP. Please try again.", "error");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
+  
   return (
     <VisitorLayout justifyContent="center">
       <Stack spacing={3}>
@@ -252,54 +200,6 @@ export default function ReturningVisitorPage() {
             <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 320, mx: "auto" }}>
               Returning visitor sign-in by phone will be added in a later update. Please use your email for now.
             </Typography>
-
-            {/* Future phone OTP UI scaffold:
-            <Stack spacing={2.5} sx={{ mt: 3, textAlign: "left" }}>
-              <TextField
-                fullWidth
-                label="Phone Number"
-                type="tel"
-                placeholder="Enter your mobile number"
-                value={phone}
-                error={Boolean(phoneError)}
-                helperText={phoneError}
-                onChange={(e) => {
-                  setPhone(e.target.value);
-                  if (phoneError) {
-                    setPhoneError("");
-                  }
-                }}
-                onBlur={() => setPhoneError(validatePhone(phone, phoneIsoCode))}
-                onKeyDown={(e) => e.key === "Enter" && handlePhoneNext()}
-                InputProps={{
-                  startAdornment: (
-                    <CountryCodeSelector
-                      value={phoneIsoCode}
-                      onChange={(isoCode) => {
-                        setPhoneIsoCode(isoCode);
-                        if (phoneError) {
-                          setPhoneError("");
-                        }
-                      }}
-                    />
-                  ),
-                }}
-                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 4 } }}
-              />
-
-              <Button
-                variant="contained"
-                fullWidth
-                size="large"
-                disabled={loading}
-                onClick={handlePhoneNext}
-                startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <ICONS.phone />}
-                sx={{ py: 1.8, borderRadius: 30, fontWeight: 700 }}
-              >
-                {loading ? "Sending OTP..." : "Send OTP"}
-              </Button>
-            </Stack>
-            */}
           </Box>
         )}
 

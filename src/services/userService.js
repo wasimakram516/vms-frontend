@@ -6,6 +6,7 @@ const mapUserToFrontend = (user) => ({
   email: user.email,
   role: user.role,
   phone: user.phone,
+  iso_code: user.isoCode,
   staff_type: user.staffType,
   status: user.status,
   created_at: user.createdAt,
@@ -27,7 +28,7 @@ export const createAdminUser = async (data) => {
     const res = await api.post("/users/admin", {
       fullName: data.full_name,
       email: data.email,
-      password: data.password,
+      password: data.password || undefined,
     });
     const userData = res.data?.data || res.data;
     return { success: true, data: userData ? mapUserToFrontend(userData) : null };
@@ -42,7 +43,8 @@ export const createStaffUser = async (data) => {
     const res = await api.post("/users/staff", {
       fullName: data.full_name,
       email: data.email,
-      password: data.password,
+      password: data.password || undefined,
+      staffType: data.staff_type,
     });
     const userData = res.data?.data || res.data;
     return { success: true, data: userData ? mapUserToFrontend(userData) : null };
@@ -58,6 +60,7 @@ export const updateUser = async (id, data) => {
       fullName: data.full_name,
       email: data.email,
       role: data.role,
+      staffType: data.staff_type,
       password: data.password || undefined
     });
     const userData = res.data?.data || res.data;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -17,21 +17,27 @@ import {
   ListItemText,
   TextField,
   IconButton,
+  CircularProgress,
 } from "@mui/material";
 
 import QrScanner from "@/components/QrScanner";
+import RoleGuard from "@/components/auth/RoleGuard";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { verifyRegistrationByToken } from "@/services/registrationService";
+import { useSocket } from "@/contexts/SocketContext";
+import { verifyRegistrationByToken, checkInRegistration, checkOutRegistration } from "@/services/registrationService";
+import { formatDate, formatTime } from "@/utils/dateUtils";
 
 const STATUS_CONFIG = {
-  approved:    { label: "Approved",   color: "success" },
   pending:     { label: "Pending",    color: "warning" },
+  approved:    { label: "Approved",   color: "success" },
   rejected:    { label: "Rejected",   color: "error" },
   checked_in:  { label: "Checked In", color: "info" },
   checked_out: { label: "Checked Out",color: "default" },
+  cancelled:   { label: "Cancelled",  color: "default" },
+  expired:     { label: "Expired",    color: "default" },
 };
 
 export default function StaffVerifyPage() {
@@ -42,6 +48,7 @@ export default function StaffVerifyPage() {
   const [manualMode, setManualMode] = useState(false);
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const scanningRef = useRef(false);
@@ -54,20 +61,13 @@ export default function StaffVerifyPage() {
     
     try {
       const res = await verifyRegistrationByToken(input);
-      // Mock result
-      const mockRes = res || (input.toUpperCase().startsWith("SN-") ? {
-        token: input.toUpperCase(),
-        full_name: "Sara Al-Mutairi",
-        email: "sara@example.com",
-        purpose_of_visit: "Interview",
-        status: "approved",
-        requested_date: "2026-03-16",
-      } : { error: true, message: "Invalid or unknown token." });
-
-      if (mockRes.error) {
-        setError(mockRes.message);
+      
+      if (res?.error) {
+        setError(res.message);
+      } else if (res) {
+        setResult(res);
       } else {
-        setResult(mockRes);
+        setError("Invalid or unknown token.");
       }
     } catch (err) {
       setError("An error occurred during verification.");
@@ -84,6 +84,34 @@ export default function StaffVerifyPage() {
     setTimeout(() => { scanningRef.current = false; }, 600);
   }, [doVerify]);
 
+  const handleCheckIn = async () => {
+    if (!result?.id) return;
+    setActionLoading(true);
+    try {
+      const updated = await checkInRegistration(result.id);
+      setResult(updated);
+      showMessage("Visitor checked in successfully", "success");
+    } catch (err) {
+      showMessage(err.response?.data?.message || "Failed to check in", "error");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    if (!result?.id) return;
+    setActionLoading(true);
+    try {
+      const updated = await checkOutRegistration(result.id);
+      setResult(updated);
+      showMessage("Visitor checked out successfully", "success");
+    } catch (err) {
+      showMessage(err.response?.data?.message || "Failed to check out", "error");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const reset = () => {
     setToken("");
     setResult(null);
@@ -92,17 +120,49 @@ export default function StaffVerifyPage() {
     setManualMode(false);
   };
 
+  const { on } = useSocket();
+
+  useEffect(() => {
+    const unsub = on("registration:updated", (updatedReg) => {
+      if (result && result.id === updatedReg.id) {
+        const isAccessible = ["approved", "checked_in", "checked_out"].includes(updatedReg.status);
+        
+        const mappedReg = {
+          id: updatedReg.id,
+          full_name: updatedReg.user?.fullName || "N/A",
+          email: updatedReg.user?.email || "N/A",
+          phone: updatedReg.user?.phone || "N/A",
+          purpose_of_visit: updatedReg.purposeOfVisit,
+          status: updatedReg.status,
+          approved_date_from: updatedReg.approvedDateFrom,
+          approved_date_to: updatedReg.approvedDateTo,
+          approved_time_from: updatedReg.approvedTimeFrom,
+          approved_time_to: updatedReg.approvedTimeTo,
+          qr_token: updatedReg.qrToken,
+          notApproved: !isAccessible,
+          visitor: updatedReg.visitor,
+          user: updatedReg.user,
+          ...updatedReg
+        };
+        setResult(mappedReg);
+        showMessage("Visitor status was updated.", "info");
+      }
+    });
+    return () => unsub?.();
+  }, [result?.id, on, showMessage]);
+
   const sc = result ? (STATUS_CONFIG[result.status] || { label: result.status, color: "default" }) : null;
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ py: 4 }}>
-        <Typography variant="h4" fontWeight={800} gutterBottom textAlign="center" color="primary.main" sx={{ fontFamily: "'Comfortaa', cursive" }}>
-          Gate Check-in
-        </Typography>
-        <Typography color="text.secondary" textAlign="center" sx={{ mb: 4 }}>
-          Scan visitor QR or enter token manually to grant access.
-        </Typography>
+    <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
+      <Container maxWidth="sm">
+        <Box sx={{ py: 4 }}>
+          <Typography variant="h4" fontWeight={800} gutterBottom textAlign="center" color="primary.main" sx={{ fontFamily: "'Comfortaa', cursive" }}>
+            Gate Check-in
+          </Typography>
+          <Typography color="text.secondary" textAlign="center" sx={{ mb: 4 }}>
+            Scan visitor QR or enter token manually to grant access.
+          </Typography>
 
         {/* Home / Choice State */}
         {!showScanner && !loading && !result && !error && (
@@ -161,7 +221,6 @@ export default function StaffVerifyPage() {
           </Paper>
         )}
 
-        {/* Scanning State */}
         {showScanner && (
           <QrScanner 
             onScanSuccess={handleScanSuccess}
@@ -170,14 +229,12 @@ export default function StaffVerifyPage() {
           />
         )}
 
-        {/* Loading State */}
         {loading && (
           <LoadingState
             cardMaxWidth={380}
           />
         )}
 
-        {/* Success / Result State */}
         {result && (
           <Paper elevation={0} sx={{ p: 3, borderRadius: 4, border: `1px solid ${sc.color === "success" ? (isDark ? "rgba(46,125,50,0.5)" : "rgba(46,125,50,0.3)") : "divider"}`, bgcolor: "background.paper" }}>
             <Stack direction="row" alignItems="center" spacing={2} mb={3}>
@@ -192,33 +249,87 @@ export default function StaffVerifyPage() {
             
             <Divider sx={{ mb: 2 }} />
             
-            <List dense disablePadding>
-              {[
-                { icon: ICONS.person, label: "Name", value: result.full_name },
-                { icon: ICONS.event, label: "Purpose", value: result.purpose_of_visit },
-                { icon: ICONS.time, label: "Visit Date", value: result.requested_date },
-                { icon: ICONS.key, label: "Token", value: result.token },
-              ].map((item) => (
-                <ListItem key={item.label} disablePadding sx={{ py: 0.8 }}>
-                  <ListItemIcon sx={{ minWidth: 36, color: "primary.main" }}><item.icon fontSize="small" /></ListItemIcon>
-                  <ListItemText 
-                    primary={item.label} 
-                    secondary={item.value} 
-                    primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600 }}
-                    secondaryTypographyProps={{ variant: "body1", color: "text.primary", fontWeight: 500 }}
-                  />
-                </ListItem>
-              ))}
-            </List>
+            {/* Not Approved - Show Minimal Details */}
+            {result.notApproved ? (
+              <List dense disablePadding>
+                {[
+                  { icon: ICONS.person, label: "Name", value: result.visitor?.fullName || result.full_name },
+                  { icon: ICONS.business, label: "Company", value: result.visitor?.companyName || result.user?.companyName || "N/A" },
+                  { icon: ICONS.info, label: "Purpose", value: result.visitor?.purposeOfVisit || result.purpose_of_visit },
+                ].map((item) => (
+                  <ListItem key={item.label} disablePadding sx={{ py: 0.8 }}>
+                    <ListItemIcon sx={{ minWidth: 36, color: "primary.main" }}><item.icon fontSize="small" /></ListItemIcon>
+                    <ListItemText 
+                      primary={item.label} 
+                      secondary={item.value} 
+                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600 }}
+                      secondaryTypographyProps={{ variant: "body1", color: "text.primary", fontWeight: 500 }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              /* Approved - Show Full Details */
+              <List dense disablePadding>
+                {[
+                  { icon: ICONS.person, label: "Name", value: result.full_name },
+                  { icon: ICONS.business, label: "Company", value: result.user?.companyName || "N/A" },
+                  { icon: ICONS.info, label: "Purpose", value: result.purpose_of_visit },
+                  { icon: ICONS.event, label: "Approved From", value: result.approved_date_from ? formatDate(result.approved_date_from) : "—" },
+                  { icon: ICONS.event, label: "Approved To", value: result.approved_date_to ? formatDate(result.approved_date_to) : "—" },
+                  { icon: ICONS.time, label: "Time", value: `${result.approved_time_from ? formatTime(result.approved_time_from) : "—"} - ${result.approved_time_to ? formatTime(result.approved_time_to) : "—"}` },
+                ].map((item) => (
+                  <ListItem key={item.label} disablePadding sx={{ py: 0.8 }}>
+                    <ListItemIcon sx={{ minWidth: 36, color: "primary.main" }}><item.icon fontSize="small" /></ListItemIcon>
+                    <ListItemText 
+                      primary={item.label} 
+                      secondary={item.value} 
+                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600 }}
+                      secondaryTypographyProps={{ variant: "body1", color: "text.primary", fontWeight: 500 }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
 
             <Stack direction="row" spacing={2} mt={4}>
-              <Button fullWidth variant="contained" color="success" startIcon={<ICONS.checkCircle />} onClick={reset}>Grant</Button>
-              <Button fullWidth variant="outlined" startIcon={<ICONS.check />} onClick={reset}>Finish</Button>
+              {result.notApproved ? (
+                <Button fullWidth variant="outlined" startIcon={<ICONS.close />} onClick={reset}>Close</Button>
+              ) : (
+                <>
+                  {result.status === "approved" && (
+                    <Button 
+                      fullWidth 
+                      variant="contained" 
+                      color="success" 
+                      startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
+                      onClick={handleCheckIn}
+                      disabled={actionLoading}
+                    >
+                      Check In
+                    </Button>
+                  )}
+                  {result.status === "checked_in" && (
+                    <Button 
+                      fullWidth 
+                      variant="contained" 
+                      color="info" 
+                      startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
+                      onClick={handleCheckOut}
+                      disabled={actionLoading}
+                    >
+                      Check Out
+                    </Button>
+                  )}
+                  {(result.status === "checked_out" || result.status === "checked_in") && (
+                    <Button fullWidth variant="outlined" startIcon={<ICONS.check />} onClick={reset}>Close</Button>
+                  )}
+                </>
+              )}
             </Stack>
           </Paper>
         )}
 
-        {/* Error State */}
         {error && (
           <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: `1px solid ${isDark ? "rgba(211,47,47,0.5)" : "rgba(211,47,47,0.2)"}`, textAlign: "center", bgcolor: "background.paper" }}>
             <ICONS.errorOutline sx={{ fontSize: 64, color: "error.main", mb: 2 }} />
@@ -227,7 +338,8 @@ export default function StaffVerifyPage() {
             <Button variant="contained" color="error" fullWidth startIcon={<ICONS.refresh />} onClick={reset} sx={{ borderRadius: 3 }}>Retry</Button>
           </Paper>
         )}
-      </Box>
-    </Container>
+        </Box>
+      </Container>
+    </RoleGuard>
   );
 }

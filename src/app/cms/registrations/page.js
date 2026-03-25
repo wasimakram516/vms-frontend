@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -28,6 +28,7 @@ import {
 import { alpha } from "@mui/material/styles";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useMessage } from "@/contexts/MessageContext";
+import { useSocket } from "@/contexts/SocketContext";
 import ICONS from "@/utils/iconUtil";
 import DateTimeFieldFlatpickr from "@/components/forms/DateTimeFieldFlatpickr";
 import AppCard from "@/components/cards/AppCard";
@@ -42,6 +43,8 @@ import {
   updateRegistrationStatus,
   getRegistrationById,
   updateRegistration,
+  checkInRegistration,
+  checkOutRegistration,
 } from "@/services/registrationService";
 import {
   formatDate,
@@ -99,21 +102,30 @@ const toTitleCase = (value) =>
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
 const buildScheduleText = (
-  dateValue,
+  dateFrom,
+  dateTo,
   timeFrom,
   timeTo,
   emptyLabel = "Not scheduled yet",
 ) => {
-  if (!dateValue) {
+  if (!dateFrom && !dateTo) {
     return emptyLabel;
+  }
+
+  const dateFromFormatted = formatDate(dateFrom);
+  const dateToFormatted = formatDate(dateTo);
+  
+  let dateText = dateFromFormatted;
+  if (dateToFormatted && dateFromFormatted !== dateToFormatted) {
+    dateText = `${dateFromFormatted} to ${dateToFormatted}`;
   }
 
   const timeParts = [formatTime(timeFrom), formatTime(timeTo)].filter(Boolean);
   if (!timeParts.length) {
-    return formatDate(dateValue);
+    return dateText;
   }
 
-  return `${formatDate(dateValue)}, ${timeParts.join(" - ")}`;
+  return `${dateText}, ${timeParts.join(" - ")}`;
 };
 
 const normalizeFieldIdentifier = (value) =>
@@ -211,6 +223,30 @@ export default function CmsRegistrationsPage() {
     fetchData();
   }, [statusFilter]);
 
+  const { on } = useSocket();
+
+  useEffect(() => {
+    const unsubNew = on("registration:new", () => {
+      fetchData();
+    });
+
+    const unsubUpdated = on("registration:updated", (updatedReg) => {
+      fetchData();
+      if (selected?.id === updatedReg.id) {
+        getRegistrationById(updatedReg.id).then((fullDetail) => {
+          setSelected(fullDetail);
+        }).catch((err) => {
+          console.error("Failed to update selected registration", err);
+        });
+      }
+    });
+
+    return () => {
+      unsubNew?.();
+      unsubUpdated?.();
+    };
+  }, [selected?.id, on]);
+
   useEffect(() => {
     if (selected) {
       setSelectedTab("details");
@@ -227,7 +263,7 @@ export default function CmsRegistrationsPage() {
     setSelected(null);
   };
 
-  const handleOpenProfile = async (row) => {
+  const handleOpenProfile = useCallback(async (row) => {
     setFetchingProfile(true);
     try {
       const fullDetail = await getRegistrationById(row.id);
@@ -237,7 +273,7 @@ export default function CmsRegistrationsPage() {
     } finally {
       setFetchingProfile(false);
     }
-  };
+  }, [showMessage]);
 
   const applyStatusChange = async (nextStatus, rejectionReason = "") => {
     if (!selected || !nextStatus || nextStatus === selected.status) {
@@ -250,7 +286,8 @@ export default function CmsRegistrationsPage() {
     if (nextStatus === "approved") {
       request = () =>
         updateRegistrationStatus(selected.id, "approve", {
-          approvedDate: selected.approved_date || selected.requested_date,
+          approvedDateFrom: selected.approved_date_from || selected.requested_date_from,
+          approvedDateTo: selected.approved_date_to || selected.requested_date_to,
           approvedTimeFrom:
             selected.approved_time_from ||
             selected.requested_time_from ||
@@ -329,36 +366,81 @@ export default function CmsRegistrationsPage() {
     await applyStatusChange("rejected", rejectionReasonDraft);
   };
 
+  const handleCheckIn = async () => {
+    if (!selected?.id) return;
+    setActionLoading(true);
+    try {
+      const updated = await checkInRegistration(selected.id);
+      setSelected(updated);
+      showMessage("Visitor checked in successfully", "success");
+    } catch (err) {
+      showMessage(err.response?.data?.message || "Failed to check in", "error");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    if (!selected?.id) return;
+    setActionLoading(true);
+    try {
+      const updated = await checkOutRegistration(selected.id);
+      setSelected(updated);
+      showMessage("Visitor checked out successfully", "success");
+    } catch (err) {
+      showMessage(err.response?.data?.message || "Failed to check out", "error");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const filtered = useMemo(() => {
-    return data
-      .filter((r) => {
-        const matchSearch = [r.full_name, r.email, r.purpose_of_visit]
-          .join(" ")
-          .toLowerCase()
-          .includes(search.toLowerCase());
-        const matchStatus = statusFilter === "all" || r.status === statusFilter;
+    const matched = data.filter((r) => {
+      const matchSearch = [r.full_name, r.email, r.purpose_of_visit]
+        .join(" ")
+        .toLowerCase()
+        .includes(search.toLowerCase());
+      const matchStatus = statusFilter === "all" || r.status === statusFilter;
 
-        let matchDate = true;
-        if (dateFilter) {
-          const filterStr = (
-            typeof dateFilter === "string"
-              ? dateFilter
-              : dateFilter.toISOString()
-          )
-            .split(" ")[0]
-            .split("T")[0];
-          matchDate = r.requested_date === filterStr;
-        }
+      let matchDate = true;
+      if (dateFilter) {
+        const filterStr = (
+          typeof dateFilter === "string"
+            ? dateFilter
+            : dateFilter.toISOString()
+        )
+          .split(" ")[0]
+          .split("T")[0];
+        matchDate = r.requested_date === filterStr;
+      }
 
-        let matchTime = true;
-        if (timeFilter.enabled && timeFilter.hour12) {
-          const selectedTime24 = `${String(timeFilter.ampm === "PM" ? (parseInt(timeFilter.hour12) % 12) + 12 : parseInt(timeFilter.hour12) % 12).padStart(2, "0")}:${timeFilter.minute}:00`;
-          matchTime = r.requested_time_from >= selectedTime24;
-        }
+      let matchTime = true;
+      if (timeFilter.enabled && timeFilter.hour12) {
+        const selectedTime24 = `${String(
+          timeFilter.ampm === "PM"
+            ? (parseInt(timeFilter.hour12) % 12) + 12
+            : parseInt(timeFilter.hour12) % 12,
+        ).padStart(2, "0")}:${timeFilter.minute}:00`;
+        matchTime = r.requested_time_from >= selectedTime24;
+      }
 
-        return matchSearch && matchStatus && matchDate && matchTime;
-      })
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      return matchSearch && matchStatus && matchDate && matchTime;
+    });
+
+    const uniqueByVisitor = [];
+    const seenEmails = new Set();
+    
+    const sortedMatched = [...matched].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    for (const r of sortedMatched) {
+      const visitorKey = r.email?.toLowerCase() || r.id;
+      if (!seenEmails.has(visitorKey)) {
+        seenEmails.add(visitorKey);
+        uniqueByVisitor.push(r);
+      }
+    }
+
+    return uniqueByVisitor;
   }, [data, search, statusFilter, dateFilter, timeFilter]);
 
   const pagedRows = useMemo(() => {
@@ -521,9 +603,7 @@ export default function CmsRegistrationsPage() {
                 return (
                   <AppCard
                     key={row.id}
-                    onClick={() => !fetchingProfile && handleOpenProfile(row)}
                     sx={{
-                      cursor: "pointer",
                       opacity: fetchingProfile ? 0.7 : 1,
                       height: "100%",
                       width: "100%",
@@ -684,7 +764,7 @@ export default function CmsRegistrationsPage() {
                           {row.purpose_of_visit || "—"}
                         </Typography>
                       </Box>
-                      {row.requested_date && (
+                      {(row.requested_date_from || row.requested_date_to) && (
                         <Box
                           sx={{
                             display: "flex",
@@ -714,7 +794,9 @@ export default function CmsRegistrationsPage() {
                               variant="body2"
                               sx={{ fontWeight: 600, color: "text.primary" }}
                             >
-                              {formatDate(row.requested_date)}
+                              {row.requested_date_from && row.requested_date_to && row.requested_date_from !== row.requested_date_to
+                                ? `${formatDate(row.requested_date_from)} to ${formatDate(row.requested_date_to)}`
+                                : formatDate(row.requested_date_from || row.requested_date_to)}
                             </Typography>
                             {(row.requested_time_from ||
                               row.requested_time_to) && (
@@ -1006,13 +1088,26 @@ export default function CmsRegistrationsPage() {
                         <Typography variant="h6" fontWeight={800}>
                           {selected.full_name}
                         </Typography>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ mt: 0.4 }}
+                        <Stack
+                          direction="row"
+                          spacing={2}
+                          sx={{ mt: 0.4, flexWrap: "wrap", gap: 1 }}
                         >
-                          {selected.email || "No email provided"}
-                        </Typography>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                          >
+                            <ICONS.emailOutline fontSize="inherit" /> {selected.email || "No email"}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                          >
+                            <ICONS.phone fontSize="inherit" /> {selected.phone || "No phone"}
+                          </Typography>
+                        </Stack>
                         <Chip
                           label={sc.label}
                           color={sc.color}
@@ -1092,19 +1187,10 @@ export default function CmsRegistrationsPage() {
                           }}
                         >
                           <InfoItem
-                            label="Email Address"
-                            value={selected.email}
-                            icon={<ICONS.emailOutline fontSize="small" />}
-                          />
-                          <InfoItem
-                            label="Phone Number"
-                            value={selected.phone}
-                            icon={<ICONS.phone fontSize="small" />}
-                          />
-                          <InfoItem
                             label="Requested Schedule"
                             value={buildScheduleText(
-                              selected.requested_date,
+                              selected.requested_date_from,
+                              selected.requested_date_to,
                               selected.requested_time_from,
                               selected.requested_time_to,
                               "Not provided",
@@ -1114,19 +1200,33 @@ export default function CmsRegistrationsPage() {
                           <InfoItem
                             label="Approved Schedule"
                             value={buildScheduleText(
-                              selected.approved_date,
+                              selected.approved_date_from,
+                              selected.approved_date_to,
                               selected.approved_time_from,
                               selected.approved_time_to,
                               "Pending approval",
                             )}
                             icon={<ICONS.checkCircle fontSize="small" />}
                           />
-                          <InfoItem
+                           <InfoItem
                             label="Purpose of Visit"
                             value={selected.purpose_of_visit}
                             icon={<ICONS.info fontSize="small" />}
-                            sx={{ gridColumn: { md: "1 / -1" } }}
                           />
+                          {selected.checked_in_at && (
+                            <InfoItem
+                              label="Check-in Time"
+                              value={formatDateTimeWithLocale(selected.checked_in_at)}
+                              icon={<ICONS.login fontSize="small" />}
+                            />
+                          )}
+                          {selected.checked_out_at && (
+                            <InfoItem
+                              label="Check-out Time"
+                              value={formatDateTimeWithLocale(selected.checked_out_at)}
+                              icon={<ICONS.logout fontSize="small" />}
+                            />
+                          )}
                         </Box>
                       </Box>
 
@@ -1374,6 +1474,81 @@ export default function CmsRegistrationsPage() {
                     </Button>
                   </Stack>
                 )}
+
+              {/* Check-in/Check-out Section - Only for Approved Registrations */}
+              {selected?.status === "approved" && (
+                <Stack spacing={1.25}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: "block",
+                      color: "text.secondary",
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Check-in / Check-out
+                  </Typography>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="success"
+                    startIcon={
+                      actionLoading ? (
+                        <CircularProgress size={18} color="inherit" />
+                      ) : (
+                        <ICONS.login />
+                      )
+                    }
+                    disabled={actionLoading}
+                    onClick={handleCheckIn}
+                    sx={{
+                      borderRadius: 30,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Check In
+                  </Button>
+                </Stack>
+              )}
+
+              {selected?.status === "checked_in" && (
+                <Stack spacing={1.25}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: "block",
+                      color: "text.secondary",
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Check-in / Check-out
+                  </Typography>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="info"
+                    startIcon={
+                      actionLoading ? (
+                        <CircularProgress size={18} color="inherit" />
+                      ) : (
+                        <ICONS.logout />
+                      )
+                    }
+                    disabled={actionLoading}
+                    onClick={handleCheckOut}
+                    sx={{
+                      borderRadius: 30,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Check Out
+                  </Button>
+                </Stack>
+              )}
             </Stack>
           </Stack>
         </DialogActions>
@@ -1488,7 +1663,8 @@ function PreviousVisitCard({ visit }) {
         <InfoItem
           label="Requested Schedule"
           value={buildScheduleText(
-            visit.requested_date,
+            visit.requested_date_from,
+            visit.requested_date_to,
             visit.requested_time_from,
             visit.requested_time_to,
             "Not provided",
@@ -1498,32 +1674,28 @@ function PreviousVisitCard({ visit }) {
         <InfoItem
           label="Approved Schedule"
           value={buildScheduleText(
-            visit.approved_date,
+            visit.approved_date_from,
+            visit.approved_date_to,
             visit.approved_time_from,
             visit.approved_time_to,
             "Not approved",
           )}
           icon={<ICONS.checkCircle fontSize="small" />}
         />
-        <InfoItem
-          label="Visitor Status"
-          value={statusConfig.label}
-          icon={<ICONS.history fontSize="small" />}
-        />
-        {visit.checked_in_at ? (
+        {visit.checked_in_at && (
           <InfoItem
-            label="Checked In"
+            label="Check-in Time"
             value={formatDateTimeWithLocale(visit.checked_in_at)}
             icon={<ICONS.login fontSize="small" />}
           />
-        ) : null}
-        {visit.checked_out_at ? (
+        )}
+        {visit.checked_out_at && (
           <InfoItem
-            label="Checked Out"
+            label="Check-out Time"
             value={formatDateTimeWithLocale(visit.checked_out_at)}
             icon={<ICONS.logout fontSize="small" />}
           />
-        ) : null}
+        )}
         {visit.rejection_reason ? (
           <InfoItem
             label="Rejection Reason"

@@ -7,6 +7,7 @@ const VisitorContext = createContext();
 export const VisitorProvider = ({ children }) => {
   const [visitorData, setVisitorData] = useState({
     identity: "", // email or phone
+    userId: null,
     iso_code: "KW",
     fullName: "",
     email: "",
@@ -31,6 +32,7 @@ export const VisitorProvider = ({ children }) => {
   const resetVisitorFlow = () => {
     setVisitorData({
       identity: "",
+      userId: null,
       iso_code: "KW",
       fullName: "",
       email: "",

@@ -6,6 +6,7 @@ import {
   Button,
   CircularProgress,
   GlobalStyles,
+  IconButton,
   InputAdornment,
   TextField,
   Typography,
@@ -37,7 +38,6 @@ export default function LoginPage() {
   const { mode } = useColorMode();
   const isDark = mode === "dark";
 
-  // Redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
       if (user.role === "staff") {
@@ -51,6 +51,7 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const onChange = (e) => {
     const { name, value } = e.target;
@@ -97,23 +98,42 @@ export default function LoginPage() {
       subtitle="Enter your credentials to access the Sinan VMS management tools."
       justifyContent="center"
     >
-      <Box component="form" onSubmit={onSubmit}>
-        <Typography
+      <Box sx={{ position: "relative", mb: 4 }}>
+        <IconButton
+          onClick={() => router.push("/")}
           sx={{
-            fontFamily: "'Comfortaa', cursive",
-            fontSize: "1.6rem",
-            fontWeight: 800,
-            color: "text.primary",
-            mb: 0.5,
-            textAlign: "center"
+            position: "absolute",
+            left: -8,
+            top: -10,
+            bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+            "&:hover": { 
+              bgcolor: "primary.main", 
+              color: isDark ? "#000" : "#fff" 
+            }
           }}
         >
-          Staff sign in
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 4, textAlign: "center" }}>
-          Enter your credentials to access the{" "}
-          <strong>{"Sinan VMS"}</strong> portal.
-        </Typography>
+          <ICONS.home />
+        </IconButton>
+        <Box textAlign="center">
+          <Typography
+            sx={{
+              fontFamily: "'Comfortaa', cursive",
+              fontSize: "1.6rem",
+              fontWeight: 800,
+              color: "text.primary",
+              mb: 0.5,
+              textAlign: "center"
+            }}
+          >
+            Staff sign in
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+            Enter your credentials to access the{" "}
+            <strong>{"Sinan VMS"}</strong> portal.
+          </Typography>
+        </Box>
+      </Box>
+      <Box component="form" onSubmit={onSubmit}>
 
         <TextField
           fullWidth
@@ -138,7 +158,7 @@ export default function LoginPage() {
           fullWidth
           label="Password"
           name="password"
-          type="password"
+          type={showPassword ? "text" : "password"}
           value={form.password}
           onChange={onChange}
           error={Boolean(errors.password)}
@@ -148,6 +168,17 @@ export default function LoginPage() {
             startAdornment: (
               <InputAdornment position="start">
                 <ICONS.key sx={{ color: "text.secondary", fontSize: 18 }} />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  aria-label="toggle password visibility"
+                  onClick={() => setShowPassword(!showPassword)}
+                  edge="end"
+                >
+                  {showPassword ? <ICONS.hide /> : <ICONS.view />}
+                </IconButton>
               </InputAdornment>
             ),
           }}

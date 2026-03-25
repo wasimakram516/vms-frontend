@@ -11,7 +11,9 @@ import {
   MenuItem,
   TextField,
   CircularProgress,
-  alpha 
+  alpha,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
@@ -39,11 +41,13 @@ const TIME_SLOTS = [
 export default function BookingPage() {
   const router = useRouter();
   const { showMessage } = useMessage();
-  const { visitorData, bookingData, setBookingData, resetVisitorFlow } = useVisitor();
+  const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow } = useVisitor();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
+  const [bookingType, setBookingType] = useState("custom"); // "custom" or "preset"
+  const [selectedPreset, setSelectedPreset] = useState("fullDay"); // "fullDay", "fullWeek", "fullMonth"
 
   const handleDateChange = (newDate) => {
     setBookingData((prev) => ({ ...prev, date: newDate }));
@@ -57,7 +61,7 @@ export default function BookingPage() {
     setBookingData((prev) => {
       const newData = { ...prev, [type]: time24 };
       
-      if (type === "timeFrom" && newData.timeTo <= time24) {
+      if (bookingType === "custom" && type === "timeFrom" && newData.timeTo <= time24) {
          let [h, m] = time24.split(":").map(Number);
          h = (h + 1) % 24;
          newData.timeTo = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
@@ -143,15 +147,46 @@ export default function BookingPage() {
 
     setSubmitting(true);
     try {
+      const isReturning = !!visitorData.userId;
+      const { email, phone, ...otherFields } = visitorData.dynamicFields;
+      
+      let fromDate, toDate;
+      if (bookingType === "preset") {
+        const date = bookingData.date;
+        let from = date.clone();
+        let to = date.clone();
+
+        if (selectedPreset === "fullDay") {
+          from = from.startOf("day");
+          to = to.endOf("day");
+        } else if (selectedPreset === "fullWeek") {
+          from = from.startOf("day");
+          to = to.add(6, "days").endOf("day");
+        } else if (selectedPreset === "fullMonth") {
+          from = from.startOf("day");
+          to = to.add(30, "days").endOf("day");
+        }
+
+        fromDate = from.format("YYYY-MM-DD");
+        toDate = to.format("YYYY-MM-DD");
+      } else {
+        fromDate = bookingData.date.format("YYYY-MM-DD");
+        toDate = bookingData.date.format("YYYY-MM-DD");
+      }
+      
       const payload = {
-        user_id: visitorData.userId,
-        field_values: visitorData.dynamicFields,
-        requested_date: bookingData.date.format("YYYY-MM-DD"),
-        requested_time_from: `${bookingData.timeFrom}:00`,
-        requested_time_to: `${bookingData.timeTo}:00`,
-        purpose_of_visit: visitorData.purposeOfVisit || "General Visit",
+        userId: visitorData.userId,
+        requestedDateFrom: fromDate,
+        requestedDateTo: toDate,
+        requestedTimeFrom: bookingData.timeFrom,
+        requestedTimeTo: bookingData.timeTo,
+        purposeOfVisit: visitorData.purposeOfVisit || "Follow-up visit",
+        fieldValues: isReturning 
+          ? { ...otherFields, full_name: visitorData.fullName || otherFields.full_name }
+          : { ...visitorData.dynamicFields, full_name: visitorData.fullName || visitorData.dynamicFields.full_name },
       };
 
+      console.log("Submitting Registration Payload:", payload);
       const res = await createRegistration(payload);
       setSuccess(res);
       showMessage("Registration submitted successfully!", "success");
@@ -230,24 +265,186 @@ export default function BookingPage() {
                 disablePast
               />
             </Box>
-          </Grid>
 
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                2. Purpose of Visit
+              </Typography>
+              <TextField
+                fullWidth
+                multiline
+                rows={2}
+                value={visitorData.purposeOfVisit || ""}
+                onChange={(e) => setVisitorData((prev) => ({ ...prev, purposeOfVisit: e.target.value }))}
+                sx={{ 
+                  "& .MuiOutlinedInput-root": { borderRadius: 3 }
+                }}
+              />
+            </Box>
+          </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-              2. Select Time Range
+              3. Select Time
             </Typography>
-            <Stack spacing={3}>
-              {renderTimeDropdowns("timeFrom", "Expected Arrival (From)")}
-              {renderTimeDropdowns("timeTo", "Expected Departure (To)")}
+            <Stack spacing={2}>
+              {/* Toggle between Custom and Preset using Tabs */}
+              <Tabs
+                value={bookingType}
+                onChange={(_, value) => setBookingType(value)}
+                variant="fullWidth"
+                sx={{
+                  minHeight: 46,
+                  bgcolor: (theme) => alpha(theme.palette.text.primary, isDark ? 0.06 : 0.04),
+                  borderRadius: 999,
+                  p: 0.5,
+                  "& .MuiTabs-indicator": { display: "none" },
+                }}
+              >
+                <Tab
+                  value="custom"
+                  icon={<ICONS.time fontSize="small" />}
+                  iconPosition="start"
+                  label="Custom"
+                  sx={{
+                    minHeight: 38,
+                    borderRadius: 999,
+                    fontWeight: 800,
+                    textTransform: "none",
+                    "&.Mui-selected": {
+                      bgcolor: "background.paper",
+                      color: "text.primary",
+                      boxShadow: "0 6px 14px rgba(0,0,0,0.08)",
+                    },
+                  }}
+                />
+                <Tab
+                  value="preset"
+                  icon={<ICONS.event fontSize="small" />}
+                  iconPosition="start"
+                  label="Preset"
+                  sx={{
+                    minHeight: 38,
+                    borderRadius: 999,
+                    fontWeight: 800,
+                    textTransform: "none",
+                    "&.Mui-selected": {
+                      bgcolor: "background.paper",
+                      color: "text.primary",
+                      boxShadow: "0 6px 14px rgba(0,0,0,0.08)",
+                    },
+                  }}
+                />
+              </Tabs>
 
-              <Box sx={{ mt: 1, p: 1.5, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
-                  <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
-                    Visit duration: {dayjs(`2000-01-01 ${bookingData.timeTo}`).diff(dayjs(`2000-01-01 ${bookingData.timeFrom}`), 'minute')} min
+              {/* Custom Time Section */}
+              {bookingType === "custom" && (
+                <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 320 }}>
+                  <Stack spacing={2} sx={{ mb: 2 }}>
+                    {renderTimeDropdowns("timeFrom", "Expected Arrival (From)")}
+                    {renderTimeDropdowns("timeTo", "Expected Departure (To)")}
+                  </Stack>
+
+                  <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
+                      <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
+                        Visit duration: {dayjs(`2000-01-01 ${bookingData.timeTo}`).diff(dayjs(`2000-01-01 ${bookingData.timeFrom}`), 'minute')} min
+                      </Typography>
+                    </Stack>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Preset Options Section */}
+              {bookingType === "preset" && (
+                <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 320 }}>
+                  {/* Preset Type Selector */}
+                  <Box sx={{ mb: 2.5 }}>
+                    <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                      Preset Type
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      select
+                      size="small"
+                      value={selectedPreset || "fullDay"}
+                      onChange={(e) => {
+                        const preset = e.target.value;
+                        setSelectedPreset(preset);
+                        
+                        if (preset === "fullDay") {
+                          setBookingData((prev) => ({
+                            ...prev,
+                            timeFrom: "00:00",
+                            timeTo: "00:00",
+                          }));
+                        } else {
+                          setBookingData((prev) => ({
+                            ...prev,
+                            timeFrom: "00:00",
+                            timeTo: "23:59",
+                          }));
+                        }
+                      }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                      }}
+                    >
+                      <MenuItem value="fullDay">Full Day</MenuItem>
+                      <MenuItem value="fullWeek">Full Week</MenuItem>
+                      <MenuItem value="fullMonth">Full Month</MenuItem>
+                    </TextField>
+                  </Box>
+
+                  {/* Date Range Display */}
+                  {bookingData.date && (
+                    <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider", mb: 2.5 }}>
+                      <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                        Date Range
+                      </Typography>
+                      <Typography variant="body2" fontWeight={600} color="text.primary">
+                        {(() => {
+                          const date = bookingData.date;
+                          let from = date.clone();
+                          let to = date.clone();
+
+                          if (selectedPreset === "fullDay") {
+                            from = from.startOf("day");
+                            to = to.endOf("day");
+                          } else if (selectedPreset === "fullWeek") {
+                            from = from.startOf("day");
+                            to = to.add(6, "days").endOf("day");
+                          } else if (selectedPreset === "fullMonth") {
+                            from = from.startOf("day");
+                            to = to.add(30, "days").endOf("day");
+                          }
+
+                          return `${from.format("DD MMMM YYYY")} to ${to.format("DD MMMM YYYY")}`;
+                        })()}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Time inputs for preset */}
+                  <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 2, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                    Time
                   </Typography>
-                </Stack>
-              </Box>
+                  <Stack spacing={2}>
+                    {renderTimeDropdowns("timeFrom", selectedPreset === "fullDay" ? "Full Day Start Time" : "Start Time")}
+                    {selectedPreset !== "fullDay" && renderTimeDropdowns("timeTo", "End Time")}
+                    {selectedPreset === "fullDay" && (
+                      <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
+                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
+                            Full day booking: Same time for start and end
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    )}
+                  </Stack>
+                </Box>
+              )}
             </Stack>
           </Grid>
         </Grid>

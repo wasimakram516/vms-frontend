@@ -30,12 +30,15 @@ import {
   InputAdornment,
   MenuItem,
   alpha,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import dayjs from "dayjs";
 import { useMessage } from "@/contexts/MessageContext";
+import { useSocket } from "@/contexts/SocketContext";
 import ICONS from "@/utils/iconUtil";
 
 import {
@@ -92,6 +95,8 @@ export default function CmsApprovalsPage() {
   const [scheduledDate, setScheduledDate] = useState(null);
   const [scheduledFrom, setScheduledFrom] = useState("09:00");
   const [scheduledTo, setScheduledTo] = useState("18:00");
+  const [scheduleType, setScheduleType] = useState("custom"); // "custom" or "preset"
+  const [selectedPreset, setSelectedPreset] = useState("fullDay"); // "fullDay", "fullWeek", "fullMonth"
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const { showMessage } = useMessage();
@@ -115,6 +120,23 @@ export default function CmsApprovalsPage() {
     fetchPending();
   }, []);
 
+  const { on } = useSocket();
+
+  useEffect(() => {
+    const unsubNew = on("registration:new", () => {
+      fetchPending();
+    });
+
+    const unsubUpdated = on("registration:updated", () => {
+      fetchPending();
+    });
+
+    return () => {
+      unsubNew?.();
+      unsubUpdated?.();
+    };
+  }, [on]);
+
   const filtered = useMemo(() => {
     return rows
       .filter((r) =>
@@ -136,8 +158,34 @@ export default function CmsApprovalsPage() {
     try {
       const fullReg = await getRegistrationById(row.id);
       setApproveTarget(fullReg);
-      if (fullReg.requested_date) {
-        setScheduledDate(dayjs(fullReg.requested_date));
+
+      let detectedType = "custom";
+      let detectedPreset = "fullDay";
+
+      if (fullReg.requested_date_from && fullReg.requested_date_to) {
+        const dateFrom = dayjs(fullReg.requested_date_from);
+        const dateTo = dayjs(fullReg.requested_date_to);
+        const daysDiff = dateTo.diff(dateFrom, "days");
+
+        if (daysDiff === 0) {
+          detectedType = "preset";
+          detectedPreset = "fullDay";
+        } else if (daysDiff === 6) {
+          detectedType = "preset";
+          detectedPreset = "fullWeek";
+        } else if (daysDiff === 30) {
+          detectedType = "preset";
+          detectedPreset = "fullMonth";
+        }
+      }
+
+      setScheduleType(detectedType);
+      if (detectedType === "preset") {
+        setSelectedPreset(detectedPreset);
+      }
+
+      if (fullReg.requested_date_from) {
+        setScheduledDate(dayjs(fullReg.requested_date_from));
         setScheduledFrom(
           fullReg.requested_time_from?.substring(0, 5) || "09:00",
         );
@@ -320,8 +368,33 @@ export default function CmsApprovalsPage() {
       return;
     }
     try {
+      let fromDate, toDate;
+      if (scheduleType === "preset") {
+        const date = scheduledDate;
+        let from = date.clone();
+        let to = date.clone();
+
+        if (selectedPreset === "fullDay") {
+          from = from.startOf("day");
+          to = to.endOf("day");
+        } else if (selectedPreset === "fullWeek") {
+          from = from.startOf("week");
+          to = to.endOf("week");
+        } else if (selectedPreset === "fullMonth") {
+          from = from.startOf("month");
+          to = to.endOf("month");
+        }
+
+        fromDate = from.format("YYYY-MM-DD");
+        toDate = to.format("YYYY-MM-DD");
+      } else {
+        fromDate = scheduledDate.format("YYYY-MM-DD");
+        toDate = scheduledDate.format("YYYY-MM-DD");
+      }
+
       const payload = {
-        approvedDate: scheduledDate.format("YYYY-MM-DD"),
+        approvedDateFrom: fromDate,
+        approvedDateTo: toDate,
         approvedTimeFrom: `${scheduledFrom}:00`,
         approvedTimeTo: `${scheduledTo}:00`,
       };
@@ -589,7 +662,7 @@ export default function CmsApprovalsPage() {
                         {row.purpose_of_visit || "—"}
                       </Typography>
                     </Box>
-                    {row.requested_date && (
+                    {row.requested_date_from && (
                       <Box
                         sx={{
                           display: "flex",
@@ -616,19 +689,23 @@ export default function CmsApprovalsPage() {
                             variant="body2"
                             sx={{ fontWeight: 600, color: "primary.main" }}
                           >
-                            {formatDate(row.requested_date)}
+                            {row.requested_date_from && row.requested_date_to && row.requested_date_from !== row.requested_date_to
+                              ? `${formatDate(row.requested_date_from)} to ${formatDate(row.requested_date_to)}`
+                              : row.requested_date_from ? formatDate(row.requested_date_from) : "—"}
                           </Typography>
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              fontWeight: 600,
-                              color: "text.secondary",
-                              display: "block",
-                            }}
-                          >
-                            {formatTime(row.requested_time_from)} -{" "}
-                            {formatTime(row.requested_time_to)}
-                          </Typography>
+                          {(row.requested_time_from || row.requested_time_to) && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 600,
+                                color: "text.secondary",
+                                display: "block",
+                              }}
+                            >
+                              {row.requested_time_from ? formatTime(row.requested_time_from) : "—"} -{" "}
+                              {row.requested_time_to ? formatTime(row.requested_time_to) : "—"}
+                            </Typography>
+                          )}
                         </Box>
                       </Box>
                     )}
@@ -763,11 +840,18 @@ export default function CmsApprovalsPage() {
                   color="text.secondary"
                   sx={{ display: "block" }}
                 >
-                  Requested On
+                  Requested Slot
                 </Typography>
                 <Typography variant="body2" fontWeight={500}>
-                  {approveTarget?.requested_date}
+                  {approveTarget?.requested_date_from && approveTarget?.requested_date_to && approveTarget.requested_date_from !== approveTarget.requested_date_to
+                    ? `${formatDate(approveTarget.requested_date_from)} to ${formatDate(approveTarget.requested_date_to)}`
+                    : approveTarget?.requested_date_from ? formatDate(approveTarget.requested_date_from) : "—"}
                 </Typography>
+                {(approveTarget?.requested_time_from || approveTarget?.requested_time_to) && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                    {approveTarget?.requested_time_from ? formatTime(approveTarget.requested_time_from) : "—"} - {approveTarget?.requested_time_to ? formatTime(approveTarget.requested_time_to) : "—"}
+                  </Typography>
+                )}
               </Box>
             </Stack>
           </Box>
@@ -806,34 +890,141 @@ export default function CmsApprovalsPage() {
 
               <Grid size={{ xs: 12, sm: 5.5 }}>
                 <Stack spacing={2}>
-                  {renderTimeDropdowns("scheduledFrom", "Start Time")}
-                  {renderTimeDropdowns("scheduledTo", "End Time")}
-
-                  <Box
+                  {/* Toggle between Custom and Preset using Tabs */}
+                  <Tabs
+                    value={scheduleType}
+                    onChange={(_, value) => setScheduleType(value)}
+                    variant="fullWidth"
                     sx={{
-                      mt: 1,
-                      p: 1.5,
-                      bgcolor: (theme) =>
-                        alpha(theme.palette.text.primary, 0.03),
-                      borderRadius: 3,
-                      border: "1px solid",
-                      borderColor: "divider",
+                      minHeight: 46,
+                      bgcolor: (theme) => alpha(theme.palette.text.primary, isDark ? 0.06 : 0.04),
+                      borderRadius: 999,
+                      p: 0.5,
+                      "& .MuiTabs-indicator": { display: "none" },
                     }}
                   >
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <ICONS.info
-                        sx={{ fontSize: 16, color: "text.secondary" }}
-                      />
-                      <Typography
-                        variant="caption"
-                        fontWeight={700}
-                        color="text.secondary"
-                        sx={{ fontSize: 12 }}
-                      >
-                        Visit duration: {getDuration()} min
+                    <Tab
+                      value="custom"
+                      icon={<ICONS.time fontSize="small" />}
+                      iconPosition="start"
+                      label="Custom"
+                      sx={{
+                        minHeight: 38,
+                        borderRadius: 999,
+                        fontWeight: 800,
+                        textTransform: "none",
+                        "&.Mui-selected": {
+                          bgcolor: "background.paper",
+                          color: "text.primary",
+                          boxShadow: "0 6px 14px rgba(0,0,0,0.08)",
+                        },
+                      }}
+                    />
+                    <Tab
+                      value="preset"
+                      icon={<ICONS.event fontSize="small" />}
+                      iconPosition="start"
+                      label="Preset"
+                      sx={{
+                        minHeight: 38,
+                        borderRadius: 999,
+                        fontWeight: 800,
+                        textTransform: "none",
+                        "&.Mui-selected": {
+                          bgcolor: "background.paper",
+                          color: "text.primary",
+                          boxShadow: "0 6px 14px rgba(0,0,0,0.08)",
+                        },
+                      }}
+                    />
+                  </Tabs>
+
+                  {/* Custom Time Section */}
+                  {scheduleType === "custom" && (
+                    <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 280 }}>
+                      <Stack spacing={2} sx={{ mb: 2 }}>
+                        {renderTimeDropdowns("scheduledFrom", "Expected Arrival (From)")}
+                        {renderTimeDropdowns("scheduledTo", "Expected Departure (To)")}
+                      </Stack>
+                      <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
+                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
+                            Visit duration: {getDuration()} min
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Preset Options Section */}
+                  {scheduleType === "preset" && (
+                    <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 280 }}>
+                      {/* Preset Type Selector */}
+                      <Box sx={{ mb: 2.5 }}>
+                        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                          Preset Type
+                        </Typography>
+                        <TextField
+                          fullWidth
+                          select
+                          size="small"
+                          value={selectedPreset || "fullDay"}
+                          onChange={(e) => setSelectedPreset(e.target.value)}
+                          sx={{
+                            "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                          }}
+                        >
+                          <MenuItem value="fullDay">Full Day</MenuItem>
+                          <MenuItem value="fullWeek">Full Week</MenuItem>
+                          <MenuItem value="fullMonth">Full Month</MenuItem>
+                        </TextField>
+                      </Box>
+
+                      {/* Date Range Display */}
+                      <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider", mb: 2.5 }}>
+                        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                          Date Range
+                        </Typography>
+                        <Typography variant="body2" fontWeight={600} color="text.primary">
+                          {(() => {
+                            const date = scheduledDate;
+                            let from = date.clone();
+                            let to = date.clone();
+                            if (selectedPreset === "fullDay") {
+                              from = from.startOf("day");
+                              to = to.endOf("day");
+                            } else if (selectedPreset === "fullWeek") {
+                              from = from.startOf("day");
+                              to = to.add(6, "days").endOf("day");
+                            } else if (selectedPreset === "fullMonth") {
+                              from = from.startOf("day");
+                              to = to.add(30, "days").endOf("day");
+                            }
+                            return `${from.format("DD MMMM YYYY")} to ${to.format("DD MMMM YYYY")}`;
+                          })()}
+                        </Typography>
+                      </Box>
+
+                      <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 2, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                        Time
                       </Typography>
-                    </Stack>
-                  </Box>
+                      <Stack spacing={2}>
+                        {renderTimeDropdowns("scheduledFrom", selectedPreset === "fullDay" ? "Full Day Start Time" : "Start Time")}
+                        {selectedPreset !== "fullDay" && renderTimeDropdowns("scheduledTo", "End Time")}
+                        {selectedPreset === "fullDay" && (
+                          <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
+                              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
+                                Full day booking: Same time for start and end
+                              </Typography>
+                            </Stack>
+                          </Box>
+                        )}
+                      </Stack>
+                    </Box>
+                  )}
                 </Stack>
               </Grid>
             </Grid>
