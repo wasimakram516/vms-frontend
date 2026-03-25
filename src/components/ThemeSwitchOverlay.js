@@ -8,13 +8,11 @@ const PALETTE = {
   dark: {
     overlayBg:     "rgba(18, 25, 34, 0.94)",
     skyGradient:   null,
-    // Card
     cardBgImg:     `linear-gradient(145deg, rgba(24,32,46,0.97) 0%, rgba(15,21,33,0.97) 100%),
-                    linear-gradient(135deg, rgba(140,175,245,0.48) 0%, rgba(80,110,200,0.1) 50%, rgba(140,175,245,0.4) 100%)`,
-    cardShadow:    "0 32px 64px rgba(4,8,16,0.65), 0 0 50px rgba(100,130,215,0.1), inset 0 1px 0 rgba(255,255,255,0.05)",
+                    linear-gradient(135deg, rgba(140,175,245,0.22) 0%, rgba(80,110,200,0.06) 50%, rgba(140,175,245,0.18) 100%)`,
+    cardShadow:    "0 24px 48px rgba(4,8,16,0.5), inset 0 1px 0 rgba(255,255,255,0.05)",
     edgeHighlight: "linear-gradient(90deg, transparent, rgba(155,195,255,0.38), transparent)",
     sweep:         "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 55%, rgba(255,255,255,0.08) 100%)",
-    // Icon
     outerAura:     "radial-gradient(circle, rgba(110,150,245,0.22) 0%, transparent 70%)",
     ringOuter:     "rgba(255,255,255,0.08)",
     ring:          "rgba(255,255,255,0.18)",
@@ -24,7 +22,6 @@ const PALETTE = {
     iconColor:     "#c4d0ea",
     iconGlow:      "rgba(150,185,245,0.4)",
     iconCoreBg:    "radial-gradient(circle, rgba(100,130,215,0.22) 0%, transparent 72%)",
-    // Text + badge
     titleGradient: "linear-gradient(135deg, #ffffff 15%, #adc4f5 100%)",
     textSub:       "rgba(255,255,255,0.58)",
     title:         "Switching to Dark Mode",
@@ -37,13 +34,11 @@ const PALETTE = {
   light: {
     overlayBg:     "rgba(210, 230, 255, 0.88)",
     skyGradient:   "linear-gradient(180deg, rgba(160,205,255,0.55) 0%, rgba(220,238,255,0.3) 40%, rgba(248,249,250,0) 100%)",
-    // Card
     cardBgImg:     `linear-gradient(145deg, rgba(255,255,255,0.99) 0%, rgba(244,250,255,0.98) 100%),
                     linear-gradient(135deg, rgba(255,210,40,0.52) 0%, rgba(255,160,20,0.12) 50%, rgba(255,210,40,0.46) 100%)`,
     cardShadow:    "0 32px 64px rgba(10,18,36,0.2), 0 0 50px rgba(255,185,20,0.1)",
     edgeHighlight: "linear-gradient(90deg, transparent, rgba(255,215,40,0.5), transparent)",
     sweep:         "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.12) 40%, rgba(0,0,0,0.04) 100%)",
-    // Icon
     outerAura:     "radial-gradient(circle, rgba(255,195,25,0.28) 0%, transparent 70%)",
     ringOuter:     "rgba(0,0,0,0.06)",
     ring:          "rgba(0,0,0,0.1)",
@@ -53,7 +48,6 @@ const PALETTE = {
     iconColor:     "#ffc107",
     iconGlow:      "rgba(255,195,30,0.5)",
     iconCoreBg:    "radial-gradient(circle, rgba(255,200,30,0.22) 0%, transparent 72%)",
-    // Text + badge
     titleGradient: "linear-gradient(135deg, #0a1628 15%, #1a4a8a 100%)",
     textSub:       "rgba(0,0,0,0.55)",
     title:         "Switching to Light Mode",
@@ -65,70 +59,93 @@ const PALETTE = {
   },
 };
 
-const HOLD_MS  = 700;
-const FADE_S   = 0.28;
+const HOLD_MS = 700;
+const FADE_S  = 0.28;
 
-// ─── Cloud SVG ────────────────────────────────────────────────────────────────
-function CloudShape({ width = 140, opacity = 0.82 }) {
-  return (
-    <svg
-      width={width}
-      height={Math.round(width * 0.58)}
-      viewBox="0 0 140 82"
-      fill="none"
-      style={{ display: "block", filter: "drop-shadow(0 6px 14px rgba(80,120,200,0.18))" }}
-    >
-      {/* Base pill */}
-      <ellipse cx="70" cy="64" rx="60" ry="16" fill={`rgba(255,255,255,${opacity})`} />
-      {/* Bumps */}
-      <circle cx="50"  cy="50" r="22" fill={`rgba(255,255,255,${opacity})`} />
-      <circle cx="78"  cy="42" r="28" fill={`rgba(255,255,255,${opacity + 0.03})`} />
-      <circle cx="106" cy="52" r="18" fill={`rgba(255,255,255,${opacity})`} />
-      <circle cx="30"  cy="58" r="14" fill={`rgba(255,255,255,${opacity - 0.05})`} />
-      {/* Subtle inner highlight */}
-      <ellipse cx="76" cy="36" rx="18" ry="10" fill={`rgba(255,255,255,${opacity * 0.5})`} />
-    </svg>
-  );
-}
+// ─── Shared framer-motion variants ────────────────────────────────────────────
+const sceneContainer = {
+  hidden:  {},
+  visible: { transition: { staggerChildren: 0.04, delayChildren: 0.05 } },
+};
+const sceneItem = {
+  hidden:  { opacity: 0, scale: 0.15 },
+  visible: { opacity: 1, scale: 1, transition: { duration: 0.55, ease: "easeOut" } },
+};
 
-// left/top positions; drift is how many px rightward during the hold
-const CLOUDS = [
-  { width: 170, left: "-2%",  top: "6%",  drift: 28, opacity: 0.82, delay: 0.04, dur: 1.1 },
-  { width: 230, left: "58%",  top: "10%", drift: 22, opacity: 0.72, delay: 0.0,  dur: 1.3 },
-  { width: 120, left: "1%",   top: "60%", drift: 20, opacity: 0.75, delay: 0.1,  dur: 1.2 },
-  { width: 190, left: "62%",  top: "68%", drift: 25, opacity: 0.68, delay: 0.06, dur: 1.4 },
-  { width: 105, left: "78%",  top: "36%", drift: 16, opacity: 0.6,  delay: 0.14, dur: 1.0 },
-  { width: 140, left: "20%",  top: "80%", drift: 18, opacity: 0.55, delay: 0.18, dur: 1.6 },
+// ─── Day scene data ────────────────────────────────────────────────────────────
+// Bokeh: warm blobs scattered away from sun (top-right)
+const BOKEH = [
+  { size: 100, top: "5%",  left: "5%",   color: "rgba(255,190,40,0.38)",  blur: 32, fd: 4.2, fdd: 0.0 },
+  { size: 55,  top: "20%", left: "2%",   color: "rgba(255,210,65,0.44)",  blur: 18, fd: 3.8, fdd: 1.1 },
+  { size: 85,  top: "44%", left: "0%",   color: "rgba(255,200,50,0.32)",  blur: 28, fd: 4.8, fdd: 1.4 },
+  { size: 130, top: "62%", left: "3%",   color: "rgba(255,195,45,0.24)",  blur: 42, fd: 5.2, fdd: 0.2 },
+  { size: 48,  top: "82%", left: "42%",  color: "rgba(255,180,28,0.36)",  blur: 16, fd: 3.9, fdd: 1.7 },
+  { size: 75,  top: "68%", left: "74%",  color: "rgba(255,215,70,0.26)",  blur: 24, fd: 4.1, fdd: 0.9 },
+  { size: 42,  top: "32%", left: "90%",  color: "rgba(255,175,30,0.38)",  blur: 14, fd: 4.5, fdd: 0.3 },
+  { size: 150, top: "7%",  left: "55%",  color: "rgba(255,225,80,0.18)",  blur: 46, fd: 5.0, fdd: 0.7 },
+];
+
+// Lens flare: circles along the sun→center axis (top-right to lower-left, ~45° diagonal)
+// Alternating warm gold and cool blue-white like real camera lens flare
+const LENS_FLARE = [
+  { top: "5%",  left: "88%", size: 52, color: "rgba(255,215,60,0.65)",  blur: 7  },
+  { top: "14%", left: "78%", size: 14, color: "rgba(255,200,50,0.55)",  blur: 2  },
+  { top: "24%", left: "67%", size: 38, color: "rgba(255,240,130,0.4)",  blur: 5  },
+  { top: "34%", left: "57%", size: 12, color: "rgba(190,215,255,0.5)",  blur: 2  },
+  { top: "44%", left: "46%", size: 30, color: "rgba(210,230,255,0.38)", blur: 4  },
+  { top: "54%", left: "36%", size: 9,  color: "rgba(255,210,65,0.52)",  blur: 1  },
+  { top: "63%", left: "26%", size: 20, color: "rgba(180,210,255,0.34)", blur: 3  },
 ];
 
 function DayScene() {
   return (
     <>
-      {/* Sun glow — top-right corner */}
+      {/* Sun glow — top-RIGHT corner */}
       <div style={{
         position: "absolute", top: -60, right: -60,
-        width: 340, height: 340, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(255,220,60,0.45) 0%, rgba(255,180,20,0.18) 45%, transparent 70%)",
-        filter: "blur(24px)", pointerEvents: "none",
+        width: 360, height: 360, borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(255,220,60,0.5) 0%, rgba(255,180,20,0.2) 42%, transparent 70%)",
+        filter: "blur(26px)", pointerEvents: "none",
       }} />
 
-      {/* Animated clouds */}
-      {CLOUDS.map((c, i) => (
-        <motion.div
-          key={i}
-          initial={{ x: 0, opacity: 0 }}
-          animate={{ x: c.drift, opacity: 1 }}
-          transition={{ delay: c.delay, duration: c.dur, ease: "easeOut" }}
-          style={{ position: "absolute", top: c.top, left: c.left, pointerEvents: "none" }}
-        >
-          <CloudShape width={c.width} opacity={c.opacity} />
-        </motion.div>
-      ))}
+      {/* Bokeh blobs */}
+      <motion.div variants={sceneContainer} initial="hidden" animate="visible"
+        style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {BOKEH.map((b, i) => (
+          <motion.div key={i} variants={sceneItem}
+            style={{ position: "absolute", top: b.top, left: b.left }}>
+            {/* Separate inner div so CSS float animation doesn't fight framer-motion transform */}
+            <div style={{
+              width: b.size, height: b.size, borderRadius: "50%",
+              background: `radial-gradient(circle, ${b.color} 0%, transparent 70%)`,
+              filter: `blur(${b.blur}px)`,
+              animation: `ts-float ${b.fd}s ease-in-out ${b.fdd}s infinite`,
+            }} />
+          </motion.div>
+        ))}
+      </motion.div>
+
+      {/* Lens flare circles */}
+      <motion.div variants={sceneContainer} initial="hidden" animate="visible"
+        style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {LENS_FLARE.map((f, i) => (
+          <motion.div key={i} variants={sceneItem}
+            style={{ position: "absolute", top: f.top, left: f.left,
+                     marginLeft: -f.size / 2, marginTop: -f.size / 2 }}>
+            <div style={{
+              width: f.size, height: f.size, borderRadius: "50%",
+              background: `radial-gradient(circle, ${f.color} 0%, transparent 70%)`,
+              filter: `blur(${f.blur}px)`,
+              animation: `ts-float ${2.8 + i * 0.3}s ease-in-out ${i * 0.22}s infinite`,
+            }} />
+          </motion.div>
+        ))}
+      </motion.div>
     </>
   );
 }
 
-// ─── Stars + shooting stars ───────────────────────────────────────────────────
+// ─── Night scene data ──────────────────────────────────────────────────────────
 const STARS = [
   { top: "4%",  left: "7%",   s: 3,   dur: 2.1, d: 0.00 },
   { top: "2%",  left: "70%",  s: 4.5, dur: 1.8, d: 0.08 },
@@ -154,48 +171,35 @@ const STARS = [
   { top: "40%", left: "97%",  s: 1.5, dur: 2.0, d: 0.26 },
 ];
 
+// Shooting stars: staggered positions from moon area, varied distances + widths
 const SHOOTS = [
-  { top: "10%", left: "68%", animDelay: "0.25s" },
-  { top: "22%", left: "12%", animDelay: "0.55s" },
+  { top: "4%",  left: "2%",  delay: 0.18, x: 280, y: 75,  w: 115 },
+  { top: "11%", left: "8%",  delay: 0.38, x: 220, y: 58,  w: 85  },
+  { top: "7%",  left: "18%", delay: 0.55, x: 310, y: 84,  w: 130 },
+  { top: "18%", left: "4%",  delay: 0.72, x: 190, y: 50,  w: 70  },
+  { top: "2%",  left: "28%", delay: 0.9,  x: 255, y: 68,  w: 100 },
 ];
-
-const starContainer = {
-  hidden:  {},
-  visible: { transition: { staggerChildren: 0.022, delayChildren: 0.06 } },
-};
-const starItem = {
-  hidden:  { opacity: 0, scale: 0 },
-  visible: { opacity: 1, scale: 1, transition: { duration: 0.22, ease: "easeOut" } },
-};
 
 function NightScene() {
   return (
     <>
-      {/* Moon ambient glow */}
+      {/* Moon glow — top-LEFT (opposite of sun) */}
       <div style={{
-        position: "absolute", top: "4%", right: "6%",
-        width: 220, height: 220, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(130,165,255,0.22) 0%, transparent 70%)",
-        filter: "blur(22px)", pointerEvents: "none",
+        position: "absolute", top: -40, left: -40,
+        width: 280, height: 280, borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(140,175,255,0.28) 0%, rgba(100,140,240,0.1) 45%, transparent 70%)",
+        filter: "blur(26px)", pointerEvents: "none",
       }} />
 
-      {/* Stars — staggered pop-in then twinkle */}
-      <motion.div
-        variants={starContainer}
-        initial="hidden"
-        animate="visible"
-        style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-      >
+      {/* Stars — stagger pop-in, CSS twinkle on inner div (no transform conflict) */}
+      <motion.div variants={sceneContainer} initial="hidden" animate="visible"
+        style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
         {STARS.map((star, i) => (
-          <motion.div
-            key={i}
-            variants={starItem}
-            style={{ position: "absolute", top: star.top, left: star.left }}
-          >
+          <motion.div key={i} variants={sceneItem}
+            style={{ position: "absolute", top: star.top, left: star.left }}>
             <div style={{
-              width: star.s, height: star.s,
-              borderRadius: "50%",
-              background: "#ffffff",
+              width: star.s, height: star.s, borderRadius: "50%",
+              background: "#fff",
               boxShadow: `0 0 ${star.s * 2.4}px #fff, 0 0 ${star.s * 5}px rgba(200,220,255,0.6)`,
               animation: `ts-twinkle ${star.dur}s ease-in-out ${star.d}s infinite`,
             }} />
@@ -203,18 +207,25 @@ function NightScene() {
         ))}
       </motion.div>
 
-      {/* Shooting stars */}
+      {/* Shooting stars — framer-motion x/y for unambiguous screen-space movement */}
       {SHOOTS.map((s, i) => (
-        <div
+        <motion.div
           key={i}
-          style={{
-            position: "absolute", top: s.top, left: s.left,
-            width: 110, height: 1.5, borderRadius: 2,
-            background: "linear-gradient(to right, rgba(255,255,255,0.95), rgba(255,255,255,0))",
-            animation: `ts-shoot 0.72s ease-out ${s.animDelay} both`,
-            pointerEvents: "none",
+          initial={{ x: 0, y: 0, opacity: 0 }}
+          animate={{ x: s.x, y: s.y, opacity: [0, 0, 1, 1, 0] }}
+          transition={{
+            duration: 0.78, delay: s.delay, ease: "easeOut",
+            opacity: { times: [0, 0.04, 0.12, 0.88, 1], duration: 0.78, delay: s.delay },
           }}
-        />
+          style={{ position: "absolute", top: s.top, left: s.left, pointerEvents: "none" }}
+        >
+          <div style={{
+            width: s.w, height: 1.5, borderRadius: 2,
+            transformOrigin: "left center",
+            transform: "rotate(20deg)",
+            background: "linear-gradient(to right, rgba(255,255,255,0), rgba(255,255,255,0.92))",
+          }} />
+        </motion.div>
       ))}
     </>
   );
@@ -255,21 +266,17 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
     >
-      {/* Sky gradient layer (day only) */}
+      {/* Sky gradient (day only) */}
       {p.skyGradient && (
-        <div style={{
-          position: "absolute", inset: 0,
-          background: p.skyGradient,
-          pointerEvents: "none",
-        }} />
+        <div style={{ position: "absolute", inset: 0, background: p.skyGradient, pointerEvents: "none" }} />
       )}
 
-      {/* Scene elements — behind card */}
+      {/* Scene — behind card */}
       <div style={{ position: "absolute", inset: 0, zIndex: 0 }}>
         {isDark ? <NightScene /> : <DayScene />}
       </div>
 
-      {/* Card — above scene */}
+      {/* Card */}
       <motion.div
         initial={{ opacity: 0, y: 14, scale: 0.97 }}
         animate={{ opacity: 1, y: 0,  scale: 1    }}
@@ -279,7 +286,6 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
           position: "relative", zIndex: 1,
           width: "100%", maxWidth: 400, margin: "0 16px",
           padding: "32px 32px 24px", borderRadius: 24,
-          // Gradient border trick: first bg = card fill, second = border gradient
           border: "1.5px solid transparent",
           backgroundImage: p.cardBgImg,
           backgroundOrigin: "padding-box, border-box",
@@ -289,7 +295,7 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
           display: "flex", flexDirection: "column", alignItems: "center", gap: 18,
         }}
       >
-        {/* Inner top-edge highlight — glass effect */}
+        {/* Inner top-edge highlight */}
         <div style={{
           position: "absolute", top: 0, left: "12%", right: "12%", height: 1,
           background: p.edgeHighlight, pointerEvents: "none",
@@ -309,37 +315,31 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
           position: "relative", width: 162, height: 162,
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          {/* Soft outer aura */}
           <div style={{
             position: "absolute", width: 210, height: 210, borderRadius: "50%",
             background: p.outerAura, filter: "blur(22px)", pointerEvents: "none",
           }} />
-          {/* Extra slow outer ring */}
           <div style={{
             position: "absolute", inset: -8, borderRadius: "50%",
             border: `1px solid ${p.ringOuter}`,
             animation: "ts-spin-slow 9s linear infinite",
           }} />
-          {/* Main spinning arc ring */}
           <div style={{
             position: "absolute", inset: 0, borderRadius: "50%",
             border: `2px solid ${p.ring}`,
             borderTopColor: p.ringTop, borderRightColor: p.ring,
             animation: "ts-spin 1s linear infinite",
           }} />
-          {/* Inner dashed counter-spin */}
           <div style={{
             position: "absolute", inset: 14, borderRadius: "50%",
             border: `1.5px dashed ${p.ringDash}`,
             animation: "ts-spin-r 1.65s linear infinite",
           }} />
-          {/* Pulse glow disk */}
           <div style={{
             position: "absolute", inset: 20, borderRadius: "50%",
             background: p.pulse,
             animation: "ts-pulse 2.6s ease-in-out infinite",
           }} />
-          {/* Icon core */}
           <div style={{
             position: "relative", zIndex: 2,
             width: 78, height: 78, borderRadius: "50%",
@@ -406,34 +406,31 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
 
 // ─── Keyframes ────────────────────────────────────────────────────────────────
 const KEYFRAMES = `
-  @keyframes ts-sweep   { 0%   { left:-35%; }  100% { left:105%; } }
-  @keyframes ts-spin      { from { transform:rotate(0deg);   } to { transform:rotate(360deg);  } }
-  @keyframes ts-spin-r    { from { transform:rotate(360deg); } to { transform:rotate(0deg);    } }
-  @keyframes ts-spin-slow { from { transform:rotate(0deg);   } to { transform:rotate(360deg);  } }
-  @keyframes ts-pulse   { 0%,100% { opacity:.62; transform:scale(.96); } 50% { opacity:.86; transform:scale(.99); } }
+  @keyframes ts-sweep    { 0% { left:-35%; } 100% { left:105%; } }
+  @keyframes ts-spin     { from { transform:rotate(0deg);   } to { transform:rotate(360deg);  } }
+  @keyframes ts-spin-r   { from { transform:rotate(360deg); } to { transform:rotate(0deg);    } }
+  @keyframes ts-spin-slow{ from { transform:rotate(0deg);   } to { transform:rotate(360deg);  } }
+  @keyframes ts-pulse    { 0%,100% { opacity:.62; transform:scale(.96); } 50% { opacity:.86; transform:scale(.99); } }
   @keyframes ts-icon-pop {
     0%   { opacity:0; transform:scale(.3) rotate(-20deg); }
     65%  { opacity:1; transform:scale(1.12) rotate(5deg); }
-    100% { opacity:1; transform:scale(1)   rotate(0deg); }
+    100% { opacity:1; transform:scale(1) rotate(0deg); }
   }
   @keyframes ts-twinkle {
-    0%,100% { opacity:.18; transform:scale(.6);  }
-    50%     { opacity:1;   transform:scale(1.35); }
+    0%,100% { opacity:.15; transform:scale(.55); }
+    50%     { opacity:1;   transform:scale(1.3); }
   }
-  @keyframes ts-shoot {
-    0%   { transform:translate(0,0);          opacity:0;   }
-    8%   { opacity:1; }
-    88%  { opacity:.9; }
-    100% { transform:translate(-220px,145px); opacity:0;   }
+  @keyframes ts-float {
+    0%,100% { transform:translateY(0px);  }
+    50%     { transform:translateY(-9px); }
   }
+
 `;
 
 // ─── Public ────────────────────────────────────────────────────────────────────
 export default function ThemeSwitchOverlay({ active, targetMode, onMidpoint, onDone }) {
   const [show, setShow] = useState(false);
 
-  // Inject keyframes imperatively — avoids React hydration mismatch caused by
-  // rendering a <style> tag inside the component tree (browser moves it in DOM)
   useEffect(() => {
     const el = document.createElement("style");
     el.setAttribute("data-ts-keyframes", "1");
