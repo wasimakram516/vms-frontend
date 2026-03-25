@@ -4,7 +4,6 @@ import ThemeRegistry from "@/styles/themeRegistry";
 import { MessageProvider } from "@/contexts/MessageContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ClientLayout from "@/utils/ClientLayout";
-import Script from "next/script";
 import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useEffect } from "react";
@@ -139,12 +138,6 @@ export default function ClientRoot({ children }) {
           </LocalizationProvider>
         </ThemeRegistry>
       </MessageProvider>
-
-      <Script src="/BrowserPrint-3.1.250.min.js" strategy="afterInteractive" />
-      <Script
-        src="/BrowserPrint-Zebra-1.1.250.min.js"
-        strategy="afterInteractive"
-      />
     </>
   );
 }

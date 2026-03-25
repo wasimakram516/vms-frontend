@@ -432,23 +432,30 @@ const KEYFRAMES = `
 export default function ThemeSwitchOverlay({ active, targetMode, onMidpoint, onDone }) {
   const [show, setShow] = useState(false);
 
+  // Inject keyframes imperatively — avoids React hydration mismatch caused by
+  // rendering a <style> tag inside the component tree (browser moves it in DOM)
+  useEffect(() => {
+    const el = document.createElement("style");
+    el.setAttribute("data-ts-keyframes", "1");
+    el.textContent = KEYFRAMES;
+    document.head.appendChild(el);
+    return () => { document.head.removeChild(el); };
+  }, []);
+
   useEffect(() => {
     if (active) setShow(true);
   }, [active]);
 
   return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
-      <AnimatePresence onExitComplete={onDone}>
-        {show && (
-          <OverlayInner
-            key={targetMode}
-            targetMode={targetMode}
-            onMidpoint={onMidpoint}
-            onRequestExit={() => setShow(false)}
-          />
-        )}
-      </AnimatePresence>
-    </>
+    <AnimatePresence onExitComplete={onDone}>
+      {show && (
+        <OverlayInner
+          key={targetMode}
+          targetMode={targetMode}
+          onMidpoint={onMidpoint}
+          onRequestExit={() => setShow(false)}
+        />
+      )}
+    </AnimatePresence>
   );
 }
