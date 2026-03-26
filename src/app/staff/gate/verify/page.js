@@ -307,9 +307,9 @@ export default function StaffVerifyPage() {
                   )}
                   {result.status === "checked_in" && (
                     <Button 
-                      fullWidth 
-                      variant="contained" 
-                      color="info" 
+                      fullWidth
+                      variant="contained"
+                      color="error"
                       startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
                       onClick={handleCheckOutAction}
                       disabled={actionLoading}

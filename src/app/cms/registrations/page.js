@@ -1523,7 +1523,7 @@ export default function CmsRegistrationsPage() {
                   <Button
                     fullWidth
                     variant="contained"
-                    color="info"
+                    color="error"
                     startIcon={
                       actionLoading ? (
                         <CircularProgress size={18} color="inherit" />
