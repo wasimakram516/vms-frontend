@@ -371,14 +371,11 @@ export default function CmsApprovalsPage() {
         let to = date.clone();
 
         if (selectedPreset === "fullDay") {
-          from = from.startOf("day");
-          to = to.endOf("day");
+          to = from.clone().add(1, "day");
         } else if (selectedPreset === "fullWeek") {
-          from = from.startOf("week");
-          to = to.endOf("week");
+          to = from.clone().add(6, "days");
         } else if (selectedPreset === "fullMonth") {
-          from = from.startOf("month");
-          to = to.endOf("month");
+          to = from.clone().add(30, "days");
         }
 
         fromDate = from.format("YYYY-MM-DD");
@@ -392,7 +389,7 @@ export default function CmsApprovalsPage() {
         approvedDateFrom: fromDate,
         approvedDateTo: toDate,
         approvedTimeFrom: `${scheduledFrom}:00`,
-        approvedTimeTo: `${scheduledTo}:00`,
+        approvedTimeTo: selectedPreset === "fullDay" ? `${scheduledFrom}:00` : `${scheduledTo}:00`,
       };
 
       await updateRegistrationStatus(approveTarget.id, "approve", payload);
@@ -988,14 +985,11 @@ export default function CmsApprovalsPage() {
                             let from = date.clone();
                             let to = date.clone();
                             if (selectedPreset === "fullDay") {
-                              from = from.startOf("day");
-                              to = to.endOf("day");
+                              to = to.add(1, "day");
                             } else if (selectedPreset === "fullWeek") {
-                              from = from.startOf("day");
-                              to = to.add(6, "days").endOf("day");
+                              to = to.add(6, "days");
                             } else if (selectedPreset === "fullMonth") {
-                              from = from.startOf("day");
-                              to = to.add(30, "days").endOf("day");
+                              to = to.add(30, "days");
                             }
                             return `${from.format("DD MMMM YYYY")} to ${to.format("DD MMMM YYYY")}`;
                           })()}
