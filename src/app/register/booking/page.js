@@ -147,9 +147,6 @@ export default function BookingPage() {
 
     setSubmitting(true);
     try {
-      const isReturning = !!visitorData.userId;
-      const { email, phone, ...otherFields } = visitorData.dynamicFields;
-      
       let fromDate, toDate;
       if (bookingType === "preset") {
         const date = bookingData.date;
@@ -181,9 +178,7 @@ export default function BookingPage() {
         requestedTimeFrom: bookingData.timeFrom,
         requestedTimeTo: bookingData.timeTo,
         purposeOfVisit: visitorData.purposeOfVisit || "Follow-up visit",
-        fieldValues: isReturning 
-          ? { ...otherFields, full_name: visitorData.fullName || otherFields.full_name }
-          : { ...visitorData.dynamicFields, full_name: visitorData.fullName || visitorData.dynamicFields.full_name },
+        fieldValues: { ...visitorData.dynamicFields, full_name: visitorData.fullName || visitorData.dynamicFields.full_name },
       };
 
       console.log("Submitting Registration Payload:", payload);
