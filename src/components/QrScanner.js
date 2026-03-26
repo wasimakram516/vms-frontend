@@ -200,7 +200,7 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
       if (state === scanning || state === paused) await scanner.stop();
     } catch {}
     try { scanner.clear(); } catch {}
-    if (scannerHostRef.current && scannerHostRef.current.childElementCount === 0) {
+    if (scannerHostRef.current && scannerHostRef.current.childElementCount > 0) {
       scannerHostRef.current.innerHTML = "";
     }
   };
@@ -249,8 +249,16 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
           setSelectedCameraId(nextCameraId);
           setLoading(false);
           setSwitchError("");
-          const labeled = await listAvailableCameras(mod).catch(() => discovered);
-          if (requestId === requestIdRef.current) setCameraOptions(labeled.length > 0 ? labeled : discovered);
+          // Use enumerateDevices directly — permission already granted, avoids a second
+          // getUserMedia call that would interrupt the active stream on Android devices.
+          const labeled = await navigator.mediaDevices
+            .enumerateDevices()
+            .then((devices) => {
+              const inputs = dedupeCameras(toVideoInputs(devices));
+              return inputs.length > 0 ? inputs : discovered;
+            })
+            .catch(() => discovered);
+          if (requestId === requestIdRef.current) setCameraOptions(labeled);
           return;
         } catch (error) {
           lastError = error;
@@ -269,9 +277,9 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
   startScannerForSelectionRef.current = startScannerForSelection;
   refreshCameraOptionsRef.current = async () => {
     try {
-      const mod = await loadScannerModule();
-      const cameras = await listAvailableCameras(mod);
-      setCameraOptions(cameras);
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = dedupeCameras(toVideoInputs(devices));
+      if (cameras.length > 0) setCameraOptions(cameras);
     } catch {}
   };
 
@@ -362,7 +370,7 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
           />
         )}
 
-        {selectableCameraOptions.length > 0 && (
+        {cameraOptions.length > 0 && (
           <Box sx={{ position: "absolute", left: 16, right: 16, bottom: 16, zIndex: 3 }}>
             {switchError && (
               <Typography variant="caption" sx={{ display: "block", mb: 1, color: "#ff8a80", textAlign: "center" }}>
