@@ -1,4 +1,5 @@
 import api from "./api";
+import withApiHandler from "@/utils/withApiHandler";
 
 const mapUserToFrontend = (user) => ({
   id: user.id,
@@ -12,34 +13,27 @@ const mapUserToFrontend = (user) => ({
   created_at: user.createdAt,
 });
 
-export const getAllUsers = async (role) => {
-  try {
-    const res = await api.get("/users", { params: { role } });
-    const users = res.data?.data || res.data || [];
-    return Array.isArray(users) ? users.map(mapUserToFrontend) : [];
-  } catch (err) {
-    console.error(err.message, err);
-    throw err;
-  }
-};
+export const getAllUsers = withApiHandler(async (role) => {
+  const res = await api.get("/users", { params: { role } });
+  const users = res.data?.data || res.data || [];
+  return Array.isArray(users) ? users.map(mapUserToFrontend) : [];
+});
 
-export const createAdminUser = async (data) => {
-  try {
+export const createAdminUser = withApiHandler(
+  async (data) => {
     const res = await api.post("/users/admin", {
       fullName: data.full_name,
       email: data.email,
       password: data.password || undefined,
     });
     const userData = res.data?.data || res.data;
-    return { success: true, data: userData ? mapUserToFrontend(userData) : null };
-  } catch (err) {
-    console.error("Failed to create admin", err);
-    throw err;
-  }
-};
+    return userData ? mapUserToFrontend(userData) : null;
+  },
+  { showSuccess: true }
+);
 
-export const createStaffUser = async (data) => {
-  try {
+export const createStaffUser = withApiHandler(
+  async (data) => {
     const res = await api.post("/users/staff", {
       fullName: data.full_name,
       email: data.email,
@@ -47,48 +41,36 @@ export const createStaffUser = async (data) => {
       staffType: data.staff_type,
     });
     const userData = res.data?.data || res.data;
-    return { success: true, data: userData ? mapUserToFrontend(userData) : null };
-  } catch (err) {
-    console.error("Failed to create staff", err);
-    throw err;
-  }
-};
+    return userData ? mapUserToFrontend(userData) : null;
+  },
+  { showSuccess: true }
+);
 
-export const updateUser = async (id, data) => {
-  try {
+export const updateUser = withApiHandler(
+  async (id, data) => {
     const res = await api.patch(`/users/${id}`, {
       fullName: data.full_name,
       email: data.email,
       role: data.role,
       staffType: data.staff_type,
-      password: data.password || undefined
+      password: data.password || undefined,
     });
     const userData = res.data?.data || res.data;
-    return { success: true, data: userData ? mapUserToFrontend(userData) : null };
-  } catch (err) {
-    console.error("Failed to update user", err);
-    throw err;
-  }
-};
+    return userData ? mapUserToFrontend(userData) : null;
+  },
+  { showSuccess: true }
+);
 
-export const deleteUser = async (id) => {
-  try {
+export const deleteUser = withApiHandler(
+  async (id) => {
     await api.delete(`/users/${id}`);
     return { success: true };
-  } catch (err) {
-    const message = err.response?.data?.message || err.message || "Failed to delete user";
-    console.error("Failed to delete user", message);
-    throw new Error(message);
-  }
-};
+  },
+  { showSuccess: true }
+);
 
-export const getUserById = async (id) => {
-  try {
-    const res = await api.get(`/users/${id}`);
-    const userData = res.data?.data || res.data;
-    return userData ? mapUserToFrontend(userData) : null;
-  } catch (err) {
-    console.error("Failed to get user", err);
-    throw err;
-  }
-};
+export const getUserById = withApiHandler(async (id) => {
+  const res = await api.get(`/users/${id}`);
+  const userData = res.data?.data || res.data;
+  return userData ? mapUserToFrontend(userData) : null;
+});

@@ -268,12 +268,10 @@ export default function CmsRegistrationsPage() {
     try {
       const fullDetail = await getRegistrationById(row.id);
       setSelected(fullDetail);
-    } catch (err) {
-      showMessage("Failed to load visitor profile", "error");
     } finally {
       setFetchingProfile(false);
     }
-  }, [showMessage]);
+  }, []);
 
   const applyStatusChange = async (nextStatus, rejectionReason = "") => {
     if (!selected || !nextStatus || nextStatus === selected.status) {
@@ -327,13 +325,10 @@ export default function CmsRegistrationsPage() {
       await fetchData();
       const updated = await getRegistrationById(selected.id);
       setSelected(updated);
-      showMessage(successMessage, "success");
     } catch (err) {
       if (nextStatus !== "rejected") {
         setPendingStatus(selected.status || "");
       }
-      showMessage("Failed to update status", "error");
-      console.error("Failed to update registration status", err);
     } finally {
       setActionLoading(false);
     }
@@ -366,29 +361,27 @@ export default function CmsRegistrationsPage() {
     await applyStatusChange("rejected", rejectionReasonDraft);
   };
 
-  const handleCheckIn = async () => {
+  const handleCheckInAction = async () => {
     if (!selected?.id) return;
     setActionLoading(true);
     try {
       const updated = await checkInRegistration(selected.id);
-      setSelected(updated);
-      showMessage("Visitor checked in successfully", "success");
-    } catch (err) {
-      showMessage(err.response?.data?.message || "Failed to check in", "error");
+      if (!updated.error) {
+        setSelected(updated);
+      }
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleCheckOut = async () => {
+  const handleCheckOutAction = async () => {
     if (!selected?.id) return;
     setActionLoading(true);
     try {
       const updated = await checkOutRegistration(selected.id);
-      setSelected(updated);
-      showMessage("Visitor checked out successfully", "success");
-    } catch (err) {
-      showMessage(err.response?.data?.message || "Failed to check out", "error");
+      if (!updated.error) {
+        setSelected(updated);
+      }
     } finally {
       setActionLoading(false);
     }
@@ -1502,7 +1495,7 @@ export default function CmsRegistrationsPage() {
                       )
                     }
                     disabled={actionLoading}
-                    onClick={handleCheckIn}
+                    onClick={handleCheckInAction}
                     sx={{
                       borderRadius: 30,
                       fontWeight: 700,
@@ -1539,7 +1532,7 @@ export default function CmsRegistrationsPage() {
                       )
                     }
                     disabled={actionLoading}
-                    onClick={handleCheckOut}
+                    onClick={handleCheckOutAction}
                     sx={{
                       borderRadius: 30,
                       fontWeight: 700,

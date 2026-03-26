@@ -93,8 +93,6 @@ export default function UsersPage() {
     try {
       const data = await getAllUsers();
       setUsers(data || []);
-    } catch (error) {
-      showMessage(error.message, "error");
     } finally {
       setLoading(false);
     }
@@ -151,16 +149,10 @@ export default function UsersPage() {
             : await createStaffUser(form);
       }
 
-      if (res.success) {
-        showMessage(isEditMode ? "User updated" : "User created", "success");
+      if (!res?.error) {
         setModalOpen(false);
         fetchUsers();
-      } else {
-        showMessage(res.error || "Operation failed", "error");
       }
-    } catch (error) {
-      const message = error.response?.data?.message || error.message || "An error occurred";
-      showMessage(message, "error");
     } finally {
       setSubmitting(false);
     }
@@ -174,13 +166,8 @@ export default function UsersPage() {
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
     try {
-      const res = await deleteUser(userToDelete.id);
-      if (res.success) {
-        showMessage("User deleted", "success");
-        fetchUsers();
-      }
-    } catch (error) {
-      showMessage(error.message || "Failed to delete user", "error");
+      await deleteUser(userToDelete.id);
+      fetchUsers();
     } finally {
       setDeleteConfirmOpen(false);
       setUserToDelete(null);

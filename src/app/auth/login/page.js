@@ -34,7 +34,6 @@ const fontStyles = (
 export default function LoginPage() {
   const router = useRouter();
   const { user, setUser, loading: authLoading } = useAuth();
-  const { showMessage } = useMessage();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
 
@@ -74,15 +73,15 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const response = await login(form.email, form.password);
-      setUser(response.user);
+      if (!response?.error) {
+        setUser(response.user);
 
-      if (response.user.role === "staff") {
-        router.push("/staff/gate/verify");
-      } else {
-        router.push("/cms/dashboard");
+        if (response.user.role === "staff") {
+          router.push("/staff/gate/verify");
+        } else {
+          router.push("/cms/dashboard");
+        }
       }
-    } catch (err) {
-      showMessage(err.message, "error");
     } finally {
       setLoading(false);
     }

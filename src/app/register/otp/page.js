@@ -11,7 +11,6 @@ import {
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
-import { useMessage } from "@/contexts/MessageContext";
 import { sendOtp, verifyOtp } from "@/services/registrationService";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
@@ -20,11 +19,10 @@ const OTP_LENGTH = 4;
 
 export default function RegisterOtpPage() {
   const router = useRouter();
-  const { showMessage } = useMessage();
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
   const [otp, setOtp] = useState(() => Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
+  const [resendTimer, setResendTimer] = useState(60);
   const [resending, setResending] = useState(false);
   const inputRefs = useRef([]);
 
@@ -50,13 +48,12 @@ export default function RegisterOtpPage() {
 
     setResending(true);
     try {
-      await sendOtp(visitorData.identity);
-      showMessage("A new code has been sent!", "success");
-      setResendTimer(60);
-      setOtp(Array(OTP_LENGTH).fill(""));
-      inputRefs.current[0]?.focus();
-    } catch (err) {
-      showMessage("Failed to resend code. Please try again later.", "error");
+      const res = await sendOtp(visitorData.identity);
+      if (!res.error) {
+        setResendTimer(60);
+        setOtp(Array(OTP_LENGTH).fill(""));
+        inputRefs.current[0]?.focus();
+      }
     } finally {
       setResending(false);
     }
@@ -120,7 +117,7 @@ export default function RegisterOtpPage() {
     console.log(`Verifying OTP: ${code} for Identity: ${visitorData.identity}`);
     try {
       const res = await verifyOtp(visitorData.identity, code);
-      if (res.success) {
+      if (!res.error && res.success) {
         setFlowState((prev) => ({ 
           ...prev, 
           otpVerified: true, 
@@ -158,13 +155,11 @@ export default function RegisterOtpPage() {
           return newData;
         });
 
-        showMessage("Identity verified! Please confirm your details.", "success");
         router.push("/register/details");
+      } else {
+        setOtp(Array(OTP_LENGTH).fill(""));
+        inputRefs.current[0]?.focus();
       }
-    } catch (err) {
-      showMessage(err.message || "Invalid OTP", "error");
-      setOtp(Array(OTP_LENGTH).fill(""));
-      inputRefs.current[0]?.focus();
     } finally {
       setLoading(false);
     }
@@ -178,7 +173,7 @@ export default function RegisterOtpPage() {
             Verify Identity
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>
-            We've sent a 6-digit code to <Typography component="span" fontWeight={700} color="text.primary">{visitorData.identity || "your device"}</Typography>
+            We've sent a 4-digit code to <Typography component="span" fontWeight={700} color="text.primary">{visitorData.identity || "your device"}</Typography>
           </Typography>
         </Box>
 

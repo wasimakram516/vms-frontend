@@ -35,7 +35,7 @@ import CountryCodeSelector from "@/components/CountryCodeSelector";
 import RichTextEditor from "@/components/RichTextEditor";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
-import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE } from "@/utils/countryCodes";
+import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE, COUNTRY_CODES } from "@/utils/countryCodes";
 import { validatePhoneNumberByCountry } from "@/utils/phoneValidation";
 
 const transition = { duration: 0.5, ease: [0.43, 0.13, 0.23, 0.96] };
@@ -48,12 +48,44 @@ export default function DetailsPage() {
   const [errors, setErrors] = useState({});
   const [ndaOpen, setNdaOpen] = useState(false);
   const [ndaAccepted, setNdaAccepted] = useState(flowState.ndaAccepted || false);
+  const [purposeInput, setPurposeInput] = useState(visitorData.purposeOfVisit || "");
 
   useEffect(() => {
     const fetchFields = async () => {
       try {
         const f = await getFields();
         setFields(f);
+        
+        // Initialize country codes for phone fields from returning visitor data
+        if (visitorData.dynamicFields && Object.keys(visitorData.dynamicFields).length > 0) {
+          const phoneFields = f.filter(field => (field.input_type || field.inputType) === "phone");
+          const countryIsoCodes = {};
+          
+          phoneFields.forEach(field => {
+            const fieldKey = field.field_key || field.fieldKey;
+            const phoneValue = visitorData.dynamicFields[fieldKey];
+            
+            // If phone has country code, try to detect the country
+            if (phoneValue && phoneValue.startsWith("+")) {
+              // Try to find matching country code
+              const countryCode = COUNTRY_CODES.find(cc => phoneValue.startsWith(cc.code));
+              if (countryCode) {
+                countryIsoCodes[fieldKey] = countryCode.isoCode;
+              } else {
+                countryIsoCodes[fieldKey] = DEFAULT_ISO_CODE;
+              }
+            } else {
+              countryIsoCodes[fieldKey] = DEFAULT_ISO_CODE;
+            }
+          });
+          
+          if (Object.keys(countryIsoCodes).length > 0) {
+            setVisitorData(prev => ({
+              ...prev,
+              countryIsoCodes: { ...prev.countryIsoCodes, ...countryIsoCodes }
+            }));
+          }
+        }
       } catch (err) {
         console.error("Failed to fetch fields", err);
       } finally {
@@ -62,6 +94,10 @@ export default function DetailsPage() {
     };
     fetchFields();
   }, []);
+
+  useEffect(() => {
+    setPurposeInput(visitorData.purposeOfVisit || "");
+  }, [visitorData.purposeOfVisit]);
 
   const handleFieldChange = (key, value) => {
     setVisitorData((prev) => ({
@@ -75,6 +111,20 @@ export default function DetailsPage() {
         return next;
       });
     }
+  };
+
+  const getPhoneDisplayValue = (phone, isoCode) => {
+    if (!phone) return "";
+    // If phone starts with +, extract just the digits
+    if (phone.startsWith("+")) {
+      const country = getCountryCodeByIsoCode(isoCode);
+      if (country && phone.startsWith(country.code)) {
+        return phone.substring(country.code.length);
+      }
+      // If it starts with + but we can't match the country code, remove the +
+      return phone.substring(1);
+    }
+    return phone;
   };
 
   const handleCountryCodeChange = (key, isoCode) => {
@@ -106,12 +156,20 @@ export default function DetailsPage() {
         }
       }
     });
+
+    // Validate purpose of visit
+    if (!purposeInput?.trim()) {
+      newErrors.purposeOfVisit = "Purpose of visit is required";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleNext = () => {
     if (!validate() || !ndaAccepted) return;
+
+    const trimmedPurpose = purposeInput.trim();
 
     const processedFields = { ...visitorData.dynamicFields };
     fields.forEach((f) => {
@@ -132,6 +190,7 @@ export default function DetailsPage() {
     setVisitorData((prev) => ({
       ...prev,
       dynamicFields: processedFields,
+      purposeOfVisit: trimmedPurpose,
     }));
 
     setFlowState((prev) => ({ ...prev, ndaAccepted: true, currentStep: "booking" }));
@@ -261,7 +320,7 @@ export default function DetailsPage() {
                       fullWidth
                       label={f.label}
                       type="tel"
-                      value={val}
+                      value={getPhoneDisplayValue(val, isoCode)}
                       onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
                       required={isRequired}
                       error={Boolean(error)}
@@ -351,6 +410,36 @@ export default function DetailsPage() {
               })
             )}
           </Stack>
+
+          <Divider />
+
+          <TextField
+            fullWidth
+            label="Purpose of Visit"
+            value={purposeInput}
+            onChange={(e) => {
+              setPurposeInput(e.target.value);
+              if (errors.purposeOfVisit) {
+                setErrors((p) => {
+                  const next = { ...p };
+                  delete next.purposeOfVisit;
+                  return next;
+                });
+              }
+            }}
+            required
+            error={Boolean(errors.purposeOfVisit)}
+            helperText={errors.purposeOfVisit}
+            placeholder="Tell us why you're visiting"
+            multiline
+            rows={2}
+            size="small"
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 30,
+              },
+            }}
+          />
 
           <Divider />
 

@@ -69,8 +69,6 @@ export default function StaffVerifyPage() {
       } else {
         setError("Invalid or unknown token.");
       }
-    } catch (err) {
-      setError("An error occurred during verification.");
     } finally {
       setLoading(false);
     }
@@ -84,29 +82,27 @@ export default function StaffVerifyPage() {
     setTimeout(() => { scanningRef.current = false; }, 600);
   }, [doVerify]);
 
-  const handleCheckIn = async () => {
+  const handleCheckInAction = async () => {
     if (!result?.id) return;
     setActionLoading(true);
     try {
       const updated = await checkInRegistration(result.id);
-      setResult(updated);
-      showMessage("Visitor checked in successfully", "success");
-    } catch (err) {
-      showMessage(err.response?.data?.message || "Failed to check in", "error");
+      if (!updated.error) {
+        setResult(updated);
+      }
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleCheckOut = async () => {
+  const handleCheckOutAction = async () => {
     if (!result?.id) return;
     setActionLoading(true);
     try {
       const updated = await checkOutRegistration(result.id);
-      setResult(updated);
-      showMessage("Visitor checked out successfully", "success");
-    } catch (err) {
-      showMessage(err.response?.data?.message || "Failed to check out", "error");
+      if (!updated.error) {
+        setResult(updated);
+      }
     } finally {
       setActionLoading(false);
     }
@@ -164,9 +160,9 @@ export default function StaffVerifyPage() {
             Scan visitor QR or enter token manually to grant access.
           </Typography>
 
-        {/* Home / Choice State */}
-        {!showScanner && !loading && !result && !error && (
-          <Paper elevation={0} variant="frosted" sx={{ p: 4, borderRadius: 4, textAlign: "center" }}>
+          <Box sx={{ minHeight: "calc(90vh - 280px)", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+            {!showScanner && !loading && !result && !error && (
+              <Paper elevation={0} variant="frosted" sx={{ p: 4, borderRadius: 4, textAlign: "center", width: "100%" }}>
             <Box
               sx={{
                 width: 72, height: 72, borderRadius: 3,
@@ -303,7 +299,7 @@ export default function StaffVerifyPage() {
                       variant="contained" 
                       color="success" 
                       startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
-                      onClick={handleCheckIn}
+                      onClick={handleCheckInAction}
                       disabled={actionLoading}
                     >
                       Check In
@@ -315,7 +311,7 @@ export default function StaffVerifyPage() {
                       variant="contained" 
                       color="info" 
                       startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
-                      onClick={handleCheckOut}
+                      onClick={handleCheckOutAction}
                       disabled={actionLoading}
                     >
                       Check Out
@@ -331,13 +327,14 @@ export default function StaffVerifyPage() {
         )}
 
         {error && (
-          <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: `1px solid ${isDark ? "rgba(211,47,47,0.5)" : "rgba(211,47,47,0.2)"}`, textAlign: "center", bgcolor: "background.paper" }}>
+          <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: `1px solid ${isDark ? "rgba(211,47,47,0.5)" : "rgba(211,47,47,0.2)"}`, textAlign: "center", bgcolor: "background.paper", width: "100%" }}>
             <ICONS.errorOutline sx={{ fontSize: 64, color: "error.main", mb: 2 }} />
             <Typography variant="h6" fontWeight={700} color="error.main" gutterBottom>Verification Failed</Typography>
             <Typography variant="body2" color="text.secondary" mb={3}>{error}</Typography>
             <Button variant="contained" color="error" fullWidth startIcon={<ICONS.refresh />} onClick={reset} sx={{ borderRadius: 3 }}>Retry</Button>
           </Paper>
         )}
+          </Box>
         </Box>
       </Container>
     </RoleGuard>

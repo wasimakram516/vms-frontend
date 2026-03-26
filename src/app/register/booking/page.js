@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Button,
@@ -40,12 +40,12 @@ const TIME_SLOTS = [
 
 export default function BookingPage() {
   const router = useRouter();
-  const { showMessage } = useMessage();
   const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow } = useVisitor();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
+
   const [bookingType, setBookingType] = useState("custom"); // "custom" or "preset"
   const [selectedPreset, setSelectedPreset] = useState("fullDay"); // "fullDay", "fullWeek", "fullMonth"
 
@@ -141,7 +141,6 @@ export default function BookingPage() {
 
   const handleSubmit = async () => {
     if (!bookingData.date) {
-      showMessage("Please select a date for your visit.", "error");
       return;
     }
 
@@ -177,16 +176,18 @@ export default function BookingPage() {
         requestedDateTo: toDate,
         requestedTimeFrom: bookingData.timeFrom,
         requestedTimeTo: bookingData.timeTo,
-        purposeOfVisit: visitorData.purposeOfVisit || "Follow-up visit",
-        fieldValues: { ...visitorData.dynamicFields, full_name: visitorData.fullName || visitorData.dynamicFields.full_name },
+        purposeOfVisit: visitorData.purposeOfVisit,
+        fieldValues: {
+          ...visitorData.dynamicFields,
+          full_name: visitorData.fullName || visitorData.dynamicFields.full_name,
+        },
       };
 
       console.log("Submitting Registration Payload:", payload);
       const res = await createRegistration(payload);
-      setSuccess(res);
-      showMessage("Registration submitted successfully!", "success");
-    } catch (err) {
-      showMessage(err.response?.data?.message || "Failed to submit registration", "error");
+      if (!res.error) {
+        setSuccess(res);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -243,7 +244,7 @@ export default function BookingPage() {
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 6 }}>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, px: 2 }}>
-              1. Select Date
+              Select Date
             </Typography>
             <Box
               sx={{
@@ -260,30 +261,16 @@ export default function BookingPage() {
                 disablePast
               />
             </Box>
-
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-                2. Purpose of Visit
-              </Typography>
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                value={visitorData.purposeOfVisit || ""}
-                onChange={(e) => setVisitorData((prev) => ({ ...prev, purposeOfVisit: e.target.value }))}
-                sx={{ 
-                  "& .MuiOutlinedInput-root": { borderRadius: 3 }
-                }}
-              />
-            </Box>
           </Grid>
+
           <Grid size={{ xs: 12, md: 6 }}>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-              3. Select Time
+              Select Time
             </Typography>
-            <Stack spacing={2}>
-              {/* Toggle between Custom and Preset using Tabs */}
-              <Tabs
+            <Box sx={{ mt: 0 }}>
+              <Stack spacing={2}>
+                {/* Toggle between Custom and Preset using Tabs */}
+                <Tabs
                 value={bookingType}
                 onChange={(_, value) => setBookingType(value)}
                 variant="fullWidth"
@@ -441,6 +428,7 @@ export default function BookingPage() {
                 </Box>
               )}
             </Stack>
+            </Box>
           </Grid>
         </Grid>
 

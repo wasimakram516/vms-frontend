@@ -15,7 +15,6 @@ import {
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
-import { useMessage } from "@/contexts/MessageContext";
 import { sendOtp } from "@/services/registrationService";
 import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
@@ -25,7 +24,6 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ReturningVisitorPage() {
   const router = useRouter();
-  const { showMessage } = useMessage();
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
@@ -52,7 +50,6 @@ export default function ReturningVisitorPage() {
     const validationError = validateEmail(email);
     if (validationError) {
       setEmailError(validationError);
-      showMessage(validationError, "error");
       return;
     }
 
@@ -60,13 +57,12 @@ export default function ReturningVisitorPage() {
 
     setLoading(true);
     try {
-      await sendOtp(finalIdentity, "email");
-      setVisitorData((p) => ({ ...p, identity: finalIdentity, email: finalIdentity }));
-      setFlowState((prev) => ({ ...prev, isReturning: true, currentStep: "otp" }));
-      router.push("/register/otp");
-    } catch (err) {
-      const errorMessage = err.response?.data?.message || err.message || "Failed to send OTP";
-      showMessage(errorMessage, "error");
+      const res = await sendOtp(finalIdentity, "email");
+      if (!res.error) {
+        setVisitorData((p) => ({ ...p, identity: finalIdentity, email: finalIdentity }));
+        setFlowState((prev) => ({ ...prev, isReturning: true, currentStep: "otp" }));
+        router.push("/register/otp");
+      }
     } finally {
       setLoading(false);
     }

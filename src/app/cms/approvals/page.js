@@ -109,8 +109,6 @@ export default function CmsApprovalsPage() {
     try {
       const data = await getRegistrations("pending");
       setRows(data);
-    } catch (err) {
-      console.error("Failed to fetch pending approvals", err);
     } finally {
       setLoading(false);
     }
@@ -195,8 +193,6 @@ export default function CmsApprovalsPage() {
         setScheduledFrom("09:00");
         setScheduledTo("18:00");
       }
-    } catch (err) {
-      showMessage("Failed to fetch fresh data for approval", "error");
     } finally {
       setFetchingProfile(false);
       setLoadingId(null);

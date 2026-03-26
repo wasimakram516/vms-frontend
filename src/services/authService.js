@@ -1,13 +1,15 @@
 import api from "./api";
 import axios from "axios";
-import { 
-  getStoredToken, 
-  getStoredUser, 
-  setStoredAuthData, 
-  clearStoredAuthData 
+import withApiHandler from "@/utils/withApiHandler";
+import {
+  getStoredToken,
+  getStoredUser,
+  setStoredAuthData,
+  clearStoredAuthData,
 } from "@/utils/authStorage";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
 const mapUserToFrontend = (user) => {
   if (!user || typeof user !== "object") return null;
@@ -20,27 +22,27 @@ const mapUserToFrontend = (user) => {
 };
 
 export const getAuthData = () => {
-  return { 
-    token: getStoredToken(), 
-    user: getStoredUser() 
+  return {
+    token: getStoredToken(),
+    user: getStoredUser(),
   };
 };
 
-export const login = async (email, password) => {
-  try {
-    const res = await api.post("/auth/login", { email, password });
-    const accessToken = res.data?.accessToken || res.data?.data?.accessToken;
+export const login = withApiHandler(
+  async (email, password) => {
+    const { data } = await api.post("/auth/login", { email, password });
+    const accessToken = data?.accessToken || data?.data?.accessToken;
 
     if (!accessToken) {
       throw new Error("No access token received from server");
     }
-    
+
     setStoredAuthData(accessToken, null);
 
     const userRes = await axios.get(`${API_BASE_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-    
+
     let user = userRes.data?.data || userRes.data;
     user = mapUserToFrontend(user);
 
@@ -51,37 +53,9 @@ export const login = async (email, password) => {
     setStoredAuthData(accessToken, user);
 
     return { token: accessToken, user };
-  } catch (err) {
-    console.error("Login service error:", err);
-
-    if (err.response?.status !== 401) {
-       clearStoredAuthData();
-    }
-    throw new Error(err.response?.data?.message || err.message || "Invalid credentials");
-  }
-};
-
-export const verifySession = async () => {
-  try {
-    const currentToken = getStoredToken();
-    if (!currentToken) {
-      return null;
-    }
-    const res = await api.get("/auth/me");
-    let user = res.data?.data || res.data;
-    user = mapUserToFrontend(user);
-
-    if (user && currentToken) {
-      setStoredAuthData(currentToken, user);
-      return { user };
-    }
-    return null;
-  } catch (err) {
-    console.error("Session verification failed:", err);
-    clearStoredAuthData();
-    return null;
-  }
-};
+  },
+  { showSuccess: true }
+);
 
 export const logout = async () => {
   try {
@@ -96,15 +70,10 @@ export const logout = async () => {
   }
 };
 
-export const refreshToken = async () => {
-  try {
-    const res = await api.post("/auth/refresh");
-    const token = res.data?.accessToken || res.data?.data?.accessToken;
-    if (token) setStoredAuthData(token, getStoredUser());
-    return token;
-  } catch (err) {
-    clearStoredAuthData();
-    throw err;
-  }
-};
+export const refreshToken = withApiHandler(async () => {
+  const res = await api.post("/auth/refresh");
+  const token = res.data?.accessToken || res.data?.data?.accessToken;
+  if (token) setStoredAuthData(token, getStoredUser());
+  return token;
+});
 

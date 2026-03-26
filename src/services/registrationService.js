@@ -1,197 +1,160 @@
 import api from "./api";
+import withApiHandler from "@/utils/withApiHandler";
 
-export const getFields = async () => {
-  try {
-    const res = await api.get("/registrations/form/fields");
-    const data = res.data?.data || [];
-    return data.sort((a,b) => a.sortOrder - b.sortOrder);
-  } catch (err) {
-    console.error("Failed to fetch fields", err);
-    throw err;
+export const getFields = withApiHandler(async () => {
+  const res = await api.get("/registrations/form/fields");
+  const data = res.data?.data || [];
+  return data.sort((a, b) => a.sortOrder - b.sortOrder);
+});
+
+export const sendOtp = withApiHandler(async (target) => {
+  const { data } = await api.post("/auth/otp/send", { target });
+  return data;
+});
+
+export const verifyOtp = withApiHandler(async (target, code) => {
+  const { data } = await api.post("/auth/otp/verify", { target, code });
+  if (data?.success) {
+    return {
+      success: true,
+      ...data.data,
+    };
   }
-};
+  return data;
+});
 
-export const sendOtp = async (target) => {
-  try {
-    const res = await api.post("/auth/otp/send", { target });
-    return res.data;
-  } catch (err) {
-    console.error("Failed to send OTP", err);
-    throw err;
+export const createRegistration = withApiHandler(
+  async (payload) => {
+    const { data } = await api.post("/registrations", payload);
+    return data?.data;
+  },
+  { showSuccess: true }
+);
+
+export const getRegistrations = withApiHandler(async (status = null) => {
+  const params = status && status !== "all" ? { status } : {};
+  const res = await api.get("/registrations", { params });
+  const registrations = res.data?.data || res.data || [];
+
+  return Array.isArray(registrations)
+    ? registrations.map((r) => ({
+        id: r.id,
+        full_name: r.user?.fullName || "N/A",
+        email: r.user?.email || "N/A",
+        phone: r.user?.phone || "N/A",
+        purpose_of_visit: r.purposeOfVisit,
+        status: r.status,
+        requested_date_from: r.requestedDateFrom,
+        requested_date_to: r.requestedDateTo,
+        requested_time_from: r.requestedTimeFrom,
+        requested_time_to: r.requestedTimeTo,
+        approved_date_from: r.approvedDateFrom,
+        approved_date_to: r.approvedDateTo,
+        approved_time_from: r.approvedTimeFrom,
+        approved_time_to: r.approvedTimeTo,
+        created_at: r.createdAt,
+        qr_token: r.qrToken,
+        rejection_reason: r.rejectionReason,
+        ...r,
+      }))
+    : [];
+});
+
+export const getRegistrationById = withApiHandler(async (id) => {
+  const res = await api.get(`/registrations/${id}`);
+  const r = res.data?.data || res.data;
+  if (!r) return null;
+
+  const mapRegistration = (reg) => ({
+    id: reg.id,
+    full_name: reg.user?.fullName || r.user?.fullName || "N/A",
+    email: reg.user?.email || r.user?.email || "N/A",
+    phone: reg.user?.phone || r.user?.phone || "N/A",
+    purpose_of_visit: reg.purposeOfVisit,
+    status: reg.status,
+    requested_date_from: reg.requestedDateFrom,
+    requested_date_to: reg.requestedDateTo,
+    requested_time_from: reg.requestedTimeFrom,
+    requested_time_to: reg.requestedTimeTo,
+    approved_date_from: reg.approvedDateFrom,
+    approved_date_to: reg.approvedDateTo,
+    approved_time_from: reg.approvedTimeFrom,
+    approved_time_to: reg.approvedTimeTo,
+    created_at: reg.createdAt,
+    checked_in_at: reg.checkedInAt,
+    checked_out_at: reg.checkedOutAt,
+    qr_token: reg.qrToken,
+    rejection_reason: reg.rejectionReason,
+    fieldValues: reg.fieldValues,
+    ...reg,
+  });
+
+  const mapped = mapRegistration(r);
+  if (Array.isArray(r.history)) {
+    mapped.history = r.history.map(mapRegistration);
   }
-};
 
-export const verifyOtp = async (target, code) => {
-  try {
-    const res = await api.post("/auth/otp/verify", { target, code });
-    if (res.data?.success) {
-      return {
-        success: true,
-        ...res.data.data
-      };
-    }
-    return res.data;
-  } catch (err) {
-    console.error("OTP verification failed", err);
-    throw err;
-  }
-};
+  return mapped;
+});
 
-export const createRegistration = async (payload) => {
-  try {
-    const res = await api.post("/registrations", payload);
-    return res.data?.data;
-  } catch (err) {
-    console.error("Registration failed", err);
-    throw err;
-  }
-};
-
-export const getRegistrations = async (status = null) => {
-  try {
-    const params = status && status !== "all" ? { status } : {};
-    const res = await api.get("/registrations", { params });
-    const registrations = res.data?.data || res.data || [];
-    
-    return Array.isArray(registrations) ? registrations.map(r => ({
-      id: r.id,
-      full_name: r.user?.fullName || "N/A",
-      email: r.user?.email || "N/A",
-      phone: r.user?.phone || "N/A",
-      purpose_of_visit: r.purposeOfVisit,
-      status: r.status,
-      requested_date_from: r.requestedDateFrom,
-      requested_date_to: r.requestedDateTo,
-      requested_time_from: r.requestedTimeFrom,
-      requested_time_to: r.requestedTimeTo,
-      approved_date_from: r.approvedDateFrom,
-      approved_date_to: r.approvedDateTo,
-      approved_time_from: r.approvedTimeFrom,
-      approved_time_to: r.approvedTimeTo,
-      created_at: r.createdAt,
-      qr_token: r.qrToken,
-      rejection_reason: r.rejectionReason,
-      ...r
-    })) : [];
-  } catch (err) {
-    console.error("Failed to fetch registrations", err);
-    return [];
-  }
-};
-
-export const getRegistrationById = async (id) => {
-  try {
-    const res = await api.get(`/registrations/${id}`);
-    const r = res.data?.data || res.data;
-    if (!r) return null;
-
-    const mapRegistration = (reg) => ({
-      id: reg.id,
-      full_name: reg.user?.fullName || r.user?.fullName || "N/A",
-      email: reg.user?.email || r.user?.email || "N/A",
-      phone: reg.user?.phone || r.user?.phone || "N/A",
-      purpose_of_visit: reg.purposeOfVisit,
-      status: reg.status,
-      requested_date_from: reg.requestedDateFrom,
-      requested_date_to: reg.requestedDateTo,
-      requested_time_from: reg.requestedTimeFrom,
-      requested_time_to: reg.requestedTimeTo,
-      approved_date_from: reg.approvedDateFrom,
-      approved_date_to: reg.approvedDateTo,
-      approved_time_from: reg.approvedTimeFrom,
-      approved_time_to: reg.approvedTimeTo,
-      created_at: reg.createdAt,
-      checked_in_at: reg.checkedInAt,
-      checked_out_at: reg.checkedOutAt,
-      qr_token: reg.qrToken,
-      rejection_reason: reg.rejectionReason,
-      fieldValues: reg.fieldValues,
-      ...reg 
-    });
-
-    const mapped = mapRegistration(r);
-    if (Array.isArray(r.history)) {
-      mapped.history = r.history.map(mapRegistration);
-    }
-
-    return mapped;
-  } catch (err) {
-    console.error(`Failed to fetch registration ${id}`, err);
-    throw err;
-  }
-};
-
-export const updateRegistrationStatus = async (id, action, payload = {}) => {
-  try {
-    let endpoint = `/registrations/${id}/${action}`;
-    
+export const updateRegistrationStatus = withApiHandler(
+  async (id, action, payload = {}) => {
+    const endpoint = `/registrations/${id}/${action}`;
     const res = await api.patch(endpoint, payload);
     return res.data?.data || res.data;
-  } catch (err) {
-    console.error(`Failed to ${action} registration`, err);
-    throw err;
-  }
-};
+  },
+  { showSuccess: true }
+);
 
-export const updateRegistration = async (id, payload) => {
-  try {
+export const updateRegistration = withApiHandler(
+  async (id, payload) => {
     const res = await api.patch(`/registrations/${id}`, payload);
     return res.data?.data || res.data;
-  } catch (err) {
-    console.error(`Failed to update registration ${id}`, err);
-    throw err;
+  },
+  { showSuccess: true }
+);
+
+export const verifyRegistrationByToken = withApiHandler(async (token) => {
+  const { data } = await api.get(`/registrations/verify`, { params: { token } });
+  const result = data?.data || data;
+
+  if (!result) return null;
+
+  if (result.notApproved) {
+    return result;
   }
-};
 
-export const verifyRegistrationByToken = async (token) => {
-  try {
-    const res = await api.get(`/registrations/verify`, { params: { token } });
-    const data = res.data?.data || res.data;
-    
-    if (!data) return null;
+  return {
+    id: result.id,
+    full_name: result.user?.fullName || "N/A",
+    email: result.user?.email || "N/A",
+    phone: result.user?.phone || "N/A",
+    purpose_of_visit: result.purposeOfVisit,
+    status: result.status,
+    approved_date_from: result.approvedDateFrom,
+    approved_date_to: result.approvedDateTo,
+    approved_time_from: result.approvedTimeFrom,
+    approved_time_to: result.approvedTimeTo,
+    qr_token: result.qrToken,
+    notApproved: result.notApproved,
+    visitor: result.visitor,
+    user: result.user,
+    ...result,
+  };
+});
 
-    if (data.notApproved) {
-      return data;
-    }
+export const checkInRegistration = withApiHandler(
+  async (id) => {
+    const { data } = await api.patch(`/registrations/${id}/checkin`);
+    return data?.data || data;
+  },
+  { showSuccess: true }
+);
 
-    return {
-      id: data.id,
-      full_name: data.user?.fullName || "N/A",
-      email: data.user?.email || "N/A",
-      phone: data.user?.phone || "N/A",
-      purpose_of_visit: data.purposeOfVisit,
-      status: data.status,
-      approved_date_from: data.approvedDateFrom,
-      approved_date_to: data.approvedDateTo,
-      approved_time_from: data.approvedTimeFrom,
-      approved_time_to: data.approvedTimeTo,
-      qr_token: data.qrToken,
-      notApproved: data.notApproved,
-      visitor: data.visitor,
-      user: data.user,
-      ...data
-    };
-  } catch (err) {
-    return null;
-  }
-};
-
-export const checkInRegistration = async (id) => {
-  try {
-    const res = await api.patch(`/registrations/${id}/checkin`);
-    return res.data?.data || res.data;
-  } catch (err) {
-    console.error("Failed to check in registration", err);
-    throw err;
-  }
-};
-
-export const checkOutRegistration = async (id) => {
-  try {
-    const res = await api.patch(`/registrations/${id}/checkout`);
-    return res.data?.data || res.data;
-  } catch (err) {
-    console.error("Failed to check out registration", err);
-    throw err;
-  }
-};
+export const checkOutRegistration = withApiHandler(
+  async (id) => {
+    const { data } = await api.patch(`/registrations/${id}/checkout`);
+    return data?.data || data;
+  },
+  { showSuccess: true }
+);

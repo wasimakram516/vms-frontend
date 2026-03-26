@@ -178,20 +178,13 @@ export default function CmsFieldsPage() {
     try {
       if (editId) {
         await updateCustomField(editId, payload);
-        showMessage("Field updated.", "success");
       } else {
         await createCustomField(payload);
-        showMessage("Field created.", "success");
       }
       fetchData();
       setDialogOpen(false);
       setEditId(null);
       setForm(emptyForm());
-    } catch (err) {
-      showMessage(
-        err.response?.data?.message || "Failed to save field",
-        "error",
-      );
     } finally {
       setSaving(false);
     }
@@ -200,11 +193,10 @@ export default function CmsFieldsPage() {
   const handleDelete = async () => {
     try {
       await deleteCustomField(deleteTarget.id);
-      showMessage(`"${deleteTarget.label}" deleted.`, "success");
       fetchData();
       setDeleteTarget(null);
-    } catch (err) {
-      showMessage("Failed to delete field", "error");
+    } finally {
+      // Error handled by withApiHandler
     }
   };
 

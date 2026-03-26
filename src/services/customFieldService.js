@@ -1,42 +1,32 @@
 import api from "./api";
+import withApiHandler from "@/utils/withApiHandler";
 
-export const getCustomFields = async () => {
-  try {
-    const res = await api.get("/custom-fields");
-    const data = res.data?.data || [];
-    return data.sort((a,b) => a.sortOrder - b.sortOrder);
-  } catch (err) {
-    console.error("Failed to fetch custom fields", err);
-    return [];
-  }
-};
+export const getCustomFields = withApiHandler(async () => {
+  const res = await api.get("/custom-fields");
+  const data = res.data?.data || [];
+  return data.sort((a, b) => a.sortOrder - b.sortOrder);
+});
 
-export const createCustomField = async (data) => {
-  try {
+export const createCustomField = withApiHandler(
+  async (data) => {
     const res = await api.post("/custom-fields", data);
     return res.data?.data;
-  } catch (err) {
-    console.error("Failed to create custom field", err);
-    throw err;
-  }
-};
+  },
+  { showSuccess: true }
+);
 
-export const updateCustomField = async (id, data) => {
-  try {
+export const updateCustomField = withApiHandler(
+  async (id, data) => {
     const res = await api.patch(`/custom-fields/${id}`, data);
     return res.data?.data;
-  } catch (err) {
-    console.error("Failed to update custom field", err);
-    throw err;
-  }
-};
+  },
+  { showSuccess: true }
+);
 
-export const deleteCustomField = async (id) => {
-  try {
+export const deleteCustomField = withApiHandler(
+  async (id) => {
     await api.delete(`/custom-fields/${id}`);
-    return true;
-  } catch (err) {
-    console.error("Failed to delete custom field", err);
-    throw err;
-  }
-};
+    return { success: true };
+  },
+  { showSuccess: true }
+);
