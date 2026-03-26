@@ -778,7 +778,7 @@ export default function CmsApprovalsPage() {
       <Dialog
         open={!!approveTarget}
         onClose={() => setApproveTarget(null)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         PaperProps={{
           sx: { borderRadius: 4, overflow: "hidden", variant: "frosted" },
