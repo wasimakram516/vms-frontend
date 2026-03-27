@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 import ICONS from "@/utils/iconUtil";
 
-const getNavItems = () => {
+const getNavItems = (role) => {
   const base = [
     { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard" },
     { label: "Registrations", icon: ICONS.appRegister, path: "/cms/registrations" },
@@ -27,6 +27,11 @@ const getNavItems = () => {
     { label: "Fields", icon: ICONS.form, path: "/cms/fields" },
     { label: "Users", icon: ICONS.people, path: "/cms/users" },
   ];
+
+  if (role === "superadmin") {
+    base.push({ label: "NDA Forms", icon: ICONS.description, path: "/cms/nda-forms" });
+    base.push({ label: "Settings", icon: ICONS.settings, path: "/cms/settings" });
+  }
 
   return base;
 };
