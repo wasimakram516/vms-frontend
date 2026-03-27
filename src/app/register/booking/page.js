@@ -40,7 +40,7 @@ const TIME_SLOTS = [
 
 export default function BookingPage() {
   const router = useRouter();
-  const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow } = useVisitor();
+  const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState } = useVisitor();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const [submitting, setSubmitting] = useState(false);
@@ -172,6 +172,7 @@ export default function BookingPage() {
       
       const payload = {
         userId: visitorData.userId,
+        ndaAccepted: flowState?.ndaAccepted === true,
         requestedDateFrom: fromDate,
         requestedDateTo: toDate,
         requestedTimeFrom: bookingData.timeFrom,
