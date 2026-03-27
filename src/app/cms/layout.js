@@ -5,6 +5,7 @@ import Sidebar from "@/components/nav/Sidebar";
 import { GlobalStyles } from "@mui/material";
 
 import RoleGuard from "@/components/auth/RoleGuard";
+import BreadcrumbsNav from "@/components/nav/BreadcrumbsNav";
 
 export default function CmsLayout({ children }) {
   const flatpickrStyles = (
@@ -48,6 +49,7 @@ export default function CmsLayout({ children }) {
             minWidth: 0,
           }}
         >
+          <BreadcrumbsNav />
           {children}
         </Box>
       </Box>
