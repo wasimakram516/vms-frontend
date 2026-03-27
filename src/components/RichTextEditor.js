@@ -10,6 +10,7 @@ import {
     MenuItem,
     FormControl,
 } from "@mui/material";
+import { useColorMode } from "@/contexts/ThemeContext";
 import FormatBoldIcon from "@mui/icons-material/FormatBold";
 import FormatItalicIcon from "@mui/icons-material/FormatItalic";
 import FormatUnderlinedIcon from "@mui/icons-material/FormatUnderlined";
@@ -24,6 +25,8 @@ import FormatAlignJustifyIcon from "@mui/icons-material/FormatAlignJustify";
 import FormatClearIcon from "@mui/icons-material/FormatClear";
 
 const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeight }) => {
+    const { mode } = useColorMode();
+    const isDark = mode === "dark";
     const editorRef = useRef(null);
     const colorPickerAnchorRef = useRef(null);
     const fontSizeSelectRef = useRef(null);
@@ -35,6 +38,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
     });
     const [alignment, setAlignment] = useState(null);
     const [fontSize, setFontSize] = useState(14);
+    const [activeHeading, setActiveHeading] = useState(null);
     const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
     const parseHTMLForFormatting = (html) => {
@@ -79,6 +83,10 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
 
         return { alignment: detectedAlignment, fontSize: detectedFontSize };
     };
+
+    useEffect(() => {
+        try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (_) {}
+    }, []);
 
     useEffect(() => {
         if (!editorRef.current) return;
@@ -129,25 +137,43 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
     }, [value]);
 
     const updateActiveCommands = () => {
-        if (editorRef.current) {
-            const isFocused = document.activeElement === editorRef.current;
-            setActiveCommands({
-                bold: document.queryCommandState("bold"),
-                italic: document.queryCommandState("italic"),
-                underline: document.queryCommandState("underline"),
-                strikethrough: document.queryCommandState("strikethrough"),
-            });
+        if (!editorRef.current) return;
 
-            const isLeft = document.queryCommandState("justifyLeft");
-            const isCenter = document.queryCommandState("justifyCenter");
-            const isRight = document.queryCommandState("justifyRight");
-            const isFull = document.queryCommandState("justifyFull");
+        setActiveCommands({
+            bold: document.queryCommandState("bold"),
+            italic: document.queryCommandState("italic"),
+            underline: document.queryCommandState("underline"),
+            strikethrough: document.queryCommandState("strikethrough"),
+        });
 
-            if (isFull) setAlignment("justify");
-            else if (isCenter && !isLeft && !isRight) setAlignment("center");
-            else if (isRight && !isLeft && !isCenter) setAlignment("right");
-            else if (isLeft && !isCenter && !isRight) setAlignment("left");
-            else setAlignment(null);
+        const isLeft = document.queryCommandState("justifyLeft");
+        const isCenter = document.queryCommandState("justifyCenter");
+        const isRight = document.queryCommandState("justifyRight");
+        const isFull = document.queryCommandState("justifyFull");
+
+        if (isFull) setAlignment("justify");
+        else if (isCenter && !isLeft && !isRight) setAlignment("center");
+        else if (isRight && !isLeft && !isCenter) setAlignment("right");
+        else if (isLeft && !isCenter && !isRight) setAlignment("left");
+        else setAlignment(null);
+
+        const blockFormat = document.queryCommandValue("formatBlock").toLowerCase().replace(/[<>]/g, "");
+        setActiveHeading(["h1", "h2", "h3"].includes(blockFormat) ? blockFormat : null);
+
+        // Detect font-size at cursor by walking up the DOM from the selection anchor
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            let node = selection.getRangeAt(0).startContainer;
+            if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+            let detectedSize = null;
+            while (node && node !== editorRef.current) {
+                if (node.style && node.style.fontSize) {
+                    const size = parseInt(node.style.fontSize);
+                    if (!isNaN(size)) { detectedSize = size; break; }
+                }
+                node = node.parentElement;
+            }
+            setFontSize(detectedSize ?? 14);
         }
     };
 
@@ -169,6 +195,14 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
 
     const handleFocus = () => {
         updateActiveCommands();
+    };
+
+    const handleHeading = (heading) => {
+        if (activeHeading === heading) {
+            executeCommand("formatBlock", "<p>");
+        } else {
+            executeCommand("formatBlock", `<${heading}>`);
+        }
     };
 
     const executeCommand = (command, value = null) => {
@@ -408,7 +442,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                     borderBottom: "1px solid",
                     borderColor: "divider",
                     minHeight: "40px !important",
-                    bgcolor: "grey.50",
+                    bgcolor: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
                     gap: 0.5,
                     flexWrap: "wrap",
                     "& .MuiIconButton-root": {
@@ -416,6 +450,27 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                     },
                 }}
             >
+                <Box sx={{ display: "flex", gap: 0.5, borderRight: "1px solid", borderColor: "divider", pr: 0.5 }}>
+                    {["h1", "h2", "h3"].map((h) => (
+                        <IconButton
+                            key={h}
+                            size="small"
+                            onClick={() => handleHeading(h)}
+                            sx={{
+                                bgcolor: activeHeading === h ? "action.selected" : "transparent",
+                                fontSize: "0.7rem",
+                                fontWeight: 800,
+                                width: 28,
+                                height: 28,
+                                fontFamily: "inherit",
+                            }}
+                            title={`Heading ${h.slice(1)}`}
+                        >
+                            {h.toUpperCase()}
+                        </IconButton>
+                    ))}
+                </Box>
+
                 <Box sx={{ display: "flex", gap: 0.5, borderRight: "1px solid", borderColor: "divider", pr: 0.5 }}>
                     <IconButton
                         size="small"
@@ -608,6 +663,8 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                 onFocus={handleFocus}
                 onMouseUp={updateActiveCommands}
                 onKeyUp={updateActiveCommands}
+                onSelect={updateActiveCommands}
+                onClick={updateActiveCommands}
                 dir={dir}
                 sx={{
                     minHeight: minHeight || "96px",
@@ -617,7 +674,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                     outline: "none",
                     fontSize: "14px",
                     lineHeight: 1.6,
-                    color: "#333",
+                    color: "text.primary",
                     "&:empty:before": {
                         content: `"${placeholder}"`,
                         color: "text.disabled",

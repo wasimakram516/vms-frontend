@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import {
   Box,
   Button,
-  Paper,
   Stack,
   TextField,
   Typography,
@@ -24,21 +23,21 @@ import {
   RadioGroup,
   Radio,
   FormGroup,
+  CircularProgress,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { getFields } from "@/services/registrationService";
-import { motion } from "framer-motion";
+import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import RichTextEditor from "@/components/RichTextEditor";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
+import NdaTemplateContent from "@/components/NdaTemplateContent";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE, COUNTRY_CODES } from "@/utils/countryCodes";
 import { validatePhoneNumberByCountry } from "@/utils/phoneValidation";
-
-const transition = { duration: 0.5, ease: [0.43, 0.13, 0.23, 0.96] };
 
 export default function DetailsPage() {
   const router = useRouter();
@@ -48,6 +47,8 @@ export default function DetailsPage() {
   const [errors, setErrors] = useState({});
   const [ndaOpen, setNdaOpen] = useState(false);
   const [ndaAccepted, setNdaAccepted] = useState(flowState.ndaAccepted || false);
+  const [ndaTemplate, setNdaTemplate] = useState(null);
+  const [ndaLoading, setNdaLoading] = useState(true);
   const [purposeInput, setPurposeInput] = useState(visitorData.purposeOfVisit || "");
 
   useEffect(() => {
@@ -98,6 +99,17 @@ export default function DetailsPage() {
   useEffect(() => {
     setPurposeInput(visitorData.purposeOfVisit || "");
   }, [visitorData.purposeOfVisit]);
+
+  useEffect(() => {
+    const fetchNdaTemplate = async () => {
+      setNdaLoading(true);
+      const template = await getPublicActiveNdaTemplate();
+      setNdaTemplate(template?.error ? null : template || null);
+      setNdaLoading(false);
+    };
+
+    fetchNdaTemplate();
+  }, []);
 
   const handleFieldChange = (key, value) => {
     setVisitorData((prev) => ({
@@ -452,19 +464,34 @@ export default function DetailsPage() {
               />
             }
             label={
-              <Typography variant="body2" fontWeight={600}>
+              <Typography component="span" variant="body2" fontWeight={600}>
                 I have read and agree to the{" "}
-                <Typography
-                  component="span"
-                  color="primary.main"
-                  sx={{ textDecoration: "underline", cursor: "pointer" }}
+                <Box
+                  component="button"
+                  type="button"
+                  sx={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    p: 0,
+                    border: 0,
+                    bgcolor: "transparent",
+                    appearance: "none",
+                    color: "primary.main",
+                    font: "inherit",
+                    fontWeight: "inherit",
+                    lineHeight: "inherit",
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                    verticalAlign: "baseline",
+                  }}
                   onClick={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     setNdaOpen(true);
                   }}
                 >
                   NDA
-                </Typography>
+                </Box>
               </Typography>
             }
           />
@@ -494,23 +521,26 @@ export default function DetailsPage() {
       </form>
 
       {/* NDA Modal */}
-      <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
+      <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" fontWeight={800} component="span" sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            Non-Disclosure Agreement
+            {ndaTemplate?.name || "Non-Disclosure Agreement"}
           </Typography>
           <IconButton onClick={() => setNdaOpen(false)}>
             <ICONS.close />
           </IconButton>
         </DialogTitle>
         <DialogContent dividers sx={{ borderColor: "rgba(0,0,0,0.05)" }}>
-          <Typography variant="body2" color="text.primary" sx={{ lineHeight: 1.8, whiteSpace: "pre-line" }}>
-            {"This Non-Disclosure Agreement (the \"Agreement\") is entered into for the purpose of preventing the unauthorized disclosure of Confidential Information as defined below.\n\n" +
-              "1. Definition of Confidential Information: For purposes of this Agreement, \"Confidential Information\" shall include all information or material that has or could have commercial value or other utility in the business in which Disclosing Party is engaged.\n\n" +
-              "2. Obligations of Receiving Party: Receiving Party shall hold and maintain the Confidential Information in strictest confidence for the sole and exclusive benefit of the Disclosing Party.\n\n" +
-              "3. Legal Action: Any breach of this agreement may result in legal action and termination of access to the premises.\n\n" +
-              "By accepting, you acknowledge that you have read and understood the terms of this agreement."}
-          </Typography>
+          {ndaLoading ? (
+            <Stack spacing={2} alignItems="center" sx={{ py: 4 }}>
+              <CircularProgress size={28} />
+              <Typography variant="body2" color="text.secondary">
+                Loading NDA...
+              </Typography>
+            </Stack>
+          ) : (
+            <NdaTemplateContent template={ndaTemplate} />
+          )}
         </DialogContent>
       </Dialog>
     </VisitorLayout>
