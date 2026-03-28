@@ -101,7 +101,7 @@ export default function HomePage() {
           </Box>
 
           <Stack spacing={3}>
-            {/* Staff Card */}
+            {/* Admin Card */}
             <Paper elevation={0} onClick={handleStaffAction} sx={cardStyle}>
               <Stack direction="row" spacing={2} alignItems="center">
                 <Box sx={iconBoxStyle}>
@@ -111,12 +111,12 @@ export default function HomePage() {
                   <Typography variant="h6" fontWeight={800}>
                     {user && ["admin", "superadmin", "staff"].includes(user.role)
                       ? "Go to Dashboard"
-                      : "Login"}
+                      : "Admin Login"}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {user && ["admin", "superadmin", "staff"].includes(user.role)
                       ? "Access your dashboard and management tools."
-                      : "Staff and Admin secure access."}
+                      : "Admin secure access."}
                   </Typography>
                 </Box>
               </Stack>

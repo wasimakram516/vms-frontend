@@ -22,6 +22,8 @@ import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
+const getStaffDestination = (staffUser) =>
+  staffUser?.staffType === "kitchen" ? "/staff/kitchen" : "/staff/gate/verify";
 
 const fontStyles = (
   <GlobalStyles
@@ -33,14 +35,14 @@ const fontStyles = (
 
 export default function LoginPage() {
   const router = useRouter();
-  const { user, setUser, loading: authLoading } = useAuth();
+  const { user, setUser, logout, loading: authLoading } = useAuth();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
 
   useEffect(() => {
     if (!authLoading && user) {
       if (user.role === "staff") {
-        router.replace("/staff/gate/verify");
+        router.replace(getStaffDestination(user));
       } else {
         router.replace("/cms/dashboard");
       }
@@ -74,11 +76,10 @@ export default function LoginPage() {
     try {
       const response = await login(form.email, form.password);
       if (!response?.error) {
-        setUser(response.user);
-
         if (response.user.role === "staff") {
-          router.push("/staff/gate/verify");
+          await logout("/auth/login");
         } else {
+          setUser(response.user);
           router.push("/cms/dashboard");
         }
       }
@@ -93,8 +94,8 @@ export default function LoginPage() {
 
   return (
     <VisitorLayout 
-      title="Staff Portal" 
-      subtitle="Enter your credentials to access the Sinan VMS management tools."
+      title="Admin Portal" 
+      subtitle="Enter your credentials to access the Sinan VMS admin tools."
       justifyContent="center"
     >
       <Box sx={{ position: "relative", mb: 4 }}>
@@ -124,11 +125,11 @@ export default function LoginPage() {
               textAlign: "center"
             }}
           >
-            Staff sign in
+            Admin sign in
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
             Enter your credentials to access the{" "}
-            <strong>{"Sinan VMS"}</strong> portal.
+            <strong>{"Sinan VMS admin"}</strong> portal.
           </Typography>
         </Box>
       </Box>
