@@ -13,7 +13,7 @@ export default function ClientLayout({ children }) {
     setHasMounted(true);
   }, []);
 
-  if (!hasMounted) return null;
+  if (!hasMounted) return <>{children}</>;
 
   const modulePrefixes = [
     "/auth",
