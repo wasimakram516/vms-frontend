@@ -57,7 +57,11 @@ export const login = withApiHandler(
   { showSuccess: true }
 );
 
-export const logout = async () => {
+export const logout = async (redirectTo) => {
+  const storedUser = getStoredUser();
+  const redirectPath =
+    redirectTo || (storedUser?.role === "staff" ? "/staff" : "/auth/login");
+
   try {
     await api.post("/auth/logout");
   } catch (err) {
@@ -65,7 +69,7 @@ export const logout = async () => {
   } finally {
     clearStoredAuthData();
     if (typeof window !== "undefined") {
-      window.location.href = "/auth/login";
+      window.location.href = redirectPath;
     }
   }
 };

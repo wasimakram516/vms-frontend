@@ -86,9 +86,11 @@ api.interceptors.response.use(
           refreshError.response?.status === 401 ||
           refreshError.response?.status === 403
         ) {
+          const storedUser = getStoredUser();
+          const redirectPath = storedUser?.role === "staff" ? "/staff" : "/auth/login";
           clearStoredAuthData();
           if (typeof window !== "undefined") {
-            window.location.href = "/auth/login";
+            window.location.href = redirectPath;
           }
         }
 

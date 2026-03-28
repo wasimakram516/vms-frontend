@@ -1,10 +1,18 @@
 "use client";
 
 import { Box } from "@mui/material";
+import { usePathname } from "next/navigation";
 
 import RoleGuard from "@/components/auth/RoleGuard";
 
 export default function StaffLayout({ children }) {
+  const pathname = usePathname();
+  const isStaffEntryPage = pathname === "/staff";
+
+  if (isStaffEntryPage) {
+    return children;
+  }
+
   return (
     <RoleGuard allowedRoles={["staff"]}>
       <Box

@@ -13,6 +13,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -23,7 +24,10 @@ import ICONS from "@/utils/iconUtil";
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useColorMode();
+  const pathname = usePathname();
   const brandLogo = mode === "dark" ? "/logo-mark-light.png" : "/logo-mark-dark.png";
+  const isStaffArea = pathname?.startsWith("/staff");
+  const brandHref = isStaffArea ? "/staff" : "/";
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -80,7 +84,7 @@ export default function Navbar() {
         }}
       >
         <Toolbar sx={{ justifyContent: "space-between" }}>
-          <Link href="/" style={{ textDecoration: "none" }}>
+          <Link href={brandHref} style={{ textDecoration: "none" }}>
             <Stack
               direction="row"
               alignItems="center"
@@ -134,7 +138,7 @@ export default function Navbar() {
               </IconButton>
             </Tooltip>
 
-            {!user ? (
+            {!user && !isStaffArea ? (
               <Link href="/auth/login">
                 <Tooltip title="Sign In">
                   <IconButton color="primary" sx={avatarButtonStyle}>
@@ -142,7 +146,7 @@ export default function Navbar() {
                   </IconButton>
                 </Tooltip>
               </Link>
-            ) : (
+            ) : user ? (
               <>
                 <Tooltip title="View profile">
                   <IconButton onClick={handleOpen} sx={avatarButtonStyle}>
@@ -205,7 +209,7 @@ export default function Navbar() {
                   </MenuItem>
                 </Menu>
               </>
-            )}
+            ) : null}
 
           </Box>
         </Toolbar>

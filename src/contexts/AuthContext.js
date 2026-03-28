@@ -88,9 +88,9 @@ export const AuthProvider = ({ children }) => {
     setSelectedBusiness(businessSlug);
   };
 
-  const logoutAction = async () => {
+  const logoutAction = async (redirectTo) => {
     try {
-      await logout();
+      await logout(redirectTo);
     } catch (error) {
       console.error("Logout failed:", error);
     } finally {

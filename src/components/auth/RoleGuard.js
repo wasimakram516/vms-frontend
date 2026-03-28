@@ -19,7 +19,11 @@ export default function RoleGuard({ children, allowedRoles = [], allowedStaffTyp
   useEffect(() => {
     if (!loading) {
       if (!user) {
-        router.replace(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
+        if (pathname.startsWith("/staff")) {
+          router.replace("/staff");
+        } else {
+          router.replace(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
+        }
       } else if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
         if (user.role === "staff") {
           router.replace("/staff/gate/verify");
