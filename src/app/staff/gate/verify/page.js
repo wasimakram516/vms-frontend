@@ -166,8 +166,9 @@ export default function StaffVerifyPage() {
             <Box
               sx={{
                 width: 72, height: 72, borderRadius: 3,
-                bgcolor: isDark ? "rgba(255,255,255,0.1)" : "primary.light",
-                color: "primary.main",
+                bgcolor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)",
+                boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.06)" : "none",
+                color: "text.primary",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 mx: "auto", mb: 3
               }}
@@ -185,7 +186,7 @@ export default function StaffVerifyPage() {
                   onClick={() => setShowScanner(true)}
                   sx={{ py: 1.8, borderRadius: 3, fontSize: "1.1rem" }}
                 >
-                  Start Scanning
+                  QR Check-in
                 </Button>
                 <Button 
                   variant="outlined" 
@@ -194,7 +195,7 @@ export default function StaffVerifyPage() {
                   onClick={() => setManualMode(true)}
                   sx={{ py: 1.5, borderRadius: 3 }}
                 >
-                  Enter Token Manually
+                  VIP Fast Track
                 </Button>
               </Stack>
             ) : (
