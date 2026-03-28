@@ -1,7 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { usePathname } from 'next/navigation';
 import { getStoredToken } from '@/utils/authStorage';
 import { useMessage } from './MessageContext';
 
@@ -19,12 +20,25 @@ export const SocketProvider = ({ children }) => {
     const [socket, setSocket] = useState(null);
     const [connected, setConnected] = useState(false);
     const { showMessage } = useMessage();
+    const pathname = usePathname();
+    const showMessageRef = useRef(showMessage);
 
     const API_URL = process.env.NEXT_PUBLIC_WEBSOCKET_HOST || 'http://localhost:4000';
     const SOCKET_URL = API_URL.replace(/\/api\/v1\/?$/, '');
+    const isRealtimeRoute = pathname?.startsWith('/cms') || pathname?.startsWith('/staff');
+
+    useEffect(() => {
+        showMessageRef.current = showMessage;
+    }, [showMessage]);
 
     useEffect(() => {
         const token = getStoredToken();
+
+        if (!token || !isRealtimeRoute) {
+            setSocket(null);
+            setConnected(false);
+            return undefined;
+        }
         
         const newSocket = io(SOCKET_URL, {
             auth: { token },
@@ -44,20 +58,22 @@ export const SocketProvider = ({ children }) => {
         });
 
         newSocket.on('connect_error', (error) => {
-            console.error('Socket connection error:', error);
+            console.warn('Socket connection warning:', error?.message || error);
             setConnected(false);
         });
 
         newSocket.on('registration:new', (registration) => {
-            showMessage(`New registration: ${registration.user?.fullName || 'Visitor'}`, 'success');
+            showMessageRef.current?.(`New registration: ${registration.user?.fullName || 'Visitor'}`, 'success');
         });
 
         setSocket(newSocket);
 
         return () => {
+            setSocket((current) => (current === newSocket ? null : current));
+            setConnected(false);
             newSocket.close();
         };
-    }, []);
+    }, [isRealtimeRoute]);
 
     const emit = useCallback((event, data) => {
         if (socket) {

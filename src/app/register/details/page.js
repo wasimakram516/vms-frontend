@@ -54,12 +54,13 @@ export default function DetailsPage() {
   useEffect(() => {
     const fetchFields = async () => {
       try {
-        const f = await getFields();
-        setFields(f);
+        const fetchedFields = await getFields();
+        const safeFields = Array.isArray(fetchedFields) ? fetchedFields : [];
+        setFields(safeFields);
         
         // Initialize country codes for phone fields from returning visitor data
         if (visitorData.dynamicFields && Object.keys(visitorData.dynamicFields).length > 0) {
-          const phoneFields = f.filter(field => (field.input_type || field.inputType) === "phone");
+          const phoneFields = safeFields.filter(field => (field.input_type || field.inputType) === "phone");
           const countryIsoCodes = {};
           
           phoneFields.forEach(field => {

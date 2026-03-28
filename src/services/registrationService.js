@@ -3,8 +3,16 @@ import withApiHandler from "@/utils/withApiHandler";
 
 export const getFields = withApiHandler(async () => {
   const res = await api.get("/registrations/form/fields");
-  const data = res.data?.data || [];
-  return data.sort((a, b) => a.sortOrder - b.sortOrder);
+  const payload = res.data?.data ?? res.data ?? [];
+  const fields = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.fields)
+      ? payload.fields
+      : [];
+
+  return [...fields].sort(
+    (a, b) => Number(a?.sortOrder ?? a?.sort_order ?? 0) - Number(b?.sortOrder ?? b?.sort_order ?? 0)
+  );
 });
 
 export const sendOtp = withApiHandler(async (target) => {
