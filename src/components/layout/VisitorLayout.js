@@ -40,7 +40,7 @@ export default function VisitorLayout({
           flexDirection: { xs: "column", md: "row" },
           position: "relative",
           overflow: "hidden",
-          bgcolor: { xs: "background.paper", md: "transparent" },
+          background: `url(${backgroundImageUrl}) center/cover no-repeat`,
         }}
       >
         {/* Left / Background Panel */}
@@ -54,9 +54,6 @@ export default function VisitorLayout({
               sm: isMobileCardExpanded ? 208 : 352,
               md: "auto",
             },
-            background: `url(${backgroundImageUrl})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
             display: "flex",
             flexDirection: "column",
             justifyContent: { xs: isMobileCardExpanded ? "flex-start" : "center", md: "center" },
@@ -165,7 +162,12 @@ export default function VisitorLayout({
           sx={{
             flex: 1,
             overflowY: "auto",
-            bgcolor: { xs: "background.paper", md: "background.default" },
+            bgcolor: "transparent",
+            backdropFilter: { xs: "blur(20px)", md: "none" },
+            background: {
+              xs: isDark ? "rgba(18, 24, 33, 0.72)" : "rgba(255,255,255,0.68)",
+              md: "transparent",
+            },
             zIndex: 1,
             position: "relative",
             mt: { xs: isMobileCardExpanded ? -8 : -3, md: 0 },
@@ -173,8 +175,8 @@ export default function VisitorLayout({
             borderTopRightRadius: { xs: isMobileCardExpanded ? 40 : 32, md: 0 },
             boxShadow: {
               xs: isMobileCardExpanded
-                ? "0 -22px 40px rgba(9, 18, 31, 0.2)"
-                : "0 -16px 32px rgba(9, 18, 31, 0.18)",
+                ? "0 -22px 40px rgba(9, 18, 31, 0.25)"
+                : "0 -16px 32px rgba(9, 18, 31, 0.2)",
               md: "none",
             },
             transition: "margin-top 0.35s ease, border-radius 0.35s ease, box-shadow 0.35s ease",
@@ -246,26 +248,20 @@ export default function VisitorLayout({
               transition={transition}
               style={{ width: "100%", maxWidth: maxWidth }}
             >
-              <Box 
-                sx={{ 
-                  width: "100%", 
-                  backdropFilter: { xs: "none", md: "blur(20px)" },
-                  background: {
-                    xs: "transparent",
-                    md: isDark
-                      ? "linear-gradient(180deg, rgba(34, 43, 55, 0.92) 0%, rgba(22, 29, 38, 0.9) 100%)"
-                      : "rgba(255, 255, 255, 0.9)",
-                  },
-                  p: { xs: 0, md: 5 },
-                  borderRadius: { xs: 0, md: 6 },
-                  boxShadow: {
-                    xs: "none",
-                    md: isDark
-                      ? "0 24px 44px rgba(5, 10, 18, 0.3), inset 0 1px 0 rgba(255,255,255,0.08)"
-                      : 24,
-                  },
-                  border: { xs: "none", md: "1px solid" },
-                  borderColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
+              <Box
+                sx={{
+                  width: "100%",
+                  backdropFilter: "blur(20px)",
+                  background: isDark
+                    ? "linear-gradient(180deg, rgba(34, 43, 55, 0.88) 0%, rgba(22, 29, 38, 0.85) 100%)"
+                    : "rgba(255, 255, 255, 0.82)",
+                  p: { xs: 3, md: 5 },
+                  borderRadius: { xs: 4, md: 6 },
+                  boxShadow: isDark
+                    ? "0 24px 44px rgba(5, 10, 18, 0.3), inset 0 1px 0 rgba(255,255,255,0.08)"
+                    : "0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9)",
+                  border: "1px solid",
+                  borderColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(255,255,255,0.7)",
                 }}
               >
                 {children}
