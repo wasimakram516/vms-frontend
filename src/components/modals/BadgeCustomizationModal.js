@@ -164,14 +164,13 @@ const BadgeRichTextEditor = ({
             formatting.color !== lastFormattingRef.current.color ||
             formatting.isBold !== lastFormattingRef.current.isBold ||
             formatting.isItalic !== lastFormattingRef.current.isItalic ||
-            formatting.isUnderline !== lastFormattingRef.current.isUnderline ||
-            formatting.fontFamily !== lastFormattingRef.current.fontFamily;
+            formatting.isUnderline !== lastFormattingRef.current.isUnderline;
 
         if (hasChanges) {
-            const preservedText = (formatting.text && formatting.text !== 'undefined') 
-                ? formatting.text 
+            const preservedText = (formatting.text && formatting.text !== 'undefined')
+                ? formatting.text
                 : (lastFormattingRef.current.text || placeholder || `Sample Field`);
-            
+
             if (onTextChange) {
                 onTextChange(preservedText);
             }
@@ -190,9 +189,6 @@ const BadgeRichTextEditor = ({
             if (onUnderlineChange) {
                 onUnderlineChange(formatting.isUnderline);
             }
-            if (onFontFamilyChange) {
-                onFontFamilyChange(formatting.fontFamily);
-            }
 
             lastFormattingRef.current = {
                 text: preservedText,
@@ -201,7 +197,7 @@ const BadgeRichTextEditor = ({
                 isBold: formatting.isBold !== undefined ? formatting.isBold : lastFormattingRef.current.isBold,
                 isItalic: formatting.isItalic !== undefined ? formatting.isItalic : lastFormattingRef.current.isItalic,
                 isUnderline: formatting.isUnderline !== undefined ? formatting.isUnderline : lastFormattingRef.current.isUnderline,
-                fontFamily: formatting.fontFamily || lastFormattingRef.current.fontFamily,
+                fontFamily: lastFormattingRef.current.fontFamily,
             };
         }
     };
@@ -377,7 +373,6 @@ const BadgeRichTextEditor = ({
                 fontSelect.style.border = theme.palette.mode === 'dark' ? '1px solid rgba(255, 255, 255, 0.23)' : '1px solid rgba(0, 0, 0, 0.23)';
                 fontSelect.style.borderRadius = '4px';
                 fontSelect.style.fontSize = '0.75rem';
-                fontSelect.value = fontFamily || 'Arial';
 
                 const styleId = 'badge-font-select-style';
                 if (!document.getElementById(styleId)) {
@@ -416,6 +411,8 @@ const BadgeRichTextEditor = ({
                     option.style.fontFamily = font.family || font.name;
                     fontSelect.appendChild(option);
                 });
+
+                fontSelect.value = fontFamily || 'Arial';
 
                 fontSelect.onchange = (e) => {
                     if (onFontFamilyChange) {
@@ -614,7 +611,10 @@ export default function BadgeCustomizationModal({
                 try {
                     const fields = await getCustomFields();
                     setCustomFields(fields);
-                    setSelectedCustomFields([]);
+                    const savedKeys = fields
+                        .map((f) => f.fieldKey)
+                        .filter((key) => !!badgeCustomizations[key]);
+                    setSelectedCustomFields(savedKeys);
                 } catch (error) {
                     console.error("Failed to fetch custom fields:", error);
                 }
@@ -626,10 +626,12 @@ export default function BadgeCustomizationModal({
     useEffect(() => {
         if (open) {
             const initialCustomizations = {};
-            
+
             const defaultFields = ['purpose_of_visit', 'qr_token'];
-            
-            defaultFields.forEach((fieldName) => {
+            const savedKeys = Object.keys(badgeCustomizations).filter((k) => k !== '_qrCode');
+            const allFieldsToProcess = [...new Set([...defaultFields, ...savedKeys])];
+
+            allFieldsToProcess.forEach((fieldName) => {
                 const existing = badgeCustomizations[fieldName];
 
                 if (existing?.content && typeof existing.content === 'string' && existing.content.includes('<')) {

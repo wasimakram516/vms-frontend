@@ -430,6 +430,13 @@ export default function CmsRegistrationsPage() {
           registration.company_name ||
           registration.user?.company_name ||
           "",
+        email: registration.email || registration.user?.email || "",
+        phone: registration.phone || registration.user?.phone || "",
+        purposeOfVisit: registration.purpose_of_visit || "",
+        hostName: registration.host_name || "",
+        requestedDate: registration.requested_date || registration.requestedDateFrom || "",
+        requestedTimeFrom: registration.requested_time_from || registration.requestedTimeFrom || "",
+        requestedTimeTo: registration.requested_time_to || registration.requestedTimeTo || "",
         badgeIdentifier: registration.badge_identifier || "",
         token: registration.qr_token || "N/A",
         showQrOnBadge: true,
@@ -440,7 +447,7 @@ export default function CmsRegistrationsPage() {
         <BadgePDF
           data={badgeData}
           qrCodeDataUrl={qrCodeDataUrl}
-          customizations={badgeTemplate?.layout_json}
+          customizations={badgeTemplate?.layoutJson}
         />
       );
       const blob = await pdf(doc).toBlob();

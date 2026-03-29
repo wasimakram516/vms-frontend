@@ -111,9 +111,9 @@ export default function BadgeCustomizationPage() {
 
   const handleSetActive = async (template) => {
     const alreadyActiveTemplate = badgeTemplates.find(
-      (t) => t.is_active && t.id !== template.id
+      (t) => t.isActive && t.id !== template.id
     );
-    
+
     if (alreadyActiveTemplate) {
       showMessage(
         "Make the other one inactive first in order to make this active",
@@ -121,11 +121,11 @@ export default function BadgeCustomizationPage() {
       );
       return;
     }
-    
+
     await updateBadgeTemplate(template.id, {
       name: template.name,
-      layout_json: template.layout_json,
-      is_active: true,
+      layoutJson: template.layoutJson,
+      isActive: true,
     });
     await fetchBadgeTemplates();
   };
@@ -133,8 +133,8 @@ export default function BadgeCustomizationPage() {
   const handleSetInactive = async (template) => {
     await updateBadgeTemplate(template.id, {
       name: template.name,
-      layout_json: template.layout_json,
-      is_active: false,
+      layoutJson: template.layoutJson,
+      isActive: false,
     });
     await fetchBadgeTemplates();
   };
@@ -143,14 +143,14 @@ export default function BadgeCustomizationPage() {
     if (editingTemplate) {
       await updateBadgeTemplate(editingTemplate.id, {
         name: editingTemplate.name,
-        layout_json: customizations,
+        layoutJson: customizations,
       });
     } else {
       const isFirstBadge = badgeTemplates.length === 0;
       await createBadgeTemplate({
         name: "New Badge Template",
-        layout_json: customizations,
-        is_active: isFirstBadge,
+        layoutJson: customizations,
+        isActive: isFirstBadge,
       });
     }
     await fetchBadgeTemplates();
@@ -314,8 +314,8 @@ export default function BadgeCustomizationPage() {
                       flexDirection: "column",
                       width: "100%",
                       borderRadius: 4,
-                      border: template.is_active ? "2px solid" : "1px solid",
-                      borderColor: template.is_active ? "primary.main" : "divider",
+                      border: template.isActive ? "2px solid" : "1px solid",
+                      borderColor: template.isActive ? "primary.main" : "divider",
                       position: "relative",
                       overflow: "hidden",
                     }}
@@ -323,7 +323,7 @@ export default function BadgeCustomizationPage() {
                     {/* Wrapper for overflow handling */}
                     <Box sx={{ position: "relative", overflow: "visible", height: "100%", display: "flex", flexDirection: "column" }}>
                     {/* Default Badge Badge */}
-                    {template.is_active && (
+                    {template.isActive && (
                       <Chip
                         label="ACTIVE"
                         color="primary"
@@ -362,7 +362,7 @@ export default function BadgeCustomizationPage() {
                         color="text.secondary"
                         sx={{ mb: 2 }}
                       >
-                        {template.is_active
+                        {template.isActive
                           ? "This is the active badge template used for all visitor badges."
                           : "Custom badge template. Click to customize or set as active."}
                       </Typography>
@@ -388,7 +388,7 @@ export default function BadgeCustomizationPage() {
                       }}
                     >
                       {/* Active/Inactive Button */}
-                      {template.is_active ? (
+                      {template.isActive ? (
                         <Button
                           size="small"
                           variant="contained"
@@ -424,12 +424,12 @@ export default function BadgeCustomizationPage() {
                             <ICONS.edit fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title={template.is_active ? "Deactivate before deleting" : "Delete template"}>
+                        <Tooltip title={template.isActive ? "Deactivate before deleting" : "Delete template"}>
                           <span>
                             <IconButton
                               size="small"
                               color="error"
-                              disabled={template.is_active}
+                              disabled={template.isActive}
                               onClick={() => handleDeleteTemplate(template)}
                               sx={{ bgcolor: "action.hover" }}
                             >
@@ -469,7 +469,7 @@ export default function BadgeCustomizationPage() {
             setEditingTemplate(null);
           }}
           onSave={handleSaveTemplate}
-          badgeCustomizations={editingTemplate?.layout_json || {}}
+          badgeCustomizations={editingTemplate?.layoutJson || {}}
         />
 
         {/* Delete Confirmation Dialog */}

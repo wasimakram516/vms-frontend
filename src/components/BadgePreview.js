@@ -9,7 +9,7 @@ const A6_HEIGHT_PX = 419.5 * (96 / 72);
 
 export default function BadgePreview({ template, showQr = true, getAllSelectedFields }) {
   const { mode } = useColorMode();
-  const layout = template?.layout_json || {};
+  const layout = template?.layoutJson || {};
 
   const renderField = (fieldName, customization) => {
     if (!customization) return null;
@@ -24,22 +24,19 @@ export default function BadgePreview({ template, showQr = true, getAllSelectedFi
     const isUnderline = customization.isUnderline || false;
     const fontFamily = customization.fontFamily || "Arial";
 
-    let leftStyle = {};
+    let positionStyle = {};
     let textAlignStyle = {};
-    let widthStyle = {};
+    const widthStyle = { width: "90%", maxWidth: "90%" };
 
     if (alignment === "center") {
-      leftStyle = { left: "5%" };
+      positionStyle = { left: "5%" };
       textAlignStyle = { textAlign: "center" };
-      widthStyle = { width: "90%", maxWidth: "90%" };
     } else if (alignment === "right") {
-      leftStyle = { left: "auto", right: "5%" };
+      positionStyle = { right: "5%" };
       textAlignStyle = { textAlign: "right" };
-      widthStyle = { width: "90%", maxWidth: "90%" };
     } else {
-      leftStyle = { left: "5%" };
+      positionStyle = { left: `${customization.x || 0}%` };
       textAlignStyle = { textAlign: "left" };
-      widthStyle = { width: "90%", maxWidth: "90%" };
     }
 
     return (
@@ -47,7 +44,7 @@ export default function BadgePreview({ template, showQr = true, getAllSelectedFi
         sx={{
           position: "absolute",
           top: `${yPercent}%`,
-          left: leftStyle.left,
+          ...positionStyle,
           width: widthStyle.width,
           maxWidth: widthStyle.maxWidth,
           fontSize: `${fontSize}px`,
@@ -94,19 +91,21 @@ export default function BadgePreview({ template, showQr = true, getAllSelectedFi
           transformOrigin: "top left",
         }}
       >
-        {getAllSelectedFields ? getAllSelectedFields().map(([fieldName, customization]) => (
-          <Box key={fieldName}>
-            {renderField(fieldName, customization)}
-          </Box>
-        )) : Object.entries(layout)
-          .filter(([key]) => !key.startsWith('_'))
-          .map(([fieldName, customization]) => (
-            <Box key={fieldName}>
-              {renderField(fieldName, customization)}
-            </Box>
-          ))}
-        
-        {/* QR Code */}
+        {getAllSelectedFields
+          ? getAllSelectedFields().map(([fieldName, customization]) => (
+              <Box key={fieldName}>
+                {renderField(fieldName, customization)}
+              </Box>
+            ))
+          : Object.entries(layout)
+              .filter(([key]) => !key.startsWith('_') && key !== 'qr_token')
+              .map(([fieldName, customization]) => (
+                <Box key={fieldName}>
+                  {renderField(fieldName, customization)}
+                </Box>
+              ))}
+
+        {/* QR Code placeholder */}
         {showQr && layout._qrCode && (
           <Box
             sx={{
@@ -123,26 +122,15 @@ export default function BadgePreview({ template, showQr = true, getAllSelectedFi
               justifyContent: "center",
             }}
           >
-            <Box
+            <Typography
               sx={{
-                width: "100%",
-                height: "100%",
-                bgcolor: "white",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                color: "#000000",
+                fontSize: "10px",
+                fontWeight: "bold",
               }}
             >
-              <Typography
-                sx={{
-                  color: "#000000",
-                  fontSize: "10px",
-                  fontWeight: "bold",
-                }}
-              >
-                QR CODE
-              </Typography>
-            </Box>
+              QR CODE
+            </Typography>
           </Box>
         )}
       </Box>

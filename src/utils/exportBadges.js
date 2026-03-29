@@ -65,6 +65,11 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
             r.purpose_of_visit ||
             "",
 
+          hostName: r.host_name || "",
+          requestedDate: r.requested_date || r.requestedDateFrom || "",
+          requestedTimeFrom: r.requested_time_from || r.requestedTimeFrom || "",
+          requestedTimeTo: r.requested_time_to || r.requestedTimeTo || "",
+
           badgeIdentifier: r.badge_identifier || "",
 
           token: r.qr_token || "",
@@ -76,7 +81,7 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
             key={r.id || r._id}
             data={data}
             qrCodeDataUrl={r.qrCodeDataUrl}
-            customizations={badgeTemplate?.layout_json}
+            customizations={badgeTemplate?.layoutJson}
             single={false}
           />
         );

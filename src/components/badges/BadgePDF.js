@@ -265,6 +265,7 @@ function getFieldValue(fieldName, data) {
   // Map standard fields
   const fieldMap = {
     fullname: data.fullName,
+    full_name: data.fullName,
     name: data.fullName,
     company: data.company,
     companyname: data.company,
@@ -276,9 +277,23 @@ function getFieldValue(fieldName, data) {
     mobile: data.phone,
     purpose: data.purposeOfVisit,
     purposeofvisit: data.purposeOfVisit,
+    hostname: data.hostName,
+    hostName: data.hostName,
+    requesteddate: data.requestedDate,
+    requestedtimefrom: data.requestedTimeFrom,
+    requestedtimeto: data.requestedTimeTo,
   };
 
   return fieldMap[normalizedFieldName] || "";
+}
+
+// Maps web/CSS font names to the built-in PDF font families 
+function toPdfFont(webFont) {
+  if (!webFont) return "Helvetica";
+  const name = webFont.trim().toLowerCase().replace(/['"]/g, "");
+  if (name.includes("times") || name === "georgia" || name === "serif") return "Times-Roman";
+  if (name.includes("courier") || name === "monospace") return "Courier";
+  return "Helvetica"; 
 }
 
 export default function BadgePDF({ data, qrCodeDataUrl, customizations, single = true }) {
@@ -324,18 +339,32 @@ export default function BadgePDF({ data, qrCodeDataUrl, customizations, single =
           const baselineAdjustmentPercent = (baselineAdjustmentPt / A6_HEIGHT) * 100;
           const adjustedYPercent = Math.max(0, yPercent - baselineAdjustmentPercent);
 
+          const pdfFont = toPdfFont(fontFamily);
+          let resolvedFont = pdfFont;
+          if (isBold && isItalic) {
+            if (pdfFont === "Times-Roman") resolvedFont = "Times-BoldItalic";
+            else if (pdfFont === "Courier") resolvedFont = "Courier-BoldOblique";
+            else resolvedFont = "Helvetica-BoldOblique";
+          } else if (isBold) {
+            if (pdfFont === "Times-Roman") resolvedFont = "Times-Bold";
+            else if (pdfFont === "Courier") resolvedFont = "Courier-Bold";
+            else resolvedFont = "Helvetica-Bold";
+          } else if (isItalic) {
+            if (pdfFont === "Times-Roman") resolvedFont = "Times-Italic";
+            else if (pdfFont === "Courier") resolvedFont = "Courier-Oblique";
+            else resolvedFont = "Helvetica-Oblique";
+          }
+
           const textStyle = {
             fontSize: isNaN(fontSizePt) ? 12 : fontSizePt,
             color: color || "#000000",
             textAlign: alignment || "left",
             lineHeight: 1.0,
-            fontFamily: "Helvetica",
+            fontFamily: resolvedFont,
             margin: 0,
             padding: 0,
           };
 
-          if (isBold) textStyle.fontWeight = "bold";
-          if (isItalic) textStyle.fontStyle = "italic";
           if (isUnderline) textStyle.textDecoration = "underline";
 
           let viewStyle = {
