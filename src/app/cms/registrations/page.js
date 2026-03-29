@@ -29,6 +29,11 @@ import { alpha } from "@mui/material/styles";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { useSocket } from "@/contexts/SocketContext";
+import { pdf } from "@react-pdf/renderer";
+import QRCode from "qrcode";
+import { exportAllBadges } from "@/utils/exportBadges";
+import { getDefaultBadgeTemplate } from "@/services/badgeService";
+import BadgePDF from "@/components/badges/BadgePDF";
 import ICONS from "@/utils/iconUtil";
 import DateTimeFieldFlatpickr from "@/components/forms/DateTimeFieldFlatpickr";
 import AppCard from "@/components/cards/AppCard";
@@ -51,6 +56,7 @@ import {
   formatTime,
   formatDateTimeWithLocale,
 } from "@/utils/dateUtils";
+
 
 const STATUS_CONFIG = {
   pending: {
@@ -179,6 +185,12 @@ const formatFieldDisplayValue = (value) => {
   return stringValue || "-";
 };
 
+
+
+
+
+
+
 export default function CmsRegistrationsPage() {
   const { mode } = useColorMode();
   const isDark = mode === "dark";
@@ -202,6 +214,9 @@ export default function CmsRegistrationsPage() {
   const [rejectionReasonDraft, setRejectionReasonDraft] = useState("");
   const [rejectionReasonError, setRejectionReasonError] = useState("");
 
+  const [exportingBadges, setExportingBadges] = useState(false);
+  const [badgeTemplate, setBadgeTemplate] = useState(null);
+
   const { showMessage } = useMessage();
 
   const [page, setPage] = useState(0);
@@ -211,17 +226,26 @@ export default function CmsRegistrationsPage() {
     setLoading(true);
     try {
       const res = await getRegistrations(statusFilter);
-      setData(res);
-    } catch (err) {
-      console.error("Failed to load registrations", err);
+      setData(res || []);
     } finally {
       setLoading(false);
     }
   };
 
+
   useEffect(() => {
     fetchData();
+    fetchDefaultBadgeTemplate();
   }, [statusFilter]);
+
+  const fetchDefaultBadgeTemplate = async () => {
+    const template = await getDefaultBadgeTemplate();
+    if (template && !template.error) {
+      setBadgeTemplate(template);
+    }
+  };
+
+
 
   const { on } = useSocket();
 
@@ -235,9 +259,8 @@ export default function CmsRegistrationsPage() {
       if (selected?.id === updatedReg.id) {
         getRegistrationById(updatedReg.id).then((fullDetail) => {
           setSelected(fullDetail);
-        }).catch((err) => {
-          console.error("Failed to update selected registration", err);
         });
+
       }
     });
 
@@ -325,10 +348,6 @@ export default function CmsRegistrationsPage() {
       await fetchData();
       const updated = await getRegistrationById(selected.id);
       setSelected(updated);
-    } catch (err) {
-      if (nextStatus !== "rejected") {
-        setPendingStatus(selected.status || "");
-      }
     } finally {
       setActionLoading(false);
     }
@@ -386,6 +405,121 @@ export default function CmsRegistrationsPage() {
       setActionLoading(false);
     }
   };
+
+  const handlePrintBadge = async (registration) => {
+    if (!registration?.qr_token) {
+      showMessage("No QR token available for this registration", "warning");
+      return;
+    }
+
+    const isDarkTheme = mode === "dark";
+
+
+      const qrCodeDataUrl = await QRCode.toDataURL(registration.qr_token || "N/A", {
+        width: 300,
+        margin: 1,
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+
+      const badgeData = {
+        fullName:
+          registration.full_name ||
+          registration.user?.full_name ||
+          "Unnamed Visitor",
+        company:
+          registration.company_name ||
+          registration.user?.company_name ||
+          "",
+        badgeIdentifier: registration.badge_identifier || "",
+        token: registration.qr_token || "N/A",
+        showQrOnBadge: true,
+        fieldValues: registration.fieldValues || {},
+      };
+
+      const doc = (
+        <BadgePDF
+          data={badgeData}
+          qrCodeDataUrl={qrCodeDataUrl}
+          customizations={badgeTemplate?.layout_json}
+        />
+      );
+      const blob = await pdf(doc).toBlob();
+
+      const blobUrl = URL.createObjectURL(blob);
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        const printWindow = window.open(blobUrl, "_blank");
+        if (!printWindow) {
+          showMessage("Please allow pop-ups to print the badge.", "warning");
+          return;
+        }
+        printWindow.onload = () => {
+          printWindow.focus();
+          printWindow.print();
+        };
+        return;
+      }
+
+      const width = Math.floor(window.outerWidth * 0.9);
+      const height = Math.floor(window.outerHeight * 0.9);
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+
+      const printWindow = window.open(
+        "",
+        "_blank",
+        `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,status=no`
+      );
+
+      if (!printWindow) {
+        showMessage("Please allow pop-ups to print the badge.", "warning");
+        return;
+      }
+
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Badge - ${badgeData.fullName}</title>
+            <style>
+              html, body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                overflow: hidden;
+                background: #fff;
+              }
+              iframe {
+                width: 100%;
+                height: 100%;
+                border: none;
+              }
+            </style>
+          </head>
+          <body>
+            <iframe
+              src="${blobUrl}"
+              onload="this.contentWindow.focus(); this.contentWindow.print();"
+            ></iframe>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+  };
+
+  const handleExportAllBadges = async () => {
+    if (!filtered.length) {
+      showMessage("No registrations to export", "warning");
+      return;
+    }
+
+    setExportingBadges(true);
+    await exportAllBadges(filtered, badgeTemplate, `badges_${new Date().toISOString().split("T")[0]}.pdf`);
+    setExportingBadges(false);
+    showMessage("Badges exported successfully", "success");
+  };
+
 
   const filtered = useMemo(() => {
     const matched = data.filter((r) => {
@@ -537,6 +671,25 @@ export default function CmsRegistrationsPage() {
               Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
             </Button>
 
+            {filtered.length > 0 && (
+              <Button
+                variant="outlined"
+                color="primary"
+                disabled={exportingBadges}
+                startIcon={
+                  exportingBadges ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : (
+                    <ICONS.print />
+                  )
+                }
+                onClick={handleExportAllBadges}
+                sx={{ minWidth: 140, whiteSpace: "nowrap" }}
+              >
+                {exportingBadges ? "Exporting..." : "Export Badges"}
+              </Button>
+            )}
+
             {(search || statusFilter !== "all" || dateFilter) && (
               <Tooltip title="Clear All Filters">
                 <Button
@@ -602,7 +755,6 @@ export default function CmsRegistrationsPage() {
                       width: "100%",
                     }}
                   >
-                    {/* Header with gradient + date */}
                     <Box
                       sx={{
                         background: isDark
@@ -682,7 +834,6 @@ export default function CmsRegistrationsPage() {
                       </Stack>
                     </Box>
 
-                    {/* Dynamic Fields */}
                     <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
                       <Box
                         sx={{
@@ -780,37 +931,58 @@ export default function CmsRegistrationsPage() {
                               fontSize="small"
                               sx={{ opacity: 0.6 }}
                             />{" "}
-                            Scheduled
+                            {(() => {
+                              const isApproved = row.status !== "pending" && row.status !== "rejected" && row.approved_date_from && row.approved_date_to && row.approved_time_from && row.approved_time_to;
+                              return isApproved ? "Approved Schedule" : "Requested Schedule";
+                            })()}
                           </Typography>
                           <Box sx={{ ml: 2, flex: 1, textAlign: "right" }}>
                             <Typography
                               variant="body2"
                               sx={{ fontWeight: 600, color: "text.primary" }}
                             >
-                              {row.requested_date_from && row.requested_date_to && row.requested_date_from !== row.requested_date_to
-                                ? `${formatDate(row.requested_date_from)} to ${formatDate(row.requested_date_to)}`
-                                : formatDate(row.requested_date_from || row.requested_date_to)}
+                              {(() => {
+                                const showApproved = row.status !== "pending" && row.status !== "rejected" && row.approved_date_from && row.approved_date_to;
+                                const dateFrom = showApproved ? row.approved_date_from : row.requested_date_from;
+                                const dateTo = showApproved ? row.approved_date_to : row.requested_date_to;
+
+                                return dateFrom && dateTo && dateFrom !== dateTo
+                                  ? `${formatDate(dateFrom)} to ${formatDate(dateTo)}`
+                                  : formatDate(dateFrom || dateTo);
+                              })()}
                             </Typography>
-                            {(row.requested_time_from ||
-                              row.requested_time_to) && (
-                              <Typography
-                                variant="caption"
-                                sx={{
-                                  fontWeight: 600,
-                                  color: "text.secondary",
-                                  display: "block",
-                                }}
-                              >
-                                {formatTime(row.requested_time_from)} -{" "}
-                                {formatTime(row.requested_time_to)}
-                              </Typography>
-                            )}
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 600,
+                                color: "text.secondary",
+                                display: "block",
+                              }}
+                            >
+                              {(() => {
+                                const showApproved = row.status !== "pending" && row.status !== "rejected" && row.approved_time_from && row.approved_time_to;
+                                const timeFrom = showApproved ? row.approved_time_from : row.requested_time_from;
+                                const timeTo = showApproved ? row.approved_time_to : row.requested_time_to;
+
+                                return (timeFrom || timeTo) && (
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      fontWeight: 600,
+                                      color: "text.secondary",
+                                      display: "block",
+                                    }}
+                                  >
+                                    {formatTime(timeFrom)} - {formatTime(timeTo)}
+                                  </Typography>
+                                );
+                              })()}
+                            </Typography>
                           </Box>
                         </Box>
                       )}
                     </Box>
 
-                    {/* Actions / Footer */}
                     <Box
                       sx={{
                         p: 1.5,
@@ -822,8 +994,22 @@ export default function CmsRegistrationsPage() {
                         display: "flex",
                         justifyContent: "flex-end",
                         alignItems: "center",
+                        gap: 1,
                       }}
                     >
+                      <Tooltip title="Print Badge">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePrintBadge(row);
+                          }}
+                          sx={{ color: "success.main" }}
+                        >
+                          <ICONS.print fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+
                       <Tooltip title="View Details">
                         <IconButton
                           size="small"
@@ -1382,7 +1568,7 @@ export default function CmsRegistrationsPage() {
                   label="Change status"
                   value={pendingStatus || selected?.status || ""}
                   onChange={(e) => handleManualStatusChange(e.target.value)}
-                  disabled={actionLoading || !selected}
+                  disabled={actionLoading || !selected || selected?.status === "checked_out"}
                   sx={{
                     borderRadius: 30,
                     bgcolor: "background.paper",
@@ -1394,7 +1580,11 @@ export default function CmsRegistrationsPage() {
                     };
                     const isCurrent = key === selected?.status;
                     const isUnavailable =
-                      !MANUAL_STATUS_KEYS.includes(key) && !isCurrent;
+                      !MANUAL_STATUS_KEYS.includes(key) && !isCurrent || 
+                      (selected?.status === "approved" && key === "pending") ||
+                      (selected?.status === "checked_in" && key === "pending") ||
+                      (selected?.status === "rejected" && key === "pending") ||
+                      selected?.status === "checked_out";
 
                     return (
                       <MenuItem

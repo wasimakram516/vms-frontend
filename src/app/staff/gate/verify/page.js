@@ -18,7 +18,13 @@ import {
   TextField,
   IconButton,
   CircularProgress,
+  Tooltip,
 } from "@mui/material";
+
+import { pdf } from "@react-pdf/renderer";
+import QRCode from "qrcode";
+import BadgePDF from "@/components/badges/BadgePDF";
+import { getDefaultBadgeTemplate } from "@/services/badgeService";
 
 import QrScanner from "@/components/QrScanner";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -52,6 +58,18 @@ export default function StaffVerifyPage() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const scanningRef = useRef(false);
+  const [badgeTemplate, setBadgeTemplate] = useState(null);
+
+  useEffect(() => {
+    fetchDefaultBadgeTemplate();
+  }, []);
+
+  const fetchDefaultBadgeTemplate = async () => {
+    const template = await getDefaultBadgeTemplate();
+    if (template && !template.error) {
+      setBadgeTemplate(template);
+    }
+  };
 
   const doVerify = useCallback(async (input) => {
     if (!input.trim()) return;
@@ -105,6 +123,107 @@ export default function StaffVerifyPage() {
       }
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handlePrintBadge = async (registration) => {
+    if (!registration?.qr_token) {
+      showMessage("No QR token available for this registration", "warning");
+      return;
+    }
+
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(registration.qr_token || "N/A", {
+        width: 300,
+        margin: 1,
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+
+      const badgeData = {
+        fullName:
+          registration.full_name ||
+          registration.visitor?.fullName ||
+          registration.user?.full_name ||
+          "Unnamed Visitor",
+        company:
+          registration.company_name ||
+          registration.visitor?.companyName ||
+          registration.user?.company_name ||
+          "",
+        badgeIdentifier: registration.badge_identifier || "",
+        token: registration.qr_token || "N/A",
+        showQrOnBadge: true,
+        fieldValues: registration.fieldValues || {},
+      };
+
+      const doc = (
+        <BadgePDF
+          data={badgeData}
+          qrCodeDataUrl={qrCodeDataUrl}
+          customizations={badgeTemplate?.layout_json}
+        />
+      );
+      const blob = await pdf(doc).toBlob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        const printWindow = window.open(blobUrl, "_blank");
+        if (!printWindow) {
+          showMessage("Please allow pop-ups to print the badge.", "warning");
+          return;
+        }
+        return;
+      }
+
+      const width = Math.floor(window.outerWidth * 0.9);
+      const height = Math.floor(window.outerHeight * 0.9);
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+
+      const printWindow = window.open(
+        "",
+        "_blank",
+        `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,status=no`
+      );
+
+      if (!printWindow) {
+        showMessage("Please allow pop-ups to print the badge.", "warning");
+        return;
+      }
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Badge - ${badgeData.fullName}</title>
+            <style>
+              html, body {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                overflow: hidden;
+                background: #fff;
+              }
+              iframe {
+                width: 100%;
+                height: 100%;
+                border: none;
+              }
+            </style>
+          </head>
+          <body>
+            <iframe
+              src="${blobUrl}"
+              onload="this.contentWindow.focus(); this.contentWindow.print();"
+            ></iframe>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    } catch (err) {
+      console.error("Print error:", err);
+      showMessage("Failed to generate print badge.", "error");
     }
   };
 
@@ -238,10 +357,18 @@ export default function StaffVerifyPage() {
               <Box sx={{ bgcolor: `${sc.color}.light`, color: `${sc.color}.main`, p: 1, borderRadius: 2, display: "flex" }}>
                 {sc.color === "success" ? <ICONS.checkCircle /> : <ICONS.time />}
               </Box>
-              <Box>
+              <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" fontWeight={700}>Verification Success</Typography>
                 <Chip label={sc.label} color={sc.color} size="small" sx={{ fontWeight: 600 }} />
               </Box>
+              <Tooltip title="Print Badge">
+                <IconButton
+                  onClick={() => handlePrintBadge(result)}
+                  sx={{ color: "success.main" }}
+                >
+                  <ICONS.print />
+                </IconButton>
+              </Tooltip>
             </Stack>
             
             <Divider sx={{ mb: 2 }} />

@@ -19,7 +19,6 @@ import Grid from "@mui/material/Grid";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
-import { useMessage } from "@/contexts/MessageContext";
 import { createRegistration } from "@/services/registrationService";
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
@@ -32,15 +31,9 @@ const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 const PERIODS = ["AM", "PM"];
 
-const transition = { duration: 0.5, ease: [0.43, 0.13, 0.23, 0.96] };
-
-const TIME_SLOTS = [
-  "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"
-];
-
 export default function BookingPage() {
   const router = useRouter();
-  const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState } = useVisitor();
+  const { visitorData, bookingData, setBookingData, resetVisitorFlow, flowState } = useVisitor();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const [submitting, setSubmitting] = useState(false);
@@ -61,10 +54,15 @@ export default function BookingPage() {
     setBookingData((prev) => {
       const newData = { ...prev, [type]: time24 };
       
-      if (bookingType === "custom" && type === "timeFrom" && newData.timeTo <= time24) {
-         let [h, m] = time24.split(":").map(Number);
-         h = (h + 1) % 24;
-         newData.timeTo = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      if (bookingType === "custom") {
+        if (type === "timeFrom" && newData.timeTo <= time24) {
+           let [h, m] = time24.split(":").map(Number);
+           h = (h + 1) % 24;
+           newData.timeTo = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        } else if (type === "timeTo" && newData.timeFrom >= time24) {
+           let [h, m] = time24.split(":").map(Number);
+           newData.timeFrom = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        }
       }
       
       return newData;
@@ -153,8 +151,8 @@ export default function BookingPage() {
         let to = date.clone();
 
         if (selectedPreset === "fullDay") {
-          from = from.startOf("day");
-          to = to.endOf("day");
+          from = from.startOf("day").hour(parseInt(bookingData.timeFrom.split(":")[0])).minute(parseInt(bookingData.timeFrom.split(":")[1]));
+          to = to.add(1, "day").startOf("day").hour(parseInt(bookingData.timeTo.split(":")[0])).minute(parseInt(bookingData.timeTo.split(":")[1]));
         } else if (selectedPreset === "fullWeek") {
           from = from.startOf("day");
           to = to.add(6, "days").endOf("day");
@@ -392,8 +390,8 @@ export default function BookingPage() {
                           let to = date.clone();
 
                           if (selectedPreset === "fullDay") {
-                            from = from.startOf("day");
-                            to = to.endOf("day");
+                            from = from.startOf("day").hour(parseInt(bookingData.timeFrom.split(":")[0])).minute(parseInt(bookingData.timeFrom.split(":")[1]));
+                            to = to.add(1, "day").startOf("day").hour(parseInt(bookingData.timeTo.split(":")[0])).minute(parseInt(bookingData.timeTo.split(":")[1]));
                           } else if (selectedPreset === "fullWeek") {
                             from = from.startOf("day");
                             to = to.add(6, "days").endOf("day");

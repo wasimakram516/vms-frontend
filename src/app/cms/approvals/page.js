@@ -85,6 +85,7 @@ const PERIODS = ["AM", "PM"];
 export default function CmsApprovalsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState("");
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
@@ -166,14 +167,27 @@ export default function CmsApprovalsPage() {
         const daysDiff = dateTo.diff(dateFrom, "days");
 
         if (daysDiff === 0) {
-          detectedType = "preset";
-          detectedPreset = "fullDay";
+          if (fullReg.requested_time_from === fullReg.requested_time_to) {
+            detectedType = "preset";
+            detectedPreset = "fullDay";
+          } else {
+            detectedType = "custom";
+          }
+        } else if (daysDiff === 1) {
+          if (fullReg.requested_time_from === fullReg.requested_time_to) {
+            detectedType = "preset";
+            detectedPreset = "fullDay";
+          } else {
+            detectedType = "custom";
+          }
         } else if (daysDiff === 6) {
           detectedType = "preset";
           detectedPreset = "fullWeek";
         } else if (daysDiff === 30) {
           detectedType = "preset";
           detectedPreset = "fullMonth";
+        } else {
+          detectedType = "custom";
         }
       }
 
@@ -216,6 +230,13 @@ export default function CmsApprovalsPage() {
       }
     } else {
       setScheduledTo(time24);
+      if (scheduledFrom >= time24) {
+        let [h, m] = time24.split(":").map(Number);
+        h = (h - 1 + 24) % 24;
+        setScheduledFrom(
+          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
+        );
+      }
     }
   };
 
@@ -363,6 +384,7 @@ export default function CmsApprovalsPage() {
       showMessage("Please select a date.", "warning");
       return;
     }
+    setSubmitting(true);
     try {
       let fromDate, toDate;
       if (scheduleType === "preset") {
@@ -371,7 +393,8 @@ export default function CmsApprovalsPage() {
         let to = date.clone();
 
         if (selectedPreset === "fullDay") {
-          to = from.clone().add(1, "day");
+          from = from.startOf("day").hour(parseInt(scheduledFrom.split(":")[0])).minute(parseInt(scheduledFrom.split(":")[1]));
+          to = to.add(1, "day").startOf("day").hour(parseInt(scheduledTo.split(":")[0])).minute(parseInt(scheduledTo.split(":")[1]));
         } else if (selectedPreset === "fullWeek") {
           to = from.clone().add(6, "days");
         } else if (selectedPreset === "fullMonth") {
@@ -388,8 +411,8 @@ export default function CmsApprovalsPage() {
       const payload = {
         approvedDateFrom: fromDate,
         approvedDateTo: toDate,
-        approvedTimeFrom: `${scheduledFrom}:00`,
-        approvedTimeTo: selectedPreset === "fullDay" ? `${scheduledFrom}:00` : `${scheduledTo}:00`,
+        approvedTimeFrom: scheduledFrom,
+        approvedTimeTo: selectedPreset === "fullDay" ? scheduledFrom : scheduledTo,
       };
 
       await updateRegistrationStatus(approveTarget.id, "approve", payload);
@@ -401,6 +424,8 @@ export default function CmsApprovalsPage() {
       fetchPending();
     } catch (err) {
       showMessage("Failed to approve registration", "error");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -521,7 +546,6 @@ export default function CmsApprovalsPage() {
                     width: "100%",
                   }}
                 >
-                  {/* Header with gradient + date */}
                   <Box
                     sx={{
                       background: isDark
@@ -721,17 +745,10 @@ export default function CmsApprovalsPage() {
                       fullWidth
                       variant="contained"
                       color="success"
-                      size="small"
-                      startIcon={
-                        fetchingProfile && loadingId === row.id ? (
-                          <CircularProgress size={16} color="inherit" />
-                        ) : (
-                          <ICONS.check />
-                        )
-                      }
                       onClick={() => openApprove(row)}
-                      disabled={fetchingProfile}
-                      sx={{ borderRadius: 2, fontWeight: 800 }}
+                      disabled={loadingId === row.id}
+                      startIcon={loadingId === row.id ? <CircularProgress size={16} /> : <ICONS.check />}
+                      sx={{ borderRadius: 30, fontWeight: 700 }}
                     >
                       Approve
                     </Button>
@@ -739,13 +756,12 @@ export default function CmsApprovalsPage() {
                       fullWidth
                       variant="outlined"
                       color="error"
-                      size="small"
-                      startIcon={<ICONS.close />}
                       onClick={() => {
                         setRejectTarget(row);
                         setRejectReason("");
                       }}
-                      sx={{ borderRadius: 2, fontWeight: 700 }}
+                      startIcon={<ICONS.close />}
+                      sx={{ borderRadius: 30, fontWeight: 700 }}
                     >
                       Reject
                     </Button>
@@ -1025,15 +1041,16 @@ export default function CmsApprovalsPage() {
           <Button
             onClick={() => setApproveTarget(null)}
             startIcon={<ICONS.cancel />}
-            sx={{ px: 3, fontWeight: 600, borderRadius: 30 }}
+            sx={{ px: 3, fontWeight: 700, borderRadius: 30 }}
           >
             Cancel
           </Button>
           <Button
             variant="contained"
             color="success"
-            startIcon={<ICONS.checkCircle />}
+            startIcon={<ICONS.check />}
             onClick={handleApprove}
+            disabled={!scheduledDate || submitting}
             sx={{ borderRadius: 30, px: 4, fontWeight: 700 }}
           >
             Approve
@@ -1072,6 +1089,7 @@ export default function CmsApprovalsPage() {
           <Button
             onClick={() => setRejectTarget(null)}
             startIcon={<ICONS.cancel />}
+            sx={{ fontWeight: 700, borderRadius: 30 }}
           >
             Cancel
           </Button>
@@ -1081,6 +1099,7 @@ export default function CmsApprovalsPage() {
             startIcon={<ICONS.close />}
             onClick={handleReject}
             disabled={!rejectReason.trim()}
+            sx={{ fontWeight: 700, borderRadius: 30 }}
           >
             Reject
           </Button>

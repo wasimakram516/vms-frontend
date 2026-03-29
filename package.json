@@ -15,6 +15,7 @@
     "@mui/material": "^7.3.9",
     "@mui/x-charts": "^8.27.5",
     "@mui/x-date-pickers": "^8.27.2",
+    "@react-pdf/renderer": "^4.3.2",
     "ambient-cbg": "^1.0.4",
     "axios": "^1.13.6",
     "dayjs": "^1.11.20",

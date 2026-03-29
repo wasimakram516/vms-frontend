@@ -22,10 +22,21 @@ const SETTING_CARDS = [
       "Create and manage Non-Disclosure Agreement templates. Set one as active to use it in visitor check-in emails and the registration popup.",
     path: "/cms/settings/nda-templates",
   },
+  {
+    icon: ICONS.badge,
+    label: "Badge Customization",
+    description:
+      "Design and customize visitor badges with fields, layout, QR codes, and styling. Create multiple templates and set one as default.",
+    path: "/cms/settings/badge-customization",
+  },
 ];
 
 export default function SettingsPage() {
   const router = useRouter();
+
+  const handleCardClick = (card) => {
+    router.push(card.path);
+  };
 
   return (
     <RoleGuard allowedRoles={["superadmin"]}>
@@ -112,7 +123,7 @@ export default function SettingsPage() {
                   variant="contained"
                   size="small"
                   startIcon={<ICONS.edit fontSize="small" />}
-                  onClick={() => router.push(path)}
+                  onClick={() => handleCardClick({ path })}
                   sx={{ borderRadius: 30 }}
                 >
                   Customize

@@ -38,7 +38,6 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
     });
     const [alignment, setAlignment] = useState(null);
     const [fontSize, setFontSize] = useState(14);
-    const [activeHeading, setActiveHeading] = useState(null);
     const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
     const parseHTMLForFormatting = (html) => {
@@ -158,8 +157,6 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
         else setAlignment(null);
 
         const blockFormat = document.queryCommandValue("formatBlock").toLowerCase().replace(/[<>]/g, "");
-        setActiveHeading(["h1", "h2", "h3"].includes(blockFormat) ? blockFormat : null);
-
         // Detect font-size at cursor by walking up the DOM from the selection anchor
         const selection = window.getSelection();
         if (selection && selection.rangeCount > 0) {
@@ -197,13 +194,6 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
         updateActiveCommands();
     };
 
-    const handleHeading = (heading) => {
-        if (activeHeading === heading) {
-            executeCommand("formatBlock", "<p>");
-        } else {
-            executeCommand("formatBlock", `<${heading}>`);
-        }
-    };
 
     const executeCommand = (command, value = null) => {
         editorRef.current?.focus();
@@ -451,24 +441,6 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                 }}
             >
                 <Box sx={{ display: "flex", gap: 0.5, borderRight: "1px solid", borderColor: "divider", pr: 0.5 }}>
-                    {["h1", "h2", "h3"].map((h) => (
-                        <IconButton
-                            key={h}
-                            size="small"
-                            onClick={() => handleHeading(h)}
-                            sx={{
-                                bgcolor: activeHeading === h ? "action.selected" : "transparent",
-                                fontSize: "0.7rem",
-                                fontWeight: 800,
-                                width: 28,
-                                height: 28,
-                                fontFamily: "inherit",
-                            }}
-                            title={`Heading ${h.slice(1)}`}
-                        >
-                            {h.toUpperCase()}
-                        </IconButton>
-                    ))}
                 </Box>
 
                 <Box sx={{ display: "flex", gap: 0.5, borderRight: "1px solid", borderColor: "divider", pr: 0.5 }}>
@@ -679,9 +651,6 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                         content: `"${placeholder}"`,
                         color: "text.disabled",
                     },
-                    "& h1": { fontSize: "2em", fontWeight: "bold", margin: "0.67em 0" },
-                    "& h2": { fontSize: "1.5em", fontWeight: "bold", margin: "0.75em 0" },
-                    "& h3": { fontSize: "1.17em", fontWeight: "bold", margin: "0.83em 0" },
                     "& ul, & ol": { margin: "1em 0", paddingLeft: "2.5em" },
                     "& ul": { listStyleType: "disc" },
                     "& ol": { listStyleType: "decimal" },
