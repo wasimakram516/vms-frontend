@@ -13,7 +13,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -25,6 +25,7 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useColorMode();
   const pathname = usePathname();
+  const router = useRouter();
   const brandLogo = mode === "dark" ? "/logo-mark-light.png" : "/logo-mark-dark.png";
   const isStaffArea = pathname?.startsWith("/staff");
   const brandHref = isStaffArea ? "/staff" : "/";
@@ -199,6 +200,22 @@ export default function Navbar() {
                   <MenuItem>
                     <Typography variant="body2">{user.full_name}</Typography>
                   </MenuItem>
+
+                  {["admin", "superadmin", "staff"].includes(user.role) && (
+                    <MenuItem
+                      onClick={() => {
+                        handleClose();
+                        if (user.role === "staff") {
+                          router.push(user.staffType === "kitchen" ? "/staff/kitchen" : "/staff/gate/verify");
+                        } else {
+                          router.push("/cms/dashboard");
+                        }
+                      }}
+                    >
+                      <ICONS.home fontSize="small" sx={{ mr: 1 }} />
+                      Go to Dashboard
+                    </MenuItem>
+                  )}
 
                   <MenuItem
                     onClick={openLogoutConfirm}
