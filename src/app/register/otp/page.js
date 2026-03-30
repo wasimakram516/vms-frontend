@@ -141,6 +141,12 @@ export default function RegisterOtpPage() {
               ...res.lastFieldValues
             };
             
+            // Extract phoneIsoCode from returning visitor's last registration
+            const isoCode = res.phoneIsoCode || res.phone_iso_code || res.isoCode || res.iso_code;
+            if (isoCode) {
+              newData.phoneIsoCode = isoCode;
+            }
+            
             if (res.user?.fullName && !newData.dynamicFields.full_name) {
               newData.dynamicFields.full_name = res.user.fullName;
             }

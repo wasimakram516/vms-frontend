@@ -19,8 +19,7 @@ import { sendOtp } from "@/services/registrationService";
 import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { validateEmail } from "@/utils/validationUtils";
 
 export default function ReturningVisitorPage() {
   const router = useRouter();
@@ -32,22 +31,13 @@ export default function ReturningVisitorPage() {
   const [email, setEmail] = useState(visitorData.identity?.includes("@") ? visitorData.identity : "");
   const [emailError, setEmailError] = useState("");
 
-  const validateEmail = (value) => {
-    const trimmedValue = value.trim();
-
-    if (!trimmedValue) {
-      return "Email is required.";
-    }
-
-    if (!EMAIL_REGEX.test(trimmedValue)) {
-      return "Please enter a valid email address.";
-    }
-
-    return "";
+  const validateEmailField = (value) => {
+    const error = validateEmail(value, "Email");
+    return error || "";
   };
 
   const handleNext = async () => {
-    const validationError = validateEmail(email);
+    const validationError = validateEmailField(email);
     if (validationError) {
       setEmailError(validationError);
       return;
@@ -147,7 +137,7 @@ export default function ReturningVisitorPage() {
                   setEmailError("");
                 }
               }}
-              onBlur={() => setEmailError(validateEmail(email))}
+              onBlur={() => setEmailError(validateEmailField(email))}
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: 4 } }}
               onKeyDown={(e) => e.key === "Enter" && handleNext()}
             />

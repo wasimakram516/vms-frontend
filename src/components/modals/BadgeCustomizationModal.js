@@ -556,6 +556,8 @@ export default function BadgeCustomizationModal({
     onClose,
     onSave,
     badgeCustomizations = {},
+    templateName = "",
+    isEditing = false,
 }) {
     const theme = useTheme();
     const { mode } = useColorMode();
@@ -573,6 +575,8 @@ export default function BadgeCustomizationModal({
     const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
     const [customFields, setCustomFields] = useState([]);
     const [selectedCustomFields, setSelectedCustomFields] = useState([]);
+    const [includePurposeOfVisit, setIncludePurposeOfVisit] = useState(false);
+    const [templateNameInput, setTemplateNameInput] = useState(templateName);
     const scrollableContainerRef = useRef(null);
 
     const setScrollableContainerRef = (node) => {
@@ -583,9 +587,13 @@ export default function BadgeCustomizationModal({
 
     const getAllSelectedFields = () => {
         const standardFields = [
-            { inputName: "purpose_of_visit", label: "Purpose of Visit" },
             { inputName: "qr_token", label: "QR Code" },
         ];
+        
+        // Add purpose_of_visit only if checkbox is checked
+        if (includePurposeOfVisit) {
+            standardFields.unshift({ inputName: "purpose_of_visit", label: "Purpose of Visit" });
+        }
         
         const customSelected = (customFields || []).filter(field => selectedCustomFields.includes(field.fieldKey))
             .map(field => ({
@@ -615,6 +623,7 @@ export default function BadgeCustomizationModal({
                         .map((f) => f.fieldKey)
                         .filter((key) => !!badgeCustomizations[key]);
                     setSelectedCustomFields(savedKeys);
+                    setIncludePurposeOfVisit(!!badgeCustomizations.purpose_of_visit);
                 } catch (error) {
                     console.error("Failed to fetch custom fields:", error);
                 }
@@ -752,7 +761,8 @@ export default function BadgeCustomizationModal({
     };
 
     const handleSave = () => {
-        onSave(customizations);
+        const finalName = templateNameInput.trim() || (isEditing ? templateName : "New Badge Template");
+        onSave({ name: finalName, customizations });
         onClose();
     };
 
@@ -796,7 +806,7 @@ export default function BadgeCustomizationModal({
                 }}
             >
                 <Typography fontWeight="bold" fontSize="1.25rem">
-                    Customize Badge
+                    {isEditing ? "Edit Badge Template" : "Create Badge Template"}
                 </Typography>
                 <IconButton onClick={onClose} size="small">
                     <ICONS.close />
@@ -815,8 +825,25 @@ export default function BadgeCustomizationModal({
                     }}
                 >
                     <Stack spacing={3}>
+                        {/* Template Name */}
+                        <Box>
+                            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                                Template Name
+                            </Typography>
+                            <TextField
+                                fullWidth
+                                label="Template Name"
+                                placeholder="e.g. Standard Visitor Badge"
+                                value={templateNameInput}
+                                onChange={(e) => setTemplateNameInput(e.target.value)}
+                                size="small"
+                                required
+                            />
+                            <Divider sx={{ mt: 3 }} />
+                        </Box>
+
                         {/* Custom Fields Selector */}
-                        {customFields.length > 0 && (
+                        {(customFields.length > 0 || true) && (
                             <Box>
                                 <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
                                     Registration Fields
@@ -825,6 +852,18 @@ export default function BadgeCustomizationModal({
                                     Select registration fields to include on the badge:
                                 </Typography>
                                 <FormGroup sx={{ mb: 3 }}>
+                                    {/* Purpose of Visit Checkbox */}
+                                    <FormControlLabel
+                                        control={
+                                            <Checkbox
+                                                checked={includePurposeOfVisit}
+                                                onChange={() => setIncludePurposeOfVisit(!includePurposeOfVisit)}
+                                                size="small"
+                                            />
+                                        }
+                                        label="Purpose of Visit"
+                                    />
+                                    {/* Custom Fields Checkboxes */}
                                     {customFields.map((field) => (
                                         <FormControlLabel
                                             key={field.fieldKey}
@@ -905,7 +944,7 @@ export default function BadgeCustomizationModal({
                         )}
 
                         {/* Purpose of Visit Field Editor */}
-                        {(() => {
+                        {includePurposeOfVisit && (() => {
                             const fieldName = 'purpose_of_visit';
                             const field = { inputName: fieldName, label: 'Purpose of Visit' };
                             const customization = customizations[fieldName] || {

@@ -32,6 +32,7 @@ import { getHost, createHost, updateHost, deleteHost } from "@/services/hostServ
 import { uploadMediaFiles } from "@/utils/mediaUpload";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode } from "@/utils/countryCodes";
+import { validateRequired, validateEmail, validateUrl } from "@/utils/validationUtils";
 
 const emptyForm = () => ({
   name: "",
@@ -169,9 +170,34 @@ export default function HostDetailsPage() {
     setForm((p) => ({ ...p, logoUrl: "" }));
   };
 
+  const validateForm = () => {
+    const errors = {};
+    
+    const nameError = validateRequired(form.name, "Organization name");
+    if (nameError) errors.name = nameError;
+    
+    const emailError = validateEmail(form.email, "Email") || validateRequired(form.email, "Email");
+    if (emailError) errors.email = emailError;
+    
+    if (form.website) {
+      const urlError = validateUrl(form.website, "Website");
+      if (urlError) errors.website = urlError;
+    }
+    
+    if (form.contactPersonEmail) {
+      const cpEmailError = validateEmail(form.contactPersonEmail, "Contact Email");
+      if (cpEmailError) errors.contactPersonEmail = cpEmailError;
+    }
+    
+    return errors;
+  };
+
   const handleSave = async () => {
-    if (!form.name.trim()) { showMessage("Organization name is required.", "error"); return; }
-    if (!form.email.trim()) { showMessage("Email is required.", "error"); return; }
+    const validationErrors = validateForm();
+    if (Object.keys(validationErrors).length > 0) {
+      Object.values(validationErrors).forEach(err => showMessage(err, "error"));
+      return;
+    }
 
     setSaving(true);
     let finalLogoUrl = form.logoUrl;

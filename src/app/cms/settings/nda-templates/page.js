@@ -38,6 +38,7 @@ import {
   deactivateNdaTemplate,
   deleteNdaTemplate,
 } from "@/services/ndaTemplateService";
+import { validateRequired } from "@/utils/validationUtils";
 
 const emptyForm = () => ({
   name: "",
@@ -113,13 +114,22 @@ export default function NdaTemplatesPage() {
     setDialogOpen(true);
   };
 
+  const validateForm = () => {
+    const errors = {};
+    
+    const nameError = validateRequired(form.name, "Template name");
+    if (nameError) errors.name = nameError;
+    
+    const bodyError = validateRequired(form.body, "Body content");
+    if (bodyError) errors.body = bodyError;
+    
+    return errors;
+  };
+
   const handleSave = async () => {
-    if (!form.name.trim()) {
-      showMessage("Template name is required.", "error");
-      return;
-    }
-    if (!form.body.trim()) {
-      showMessage("Body content is required.", "error");
+    const validationErrors = validateForm();
+    if (Object.keys(validationErrors).length > 0) {
+      Object.values(validationErrors).forEach(err => showMessage(err, "error"));
       return;
     }
 

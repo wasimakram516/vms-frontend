@@ -66,9 +66,9 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
             "",
 
           hostName: r.host_name || "",
-          requestedDate: r.requested_date || r.requestedDateFrom || "",
-          requestedTimeFrom: r.requested_time_from || r.requestedTimeFrom || "",
-          requestedTimeTo: r.requested_time_to || r.requestedTimeTo || "",
+          requestedDate: r.requested_from?.split('T')[0] || "",
+          requestedTimeFrom: r.requested_from?.split('T')[1]?.slice(0, 5) || "",
+          requestedTimeTo: r.requested_to?.split('T')[1]?.slice(0, 5) || "",
 
           badgeIdentifier: r.badge_identifier || "",
 

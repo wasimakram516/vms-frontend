@@ -30,7 +30,10 @@ import {
   getCountryCodeByIsoCode,
 } from "@/utils/countryCodes";
 import { normalizePhone } from "@/utils/phoneUtils";
-import { validatePhoneNumber } from "@/utils/phoneValidation";
+import {
+  isPhoneField,
+  validateForm,
+} from "@/utils/validationUtils";
 
 export default function RegistrationModal({
   open,
@@ -170,44 +173,11 @@ export default function RegistrationModal({
     }
   };
 
-  const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const isPhoneField = (field) => {
-    if (field.inputType === "number") return false;
-    if (field.inputType === "phone") return true;
-    if (!hasCustomFields && field.inputName === "Phone") return true;
-    return false;
-  };
-
   const validateFields = () => {
-    const errors = {};
-    fieldsToRender.forEach((f) => {
-      const rawValue = values[f.inputName];
-      const val = rawValue != null ? String(rawValue).trim() : "";
-      const required = f.required || false;
-
-      if (required && !val) {
-        errors[f.inputName] = `${f.inputName} is required`;
-      }
-
-      if (
-        (f.inputType === "email" || f.inputName === "Email") &&
-        val &&
-        !isValidEmail(val)
-      ) {
-        errors[f.inputName] = "Invalid email address";
-      }
-
-      if (isPhoneField(f) && val) {
-        const isoCode = countryIsoCodes[f.inputName] || DEFAULT_ISO_CODE;
-        const phoneError = validatePhoneNumber(val, isoCode);
-        if (phoneError) {
-          errors[f.inputName] = phoneError;
-        }
-      }
+    return validateForm(fieldsToRender, values, {
+      countryIsoCodes,
+      hasCustomFields,
     });
-
-    return errors;
   };
 
   const handleSave = async () => {
@@ -330,11 +300,9 @@ export default function RegistrationModal({
       );
     }
 
-    const isPhoneField =
-      f.inputType === "phone" || (!hasCustomFields && f.inputName === "Phone");
     const useInternationalNumbers = event?.useInternationalNumbers !== false;
 
-    if (isPhoneField) {
+    if (isPhoneField(f)) {
       const isoCode = countryIsoCodes[f.inputName] || DEFAULT_ISO_CODE;
       const phoneValue = value || "";
 

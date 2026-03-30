@@ -12,26 +12,13 @@ import {
   Typography,
 } from "@mui/material";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import { login } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
-import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
-
-const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
-const getStaffDestination = (staffUser) =>
-  staffUser?.staffType === "kitchen" ? "/staff/kitchen" : "/staff/gate/verify";
-
-const fontStyles = (
-  <GlobalStyles
-    styles={`
-      @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap');
-    `}
-  />
-);
+import { validateRequired } from "@/utils/validationUtils";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -62,8 +49,13 @@ export default function LoginPage() {
 
   const validate = () => {
     const next = {};
-    if (!form.email) next.email = "Email is required";
-    if (!form.password) next.password = "Password is required";
+    
+    const emailError = validateRequired(form.email, "Email");
+    if (emailError) next.email = emailError;
+    
+    const passwordError = validateRequired(form.password, "Password");
+    if (passwordError) next.password = passwordError;
+    
     setErrors(next);
     return Object.keys(next).length === 0;
   };

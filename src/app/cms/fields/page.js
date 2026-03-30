@@ -97,7 +97,7 @@ export default function CmsFieldsPage() {
     setLoading(true);
     try {
       const f = await getCustomFields();
-      setFields(f);
+      setFields(Array.isArray(f) ? f : []);
     } catch (err) {
       console.error("Failed to load fields", err);
     } finally {
@@ -191,16 +191,11 @@ export default function CmsFieldsPage() {
   };
 
   const handleDelete = async () => {
-    try {
-      await deleteCustomField(deleteTarget.id);
-      fetchData();
-      setDeleteTarget(null);
-    } finally {
-      // Error handled by withApiHandler
-    }
+    await deleteCustomField(deleteTarget.id);
+    fetchData();
+    setDeleteTarget(null);
   };
 
-  const handleChangePage = (event, newPage) => setPage(newPage);
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);

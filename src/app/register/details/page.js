@@ -37,7 +37,7 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import NdaTemplateContent from "@/components/NdaTemplateContent";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE, COUNTRY_CODES } from "@/utils/countryCodes";
-import { validatePhoneNumberByCountry } from "@/utils/phoneValidation";
+import { validateField, validateRequired } from "@/utils/validationUtils";
 
 export default function DetailsPage() {
   const router = useRouter();
@@ -58,35 +58,36 @@ export default function DetailsPage() {
         const safeFields = Array.isArray(fetchedFields) ? fetchedFields : [];
         setFields(safeFields);
         
-        // Initialize country codes for phone fields from returning visitor data
-        if (visitorData.dynamicFields && Object.keys(visitorData.dynamicFields).length > 0) {
-          const phoneFields = safeFields.filter(field => (field.input_type || field.inputType) === "phone");
-          const countryIsoCodes = {};
+        // Initialize country codes for phone fields - for both new and returning visitors
+        const phoneFields = safeFields.filter(field => (field.input_type || field.inputType || '').toLowerCase() === "phone");
+        const countryIsoCodes = {};
+        
+        phoneFields.forEach(field => {
+          const fieldKey = field.field_key || field.fieldKey;
+          const phoneValue = visitorData.dynamicFields?.[fieldKey] || visitorData[fieldKey] || visitorData.phone;
           
-          phoneFields.forEach(field => {
-            const fieldKey = field.field_key || field.fieldKey;
-            const phoneValue = visitorData.dynamicFields[fieldKey];
-            
-            // If phone has country code, try to detect the country
-            if (phoneValue && phoneValue.startsWith("+")) {
-              // Try to find matching country code
-              const countryCode = COUNTRY_CODES.find(cc => phoneValue.startsWith(cc.code));
-              if (countryCode) {
-                countryIsoCodes[fieldKey] = countryCode.isoCode;
-              } else {
-                countryIsoCodes[fieldKey] = DEFAULT_ISO_CODE;
-              }
+          // First priority: use phoneIsoCode from returning visitor's last registration
+          if (visitorData.phoneIsoCode) {
+            countryIsoCodes[fieldKey] = visitorData.phoneIsoCode;
+          }
+          // Second priority: try to detect from phone value if it has country code
+          else if (phoneValue && String(phoneValue).startsWith("+")) {
+            const countryCode = COUNTRY_CODES.find(cc => String(phoneValue).startsWith(cc.code));
+            if (countryCode) {
+              countryIsoCodes[fieldKey] = countryCode.isoCode;
             } else {
               countryIsoCodes[fieldKey] = DEFAULT_ISO_CODE;
             }
-          });
-          
-          if (Object.keys(countryIsoCodes).length > 0) {
-            setVisitorData(prev => ({
-              ...prev,
-              countryIsoCodes: { ...prev.countryIsoCodes, ...countryIsoCodes }
-            }));
+          } else {
+            countryIsoCodes[fieldKey] = DEFAULT_ISO_CODE;
           }
+        });
+        
+        if (Object.keys(countryIsoCodes).length > 0) {
+          setVisitorData(prev => ({
+            ...prev,
+            countryIsoCodes: { ...prev.countryIsoCodes, ...countryIsoCodes }
+          }));
         }
       } catch (err) {
         console.error("Failed to fetch fields", err);
@@ -95,7 +96,8 @@ export default function DetailsPage() {
       }
     };
     fetchFields();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visitorData.phoneIsoCode]);
 
   useEffect(() => {
     setPurposeInput(visitorData.purposeOfVisit || "");
@@ -149,30 +151,33 @@ export default function DetailsPage() {
 
   const validate = () => {
     const newErrors = {};
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     fields.forEach((f) => {
       const fieldKey = f.field_key || f.fieldKey;
-      const isRequired = f.is_required || f.isRequired;
-      const inputType = f.input_type || f.inputType || "text";
       const val = visitorData.dynamicFields[fieldKey];
+      const isoCode = visitorData.countryIsoCodes?.[fieldKey];
 
-      if (isRequired && (!val || (Array.isArray(val) && val.length === 0))) {
-        newErrors[fieldKey] = `${f.label} is required`;
-      } else if (val && inputType === "email" && !emailRegex.test(val)) {
-        newErrors[fieldKey] = `Please enter a valid email address`;
-      } else if (val && inputType === "phone") {
-        const isoCode = visitorData.countryIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
-        const phoneValidation = validatePhoneNumberByCountry(val, isoCode);
-        if (!phoneValidation.valid) {
-          newErrors[fieldKey] = phoneValidation.error || "Invalid phone number";
-        }
+      const error = validateField(
+        {
+          ...f,
+          inputName: fieldKey,
+          inputType: f.input_type || f.inputType || "text",
+          required: f.is_required || f.isRequired,
+          label: f.label,
+          values: f.options_json || f.optionsJson,
+        },
+        val,
+        { isoCode }
+      );
+
+      if (error) {
+        newErrors[fieldKey] = error;
       }
     });
 
-    // Validate purpose of visit
-    if (!purposeInput?.trim()) {
-      newErrors.purposeOfVisit = "Purpose of visit is required";
+    const purposeError = validateRequired(purposeInput, "Purpose of Visit");
+    if (purposeError) {
+      newErrors.purposeOfVisit = purposeError;
     }
 
     setErrors(newErrors);
@@ -185,17 +190,30 @@ export default function DetailsPage() {
     const trimmedPurpose = purposeInput.trim();
 
     const processedFields = { ...visitorData.dynamicFields };
+    let phoneIsoCode = null;
+    
     fields.forEach((f) => {
       const fieldKey = f.field_key || f.fieldKey;
-      const inputType = f.input_type || f.inputType || "text";
+      const inputType = (f.input_type || f.inputType || "text").toLowerCase();
       const val = processedFields[fieldKey];
 
       if (inputType === "phone" && val) {
         const isoCode = visitorData.countryIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
         const country = getCountryCodeByIsoCode(isoCode);
         const countryCode = country?.code || DEFAULT_COUNTRY_CODE;
-        if (!val.startsWith("+")) {
-          processedFields[fieldKey] = `${countryCode}${val}`;
+        
+        // Store the ISO code for the registration payload
+        phoneIsoCode = isoCode;
+        
+        // Store phone without country code prefix in fieldValues
+        if (val.startsWith("+")) {
+          if (val.startsWith(countryCode)) {
+            processedFields[fieldKey] = val.substring(countryCode.length);
+          } else {
+            processedFields[fieldKey] = val.replace(/^\+/, "");
+          }
+        } else {
+          processedFields[fieldKey] = val;
         }
       }
     });
@@ -204,6 +222,7 @@ export default function DetailsPage() {
       ...prev,
       dynamicFields: processedFields,
       purposeOfVisit: trimmedPurpose,
+      phoneIsoCode: phoneIsoCode || DEFAULT_ISO_CODE,
     }));
 
     setFlowState((prev) => ({ ...prev, ndaAccepted: true, currentStep: "booking" }));
@@ -245,9 +264,15 @@ export default function DetailsPage() {
               fields.map((f) => {
                 const fieldKey = f.field_key || f.fieldKey;
                 const isRequired = f.is_required || f.isRequired;
-                const inputType = f.input_type || f.inputType || "text";
+                const inputType = (f.input_type || f.inputType || "text").toLowerCase();
                 const options = f.options_json || f.optionsJson || [];
-                const val = visitorData.dynamicFields[fieldKey] !== undefined ? visitorData.dynamicFields[fieldKey] : (inputType === "checkbox" ? [] : "");
+                let val = visitorData.dynamicFields[fieldKey] !== undefined ? visitorData.dynamicFields[fieldKey] : (inputType === "checkbox" ? [] : "");
+                
+                if (inputType === "phone" && !val && visitorData.phone) {
+                  val = visitorData.phone;
+                  visitorData.dynamicFields[fieldKey] = visitorData.phone;
+                }
+                
                 const error = errors[fieldKey];
 
                 if (inputType === "select") {
@@ -321,8 +346,14 @@ export default function DetailsPage() {
                 }
 
                 let textType = "text";
-                if (["number", "email", "date", "time", "password", "url"].includes(inputType)) {
+                const validTypes = ["number", "email", "date", "time", "datetime-local", "password", "url"];
+                if (validTypes.includes(inputType)) {
                   textType = inputType;
+                }
+
+                const fieldLabel = (f.label || "").toLowerCase();
+                if (fieldLabel.includes("time") && !fieldLabel.includes("date")) {
+                  textType = "time";
                 }
 
                 if (inputType === "phone") {
@@ -405,17 +436,37 @@ export default function DetailsPage() {
                     label={f.label}
                     type={textType}
                     value={val}
-                    onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      if (textType === "date" && value) {
+                        const parts = value.split("-");
+                        if (parts[0] && parts[0].length > 4) {
+                          parts[0] = parts[0].slice(0, 4);
+                          value = parts.join("-");
+                        }
+                      }
+                      handleFieldChange(fieldKey, value);
+                    }}
                     required={isRequired}
                     error={Boolean(error)}
                     helperText={error}
                     size="medium"
                     placeholder={f.label}
                     autoComplete="off"
-                    InputLabelProps={["date", "time"].includes(inputType) ? { shrink: true } : {}}
+                    inputProps={textType === "date" ? { max: "9999-12-31" } : {}}
+                    InputLabelProps={["date", "time", "datetime-local"].includes(textType) ? { shrink: true } : {}}
                     sx={{
                       "& .MuiOutlinedInput-root": {
                         borderRadius: 30,
+                      },
+                      "& input[type='date']::-webkit-calendar-picker-indicator, & input[type='datetime-local']::-webkit-calendar-picker-indicator": {
+                        display: "none",
+                      },
+                      "& input[type='date']::-webkit-date-and-time-value": {
+                        textAlign: "left",
+                      },
+                      "& input[type='time']::-webkit-calendar-picker-indicator": {
+                        display: "none",
                       },
                     }}
                   />

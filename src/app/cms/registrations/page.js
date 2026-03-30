@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import dayjs from "dayjs";
 import {
   Box,
   Typography,
@@ -55,7 +56,10 @@ import {
   formatDate,
   formatTime,
   formatDateTimeWithLocale,
+  getLocalDate,
+  getLocalTime,
 } from "@/utils/dateUtils";
+import { validateRequired } from "@/utils/validationUtils";
 
 
 const STATUS_CONFIG = {
@@ -108,25 +112,26 @@ const toTitleCase = (value) =>
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
 const buildScheduleText = (
-  dateFrom,
-  dateTo,
-  timeFrom,
-  timeTo,
+  fromStr,
+  toStr,
   emptyLabel = "Not scheduled yet",
 ) => {
-  if (!dateFrom && !dateTo) {
+  if (!fromStr && !toStr) {
     return emptyLabel;
   }
 
-  const dateFromFormatted = formatDate(dateFrom);
-  const dateToFormatted = formatDate(dateTo);
+  const dateFromFormatted = formatDate(fromStr);
+  const dateToFormatted = formatDate(toStr);
+  let dateText = dateFromFormatted || "—";
   
-  let dateText = dateFromFormatted;
   if (dateToFormatted && dateFromFormatted !== dateToFormatted) {
     dateText = `${dateFromFormatted} to ${dateToFormatted}`;
   }
 
-  const timeParts = [formatTime(timeFrom), formatTime(timeTo)].filter(Boolean);
+  const timeFrom = formatTime(fromStr);
+  const timeTo = formatTime(toStr);
+  const timeParts = [timeFrom, timeTo].filter(Boolean);
+  
   if (!timeParts.length) {
     return dateText;
   }
@@ -153,16 +158,20 @@ const DEFAULT_FIELD_IDENTIFIERS = new Set([
 ]);
 
 const getVisibleFieldValues = (registration) =>
-  (Array.isArray(registration?.fieldValues) ? registration.fieldValues : []).filter(
-    (fieldValue) => {
-      const normalizedKey = normalizeFieldIdentifier(
-        fieldValue?.customField?.fieldKey || fieldValue?.customField?.label,
-      );
-      const stringValue = String(fieldValue?.value ?? "").trim();
+  (Array.isArray(registration?.fieldValues)
+    ? registration.fieldValues
+    : []
+  ).filter((fieldValue) => {
+    const normalizedKey = normalizeFieldIdentifier(
+      fieldValue?.customField?.fieldKey || fieldValue?.customField?.label,
+    );
 
-      return Boolean(stringValue) && !DEFAULT_FIELD_IDENTIFIERS.has(normalizedKey);
-    },
-  );
+    const stringValue = String(fieldValue?.value ?? "").trim();
+
+    return (
+      Boolean(stringValue) && !DEFAULT_FIELD_IDENTIFIERS.has(normalizedKey)
+    );
+  });
 
 const formatFieldDisplayValue = (value) => {
   if (Array.isArray(value)) {
@@ -186,11 +195,6 @@ const formatFieldDisplayValue = (value) => {
 };
 
 
-
-
-
-
-
 export default function CmsRegistrationsPage() {
   const { mode } = useColorMode();
   const isDark = mode === "dark";
@@ -198,8 +202,15 @@ export default function CmsRegistrationsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("");
-  const [timeFilter, setTimeFilter] = useState({
+  const [requestDateFilter, setRequestDateFilter] = useState("");
+  const [requestTimeFilter, setRequestTimeFilter] = useState({
+    hour12: "",
+    minute: "00",
+    ampm: "AM",
+    enabled: false,
+  });
+  const [approvedDateFilter, setApprovedDateFilter] = useState("");
+  const [approvedTimeFilter, setApprovedTimeFilter] = useState({
     hour12: "",
     minute: "00",
     ampm: "AM",
@@ -245,8 +256,6 @@ export default function CmsRegistrationsPage() {
     }
   };
 
-
-
   const { on } = useSocket();
 
   useEffect(() => {
@@ -260,7 +269,6 @@ export default function CmsRegistrationsPage() {
         getRegistrationById(updatedReg.id).then((fullDetail) => {
           setSelected(fullDetail);
         });
-
       }
     });
 
@@ -305,30 +313,27 @@ export default function CmsRegistrationsPage() {
     let successMessage = "";
 
     if (nextStatus === "approved") {
+      const dateFrom = getLocalDate(selected.requested_from);
+      const dateTo = getLocalDate(selected.requested_to);
+      const timeFrom = getLocalTime(selected.requested_from) || "09:00";
+      const timeTo = getLocalTime(selected.requested_to) || "17:00";
+      
       request = () =>
         updateRegistrationStatus(selected.id, "approve", {
-          approvedDateFrom: selected.approved_date_from || selected.requested_date_from,
-          approvedDateTo: selected.approved_date_to || selected.requested_date_to,
-          approvedTimeFrom:
-            selected.approved_time_from ||
-            selected.requested_time_from ||
-            "09:00:00",
-          approvedTimeTo:
-            selected.approved_time_to ||
-            selected.requested_time_to ||
-            "17:00:00",
+          approvedFrom: dateFrom ? dayjs(`${dateFrom}T${timeFrom}:00`).toISOString() : null,
+          approvedTo: dateTo ? dayjs(`${dateTo}T${timeTo}:00`).toISOString() : null,
         });
       successMessage = "Registration approved";
     } else if (nextStatus === "rejected") {
-      const trimmedReason = rejectionReason.trim();
-      if (!trimmedReason) {
-        setRejectionReasonError("Enter a rejection reason");
+      const error = validateRequired(rejectionReason, "Rejection reason");
+      if (error) {
+        setRejectionReasonError(error);
         return;
       }
 
       request = () =>
         updateRegistrationStatus(selected.id, "reject", {
-          rejectionReason: trimmedReason,
+          rejectionReason: rejectionReason.trim(),
         });
       successMessage = "Registration rejected";
     } else if (nextStatus === "cancelled") {
@@ -412,80 +417,77 @@ export default function CmsRegistrationsPage() {
       return;
     }
 
-    const isDarkTheme = mode === "dark";
-
-
-      const qrCodeDataUrl = await QRCode.toDataURL(registration.qr_token || "N/A", {
+    const qrCodeDataUrl = await QRCode.toDataURL(
+      registration.qr_token || "N/A",
+      {
         width: 300,
         margin: 1,
         color: { dark: "#000000", light: "#ffffff" },
-      });
+      },
+    );
 
-      const badgeData = {
-        fullName:
-          registration.full_name ||
-          registration.user?.full_name ||
-          "Unnamed Visitor",
-        company:
-          registration.company_name ||
-          registration.user?.company_name ||
-          "",
-        email: registration.email || registration.user?.email || "",
-        phone: registration.phone || registration.user?.phone || "",
-        purposeOfVisit: registration.purpose_of_visit || "",
-        hostName: registration.host_name || "",
-        requestedDate: registration.requested_date || registration.requestedDateFrom || "",
-        requestedTimeFrom: registration.requested_time_from || registration.requestedTimeFrom || "",
-        requestedTimeTo: registration.requested_time_to || registration.requestedTimeTo || "",
-        badgeIdentifier: registration.badge_identifier || "",
-        token: registration.qr_token || "N/A",
-        showQrOnBadge: true,
-        fieldValues: registration.fieldValues || {},
-      };
+    const badgeData = {
+      fullName:
+        registration.full_name ||
+        registration.user?.full_name ||
+        "Unnamed Visitor",
+      company:
+        registration.company_name || registration.user?.company_name || "",
+      email: registration.email || registration.user?.email || "",
+      phone: registration.phone || registration.user?.phone || "",
+      purposeOfVisit: registration.purpose_of_visit || "",
+      hostName: registration.host_name || "",
+      requestedDate: getLocalDate(registration.requested_from),
+      requestedTimeFrom: getLocalTime(registration.requested_from),
+      requestedTimeTo: getLocalTime(registration.requested_to),
+      badgeIdentifier: registration.badge_identifier || "",
+      token: registration.qr_token || "N/A",
+      showQrOnBadge: true,
+      fieldValues: registration.fieldValues || {},
+    };
 
-      const doc = (
-        <BadgePDF
-          data={badgeData}
-          qrCodeDataUrl={qrCodeDataUrl}
-          customizations={badgeTemplate?.layoutJson}
-        />
-      );
-      const blob = await pdf(doc).toBlob();
+    const doc = (
+      <BadgePDF
+        data={badgeData}
+        qrCodeDataUrl={qrCodeDataUrl}
+        customizations={badgeTemplate?.layoutJson}
+      />
+    );
+    const blob = await pdf(doc).toBlob();
+    const blobUrl = URL.createObjectURL(blob);
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-      const blobUrl = URL.createObjectURL(blob);
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-      if (isMobile) {
-        const printWindow = window.open(blobUrl, "_blank");
-        if (!printWindow) {
-          showMessage("Please allow pop-ups to print the badge.", "warning");
-          return;
-        }
-        printWindow.onload = () => {
-          printWindow.focus();
-          printWindow.print();
-        };
-        return;
-      }
-
-      const width = Math.floor(window.outerWidth * 0.9);
-      const height = Math.floor(window.outerHeight * 0.9);
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-
-      const printWindow = window.open(
-        "",
-        "_blank",
-        `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,status=no`
-      );
+    if (isMobile) {
+      const printWindow = window.open(blobUrl, "_blank");
 
       if (!printWindow) {
         showMessage("Please allow pop-ups to print the badge.", "warning");
         return;
       }
+      printWindow.onload = () => {
+        printWindow.focus();
+        printWindow.print();
+      };
+      return;
+    }
 
+    const width = Math.floor(window.outerWidth * 0.9);
+    const height = Math.floor(window.outerHeight * 0.9);
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
 
-      printWindow.document.write(`
+    const printWindow = window.open(
+      "",
+      "_blank",
+      `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,status=no`,
+    );
+
+    if (!printWindow) {
+      showMessage("Please allow pop-ups to print the badge.", "warning");
+      return;
+    }
+
+    printWindow.document.write(`
         <html>
           <head>
             <title>Print Badge - ${badgeData.fullName}</title>
@@ -529,41 +531,54 @@ export default function CmsRegistrationsPage() {
 
 
   const filtered = useMemo(() => {
-    const matched = data.filter((r) => {
+    const matched = Array.isArray(data) ? data.filter((r) => {
       const matchSearch = [r.full_name, r.email, r.purpose_of_visit]
         .join(" ")
         .toLowerCase()
         .includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" || r.status === statusFilter;
 
-      let matchDate = true;
-      if (dateFilter) {
-        const filterStr = (
-          typeof dateFilter === "string"
-            ? dateFilter
-            : dateFilter.toISOString()
-        )
-          .split(" ")[0]
-          .split("T")[0];
-        matchDate = r.requested_date === filterStr;
-      }
+      const filterBySchedule = (filterDate, filterTime, fromField, toField) => {
+        if (!filterDate && !filterTime.enabled) return true;
+        
+        const fromDateStr = getLocalDate(fromField);
+        const toDateStr = getLocalDate(toField);
+        
+        if (filterDate) {
+          const fDate = typeof filterDate === "string" ? filterDate : getLocalDate(filterDate);
+          if (fDate < fromDateStr || fDate > toDateStr) return false;
+        }
+        
+        if (filterTime.enabled && filterTime.hour12) {
+          const fTime24 = `${String(
+            filterTime.ampm === "PM"
+              ? (parseInt(filterTime.hour12) % 12) + 12
+              : parseInt(filterTime.hour12) % 12,
+          ).padStart(2, "0")}:${filterTime.minute}:00`;
+          
+          const fromTime = getLocalTime(fromField) + ":00";
+          const toTime = getLocalTime(toField) + ":00";
+          
+          if (fromDateStr === toDateStr) {
+            if (fTime24 < fromTime || fTime24 > toTime) return false;
+          } else {
+            const fDate = typeof filterDate === "string" ? filterDate : getLocalDate(filterDate);
+            if (fDate === fromDateStr && fTime24 < fromTime) return false;
+            if (fDate === toDateStr && fTime24 > toTime) return false;
+          }
+        }
+        
+        return true;
+      };
 
-      let matchTime = true;
-      if (timeFilter.enabled && timeFilter.hour12) {
-        const selectedTime24 = `${String(
-          timeFilter.ampm === "PM"
-            ? (parseInt(timeFilter.hour12) % 12) + 12
-            : parseInt(timeFilter.hour12) % 12,
-        ).padStart(2, "0")}:${timeFilter.minute}:00`;
-        matchTime = r.requested_time_from >= selectedTime24;
-      }
+      const matchRequest = filterBySchedule(requestDateFilter, requestTimeFilter, r.requested_from, r.requested_to);
+      const matchApproved = filterBySchedule(approvedDateFilter, approvedTimeFilter, r.approved_from, r.approved_to);
 
-      return matchSearch && matchStatus && matchDate && matchTime;
-    });
+      return matchSearch && matchStatus && matchRequest && matchApproved;
+    }) : [];
 
     const uniqueByVisitor = [];
     const seenEmails = new Set();
-    
     const sortedMatched = [...matched].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     for (const r of sortedMatched) {
@@ -575,7 +590,7 @@ export default function CmsRegistrationsPage() {
     }
 
     return uniqueByVisitor;
-  }, [data, search, statusFilter, dateFilter, timeFilter]);
+  }, [data, search, statusFilter, requestDateFilter, requestTimeFilter, approvedDateFilter, approvedTimeFilter]);
 
   const pagedRows = useMemo(() => {
     return filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -614,7 +629,11 @@ export default function CmsRegistrationsPage() {
   };
 
   const activeFiltersCount =
-    (statusFilter !== "all" ? 1 : 0) + (dateFilter ? 1 : 0);
+    (statusFilter !== "all" ? 1 : 0) + 
+    (requestDateFilter ? 1 : 0) + 
+    (requestTimeFilter.enabled ? 1 : 0) + 
+    (approvedDateFilter ? 1 : 0) + 
+    (approvedTimeFilter.enabled ? 1 : 0);
 
   return (
     <Box>
@@ -647,8 +666,17 @@ export default function CmsRegistrationsPage() {
       <Divider sx={{ mb: 3 }} />
 
       <ListToolbar
+        selectedCount={0}
         showingCount={pagedRows.length}
         totalCount={filtered.length}
+        sx={{
+          gridTemplateColumns: {
+            xs: "1fr",
+            md: (search || statusFilter !== "all" || requestDateFilter || approvedDateFilter || requestTimeFilter.enabled || approvedTimeFilter.enabled)
+              ? "minmax(0, 0.6fr) minmax(280px, 400px) minmax(0, 1.4fr)"
+              : "minmax(0, 1fr) minmax(280px, 420px) minmax(0, 1fr)",
+          },
+        }}
         searchSlot={
           <TextField
             fullWidth
@@ -674,15 +702,20 @@ export default function CmsRegistrationsPage() {
               variant="outlined"
               startIcon={<ICONS.filter />}
               onClick={() => setFilterModalOpen(true)}
+              sx={{ 
+                minWidth: { md: 120 },
+                whiteSpace: "nowrap",
+                height: 40 
+              }}
             >
               Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
             </Button>
 
-            {filtered.length > 0 && (
+            {data.length > 0 && (
               <Button
                 variant="outlined"
                 color="primary"
-                disabled={exportingBadges}
+                disabled={exportingBadges || filtered.length === 0}
                 startIcon={
                   exportingBadges ? (
                     <CircularProgress size={20} color="inherit" />
@@ -697,7 +730,7 @@ export default function CmsRegistrationsPage() {
               </Button>
             )}
 
-            {(search || statusFilter !== "all" || dateFilter) && (
+            {(search || statusFilter !== "all" || requestDateFilter || approvedDateFilter) && (
               <Tooltip title="Clear All Filters">
                 <Button
                   size="small"
@@ -706,7 +739,10 @@ export default function CmsRegistrationsPage() {
                   onClick={() => {
                     setSearch("");
                     setStatusFilter("all");
-                    setDateFilter("");
+                    setRequestDateFilter("");
+                    setRequestTimeFilter({ ...requestTimeFilter, enabled: false });
+                    setApprovedDateFilter("");
+                    setApprovedTimeFilter({ ...approvedTimeFilter, enabled: false });
                     setPage(0);
                   }}
                 >
@@ -915,7 +951,7 @@ export default function CmsRegistrationsPage() {
                           {row.purpose_of_visit || "—"}
                         </Typography>
                       </Box>
-                      {(row.requested_date_from || row.requested_date_to) && (
+      {(row.requested_from || row.requested_to) && (
                         <Box
                           sx={{
                             display: "flex",
@@ -939,7 +975,7 @@ export default function CmsRegistrationsPage() {
                               sx={{ opacity: 0.6 }}
                             />{" "}
                             {(() => {
-                              const isApproved = row.status !== "pending" && row.status !== "rejected" && row.approved_date_from && row.approved_date_to && row.approved_time_from && row.approved_time_to;
+                              const isApproved = row.status !== "pending" && row.status !== "rejected" && (row.approved_from || row.approved_to);
                               return isApproved ? "Approved Schedule" : "Requested Schedule";
                             })()}
                           </Typography>
@@ -949,42 +985,41 @@ export default function CmsRegistrationsPage() {
                               sx={{ fontWeight: 600, color: "text.primary" }}
                             >
                               {(() => {
-                                const showApproved = row.status !== "pending" && row.status !== "rejected" && row.approved_date_from && row.approved_date_to;
-                                const dateFrom = showApproved ? row.approved_date_from : row.requested_date_from;
-                                const dateTo = showApproved ? row.approved_date_to : row.requested_date_to;
+                                const showApproved = row.status !== "pending" && row.status !== "rejected" && (row.approved_from || row.approved_to);
+                                const fromStr = showApproved ? row.approved_from : row.requested_from;
+                                const toStr = showApproved ? row.approved_to : row.requested_to;
 
-                                return dateFrom && dateTo && dateFrom !== dateTo
-                                  ? `${formatDate(dateFrom)} to ${formatDate(dateTo)}`
-                                  : formatDate(dateFrom || dateTo);
+                                if (!fromStr) return "—";
+                                
+                                const dateFromFormatted = formatDate(fromStr);
+                                const dateToFormatted = formatDate(toStr);
+
+                                return dateToFormatted && dateFromFormatted !== dateToFormatted
+                                  ? `${dateFromFormatted} to ${dateToFormatted}`
+                                  : dateFromFormatted || "—";
                               })()}
                             </Typography>
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                fontWeight: 600,
-                                color: "text.secondary",
-                                display: "block",
-                              }}
-                            >
-                              {(() => {
-                                const showApproved = row.status !== "pending" && row.status !== "rejected" && row.approved_time_from && row.approved_time_to;
-                                const timeFrom = showApproved ? row.approved_time_from : row.requested_time_from;
-                                const timeTo = showApproved ? row.approved_time_to : row.requested_time_to;
+                            {(() => {
+                              const showApproved = row.status !== "pending" && row.status !== "rejected" && (row.approved_from || row.approved_to);
+                              const fromStr = showApproved ? row.approved_from : row.requested_from;
+                              const toStr = showApproved ? row.approved_to : row.requested_to;
+                              
+                              const tFrom = formatTime(fromStr);
+                              const tTo = formatTime(toStr);
 
-                                return (timeFrom || timeTo) && (
-                                  <Typography
-                                    variant="caption"
-                                    sx={{
-                                      fontWeight: 600,
-                                      color: "text.secondary",
-                                      display: "block",
-                                    }}
-                                  >
-                                    {formatTime(timeFrom)} - {formatTime(timeTo)}
-                                  </Typography>
-                                );
-                              })()}
-                            </Typography>
+                              return (tFrom || tTo) && (
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    fontWeight: 600,
+                                    color: "text.secondary",
+                                    display: "block",
+                                  }}
+                                >
+                                  {tFrom || "—"} - {tTo || "—"}
+                                </Typography>
+                              );
+                            })()}
                           </Box>
                         </Box>
                       )}
@@ -1057,11 +1092,7 @@ export default function CmsRegistrationsPage() {
       >
         <Stack spacing={3}>
           <Box>
-            <Typography
-              variant="subtitle2"
-              fontWeight={700}
-              sx={{ mb: 1, ml: 1 }}
-            >
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, ml: 1 }}>
               Status
             </Typography>
             <TextField
@@ -1084,18 +1115,14 @@ export default function CmsRegistrationsPage() {
           </Box>
 
           <Box>
-            <Typography
-              variant="subtitle2"
-              fontWeight={700}
-              sx={{ mb: 1, ml: 1 }}
-            >
-              Visit Date
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, ml: 1 }}>
+              Requested Visit Date
             </Typography>
             <DateTimeFieldFlatpickr
               placeholder="Select Date"
-              value={dateFilter}
+              value={requestDateFilter}
               onChange={(val) => {
-                setDateFilter(val);
+                setRequestDateFilter(val);
                 setPage(0);
               }}
               enableTime={false}
@@ -1103,84 +1130,118 @@ export default function CmsRegistrationsPage() {
           </Box>
 
           <Box>
-            <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-              sx={{ mb: 1, ml: 1 }}
-            >
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1, ml: 1 }}>
               <Typography variant="subtitle2" fontWeight={700}>
-                Filter By Time
+                Requested Visit Time
               </Typography>
               <Chip
-                label={timeFilter.enabled ? "Enabled" : "Disabled"}
+                label={requestTimeFilter.enabled ? "Enabled" : "Disabled"}
                 size="small"
-                color={timeFilter.enabled ? "primary" : "default"}
-                onClick={() =>
-                  setTimeFilter({ ...timeFilter, enabled: !timeFilter.enabled })
-                }
+                color={requestTimeFilter.enabled ? "primary" : "default"}
+                onClick={() => setRequestTimeFilter({ ...requestTimeFilter, enabled: !requestTimeFilter.enabled })}
                 sx={{ fontWeight: 800, cursor: "pointer" }}
               />
             </Stack>
-
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{
-                opacity: timeFilter.enabled ? 1 : 0.5,
-                pointerEvents: timeFilter.enabled ? "auto" : "none",
-              }}
-            >
+            <Stack direction="row" spacing={1} sx={{ opacity: requestTimeFilter.enabled ? 1 : 0.5, pointerEvents: requestTimeFilter.enabled ? "auto" : "none" }}>
               <TextField
                 select
                 fullWidth
                 label="Hr"
                 size="small"
-                value={timeFilter.hour12}
-                onChange={(e) =>
-                  setTimeFilter({ ...timeFilter, hour12: e.target.value })
-                }
+                value={requestTimeFilter.hour12}
+                onChange={(e) => setRequestTimeFilter({ ...requestTimeFilter, hour12: e.target.value })}
                 InputProps={{ sx: { borderRadius: 3 } }}
               >
-                {HOURS.map((h) => (
-                  <MenuItem key={h} value={h}>
-                    {h}
-                  </MenuItem>
-                ))}
+                {HOURS.map((h) => <MenuItem key={h} value={h}>{h}</MenuItem>)}
               </TextField>
               <TextField
                 select
                 fullWidth
                 label="Min"
                 size="small"
-                value={timeFilter.minute}
-                onChange={(e) =>
-                  setTimeFilter({ ...timeFilter, minute: e.target.value })
-                }
+                value={requestTimeFilter.minute}
+                onChange={(e) => setRequestTimeFilter({ ...requestTimeFilter, minute: e.target.value })}
                 InputProps={{ sx: { borderRadius: 3 } }}
               >
-                {MINUTES.map((m) => (
-                  <MenuItem key={m} value={m}>
-                    {m}
-                  </MenuItem>
-                ))}
+                {MINUTES.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
               </TextField>
               <TextField
                 select
                 fullWidth
                 label="AM/PM"
                 size="small"
-                value={timeFilter.ampm}
-                onChange={(e) =>
-                  setTimeFilter({ ...timeFilter, ampm: e.target.value })
-                }
+                value={requestTimeFilter.ampm}
+                onChange={(e) => setRequestTimeFilter({ ...requestTimeFilter, ampm: e.target.value })}
                 InputProps={{ sx: { borderRadius: 3 } }}
               >
-                {PERIODS.map((p) => (
-                  <MenuItem key={p} value={p}>
-                    {p}
-                  </MenuItem>
-                ))}
+                {PERIODS.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+              </TextField>
+            </Stack>
+          </Box>
+
+          <Divider />
+
+          <Box>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, ml: 1 }}>
+              Approved Visit Date
+            </Typography>
+            <DateTimeFieldFlatpickr
+              placeholder="Select Date"
+              value={approvedDateFilter}
+              onChange={(val) => {
+                setApprovedDateFilter(val);
+                setPage(0);
+              }}
+              enableTime={false}
+            />
+          </Box>
+
+          <Box>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1, ml: 1 }}>
+              <Typography variant="subtitle2" fontWeight={700}>
+                Approved Visit Time
+              </Typography>
+              <Chip
+                label={approvedTimeFilter.enabled ? "Enabled" : "Disabled"}
+                size="small"
+                color={approvedTimeFilter.enabled ? "primary" : "default"}
+                onClick={() => setApprovedTimeFilter({ ...approvedTimeFilter, enabled: !approvedTimeFilter.enabled })}
+                sx={{ fontWeight: 800, cursor: "pointer" }}
+              />
+            </Stack>
+            <Stack direction="row" spacing={1} sx={{ opacity: approvedTimeFilter.enabled ? 1 : 0.5, pointerEvents: approvedTimeFilter.enabled ? "auto" : "none" }}>
+              <TextField
+                select
+                fullWidth
+                label="Hr"
+                size="small"
+                value={approvedTimeFilter.hour12}
+                onChange={(e) => setApprovedTimeFilter({ ...approvedTimeFilter, hour12: e.target.value })}
+                InputProps={{ sx: { borderRadius: 3 } }}
+              >
+                {HOURS.map((h) => <MenuItem key={h} value={h}>{h}</MenuItem>)}
+              </TextField>
+              <TextField
+                select
+                fullWidth
+                label="Min"
+                size="small"
+                value={approvedTimeFilter.minute}
+                onChange={(e) => setApprovedTimeFilter({ ...approvedTimeFilter, minute: e.target.value })}
+                InputProps={{ sx: { borderRadius: 3 } }}
+              >
+                {MINUTES.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+              </TextField>
+              <TextField
+                select
+                fullWidth
+                label="AM/PM"
+                size="small"
+                value={approvedTimeFilter.ampm}
+                onChange={(e) => setApprovedTimeFilter({ ...approvedTimeFilter, ampm: e.target.value })}
+                InputProps={{ sx: { borderRadius: 3 } }}
+              >
+                {PERIODS.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
               </TextField>
             </Stack>
           </Box>
@@ -1202,13 +1263,10 @@ export default function CmsRegistrationsPage() {
             startIcon={<ICONS.clear />}
             onClick={() => {
               setStatusFilter("all");
-              setDateFilter("");
-              setTimeFilter({
-                hour12: "",
-                minute: "00",
-                ampm: "AM",
-                enabled: false,
-              });
+              setRequestDateFilter("");
+              setRequestTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false });
+              setApprovedDateFilter("");
+              setApprovedTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false });
               setFilterModalOpen(false);
               setPage(0);
             }}
@@ -1375,10 +1433,8 @@ export default function CmsRegistrationsPage() {
                           <InfoItem
                             label="Requested Schedule"
                             value={buildScheduleText(
-                              selected.requested_date_from,
-                              selected.requested_date_to,
-                              selected.requested_time_from,
-                              selected.requested_time_to,
+                              selected.requested_from,
+                              selected.requested_to,
                               "Not provided",
                             )}
                             icon={<ICONS.event fontSize="small" />}
@@ -1386,10 +1442,8 @@ export default function CmsRegistrationsPage() {
                           <InfoItem
                             label="Approved Schedule"
                             value={buildScheduleText(
-                              selected.approved_date_from,
-                              selected.approved_date_to,
-                              selected.approved_time_from,
-                              selected.approved_time_to,
+                              selected.approved_from,
+                              selected.approved_to,
                               "Pending approval",
                             )}
                             icon={<ICONS.checkCircle fontSize="small" />}
@@ -1853,10 +1907,8 @@ function PreviousVisitCard({ visit }) {
         <InfoItem
           label="Requested Schedule"
           value={buildScheduleText(
-            visit.requested_date_from,
-            visit.requested_date_to,
-            visit.requested_time_from,
-            visit.requested_time_to,
+            visit.requested_from,
+            visit.requested_to,
             "Not provided",
           )}
           icon={<ICONS.event fontSize="small" />}
@@ -1864,10 +1916,8 @@ function PreviousVisitCard({ visit }) {
         <InfoItem
           label="Approved Schedule"
           value={buildScheduleText(
-            visit.approved_date_from,
-            visit.approved_date_to,
-            visit.approved_time_from,
-            visit.approved_time_to,
+            visit.approved_from,
+            visit.approved_to,
             "Not approved",
           )}
           icon={<ICONS.checkCircle fontSize="small" />}

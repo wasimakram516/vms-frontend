@@ -1,27 +1,30 @@
 /**
- * Formats a date string to a human-readable format.
+ * Formats a date string to a human-readable format (DD/MM/YYYY).
  * @param {string} dateString - The date string to format.
- * @returns {string} - Formatted date string.
+ * @returns {string} - Formatted date string in en-GB locale.
  */
 export const formatDate = (dateString) => {
+  if (!dateString) return "";
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
-    month: "short",
+    month: "long",
     year: "numeric",
   }).format(date);
 };
 
 /**
- * Formats a date with time in a locale-aware way, including hour and minute.
+ * Formats a date with time in en-GB locale, including hour and minute.
  * @param {string} dateString - The date string to format.
- * @param {string} locale - The locale to use. Defaults to "en-GB".
  * @returns {string} - Formatted date and time string.
  */
-export const formatDateTimeWithLocale = (dateString, locale = "en-GB") => {
+export const formatDateTimeWithLocale = (dateString) => {
+  if (!dateString) return "";
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
 
-  const formatted = date.toLocaleString("en-GB", {
+  return date.toLocaleString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -29,8 +32,6 @@ export const formatDateTimeWithLocale = (dateString, locale = "en-GB") => {
     minute: "2-digit",
     hour12: true,
   });
-
-  return formatted;
 };
 
 /**
@@ -54,21 +55,24 @@ export const getEventStatus = (startDate, endDate) => {
 };
 
 /**
- * Formats a date string to a human-readable format with a short month name.
+ * Formats a date string to a human-readable format with a short month name (en-GB).
  * @param {string} dateString - The date string to format.
  * @returns {string} - Formatted date string with short month.
  */
-export const formatDateWithShortMonth = (dateString, locale = "en-GB") => {
+export const formatDateWithShortMonth = (dateString) => {
+  if (!dateString) return "";
   const date = new Date(dateString);
-  const formatted = new Intl.DateTimeFormat("en-GB", {
+  if (isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   }).format(date);
-
-  return formatted;
 };
 
+/**
+ * Internal helper to create a Date object in a specific timezone.
+ */
 const createDateInTimezone = (dateString, timeString, timezone) => {
   const dateOnly = new Date(dateString).toISOString().split("T")[0];
   const [hours, minutes] = timeString.split(":");
@@ -109,72 +113,52 @@ const createDateInTimezone = (dateString, timeString, timezone) => {
   return testDate;
 };
 
-export const formatTime = (timeString, locale = "en-GB", eventTimezone = null, dateString = null) => {
-  if (!timeString) return "";
+/**
+ * Formats time in en-GB locale. 
+ */
+export const formatTime = (input, eventTimezone = null, dateString = null) => {
+  if (!input) return "";
 
-  const [hours, minutes] = timeString.split(":");
-  const hour = parseInt(hours, 10);
-  const minute = parseInt(minutes, 10);
+  let date;
+  if (input.includes("T") || input.includes("Z")) {
+    // It's an ISO string (e.g. 2026-03-30T20:30:00Z)
+    date = new Date(input);
+  } else if (input.includes(":")) {
+    // It's a raw time string (e.g. 20:30)
+    const [hours, minutes] = input.split(":");
+    date = new Date();
+    date.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+  } else {
+    return "";
+  }
+
+  if (isNaN(date.getTime())) return "";
 
   if (eventTimezone && dateString) {
-    const eventDate = createDateInTimezone(dateString, timeString, eventTimezone);
+    const eventDate = createDateInTimezone(dateString, input.includes(":") && !input.includes("T") ? input : getLocalTime(input), eventTimezone);
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    const formatted = new Intl.DateTimeFormat("en-GB", {
+    return new Intl.DateTimeFormat("en-GB", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
       timeZone: userTimezone,
     }).format(eventDate);
-
-    return formatted;
   }
 
-  const date = new Date();
-  date.setHours(hour, minute, 0, 0);
-
-  const formatted = date.toLocaleString("en-GB", {
+  return date.toLocaleString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
-  }).toUpperCase();
-
-  return formatted;
+  });
 };
 
 /**
- * Parses a 24-hour time string (HH:mm) into 12-hour components.
- * @param {string} time24 "HH:mm"
- * @returns {{ hour12: number, minute: string, ampm: string }}
+ * Combines date and time display using en-GB locale.
  */
-export const parse24To12 = (time24) => {
-  if (!time24) return { hour12: 12, minute: "00", ampm: "AM" };
-  const [h24, min] = time24.split(":").map(Number);
-  const ampm = h24 >= 12 ? "PM" : "AM";
-  const hour12 = h24 % 12 || 12;
-  return { hour12, minute: String(min || 0).padStart(2, "0"), ampm };
-};
-
-/**
- * Converts 12-hour components back to a 24-hour time string (HH:mm).
- * @param {number|string} hr 1-12
- * @param {number|string} min 0-59
- * @param {string} ampm "AM"|"PM"
- * @returns {string} "HH:mm"
- */
-export const convert12To24 = (hr, min, ampm) => {
-  let h24 = parseInt(hr, 10);
-  const m = String(min).padStart(2, "0");
-  
-  if (ampm === "PM" && h24 < 12) h24 += 12;
-  if (ampm === "AM" && h24 === 12) h24 = 0;
-  
-  return `${String(h24).padStart(2, "0")}:${m}`;
-};
-
-export const formatDateWithTime = (dateString, timeString, locale = "en-GB", eventTimezone = null) => {
+export const formatDateWithTime = (dateString, timeString, eventTimezone = null) => {
   if (!timeString) {
-    return formatDateWithShortMonth(dateString, locale);
+    return formatDateWithShortMonth(dateString);
   }
 
   if (eventTimezone) {
@@ -198,39 +182,58 @@ export const formatDateWithTime = (dateString, timeString, locale = "en-GB", eve
     return `${dateFormattedLocal} ${timeFormatted}`;
   }
 
-  const dateFormatted = formatDateWithShortMonth(dateString, locale);
-  const timeFormatted = formatTime(timeString, locale);
+  const dateFormatted = formatDateWithShortMonth(dateString);
+  const timeFormatted = formatTime(timeString);
   return `${dateFormatted} ${timeFormatted}`;
+};
+
+/**
+ * Extracts the local date in YYYY-MM-DD format from an ISO string.
+ * Used for form field values.
+ */
+export const getLocalDate = (dateString) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Extracts the local time in HH:mm format from an ISO string.
+ * Used for form field values.
+ */
+export const getLocalTime = (dateString) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
 };
 
 export const convertTimeToLocal = (timeString, dateString, eventTimezone) => {
   if (!timeString || !eventTimezone) return timeString;
-
   const eventDate = createDateInTimezone(dateString, timeString, eventTimezone);
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: userTimezone,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   });
-
   const parts = formatter.formatToParts(eventDate);
   const hour = parts.find(p => p.type === "hour").value.padStart(2, "0");
   const minute = parts.find(p => p.type === "minute").value.padStart(2, "0");
-
   return `${hour}:${minute}`;
 };
 
 export const convertTimeFromLocal = (timeString, dateString, eventTimezone) => {
   if (!timeString || !eventTimezone) return timeString;
-
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  if (userTimezone === eventTimezone) {
-    return timeString;
-  }
+  if (userTimezone === eventTimezone) return timeString;
 
   const [hours, minutes] = timeString.split(":");
   const dateOnly = new Date(dateString).toISOString().split("T")[0];
@@ -248,19 +251,13 @@ export const convertTimeFromLocal = (timeString, dateString, eventTimezone) => {
   let testDate = localDate;
   let iterations = 0;
   const maxIterations = 10;
-
   while (iterations < maxIterations) {
     const parts = formatter.formatToParts(testDate);
     const formattedHour = parts.find(p => p.type === "hour").value;
     const formattedMinute = parts.find(p => p.type === "minute").value;
-
     const hourDiff = parseInt(hours, 10) - parseInt(formattedHour, 10);
     const minuteDiff = parseInt(minutes, 10) - parseInt(formattedMinute, 10);
-
-    if (hourDiff === 0 && minuteDiff === 0) {
-      break;
-    }
-
+    if (hourDiff === 0 && minuteDiff === 0) break;
     testDate = new Date(testDate.getTime() + (hourDiff * 60 + minuteDiff) * 60 * 1000);
     iterations++;
   }
@@ -271,10 +268,27 @@ export const convertTimeFromLocal = (timeString, dateString, eventTimezone) => {
     minute: "2-digit",
     hour12: false,
   });
-
   const resultParts = resultFormatter.formatToParts(testDate);
   const resultHour = resultParts.find(p => p.type === "hour").value.padStart(2, "0");
   const resultMinute = resultParts.find(p => p.type === "minute").value.padStart(2, "0");
-
   return `${resultHour}:${resultMinute}`;
+};
+
+/**
+ * Internal logic for 12/24h conversion used by CMS time pickers.
+ */
+export const parse24To12 = (time24) => {
+  if (!time24) return { hour12: 12, minute: "00", ampm: "AM" };
+  const [h24, m] = time24.split(":");
+  let hour = parseInt(h24, 10);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  hour = hour % 12 || 12;
+  return { hour12: hour, minute: m || "00", ampm };
+};
+
+export const convert12To24 = (hour12, minute, ampm) => {
+  let hour = parseInt(hour12, 10);
+  if (ampm === "PM" && hour < 12) hour += 12;
+  if (ampm === "AM" && hour === 12) hour = 0;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 };

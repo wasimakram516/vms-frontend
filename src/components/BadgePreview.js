@@ -7,7 +7,7 @@ const PREVIEW_SCALE = 0.3;
 const A6_WIDTH_PX = 297.6 * (96 / 72);
 const A6_HEIGHT_PX = 419.5 * (96 / 72);
 
-export default function BadgePreview({ template, showQr = true, getAllSelectedFields }) {
+export default function BadgePreview({ template, showQr = true, getAllSelectedFields, qrCodeDataUrl = "" }) {
   const { mode } = useColorMode();
   const layout = template?.layoutJson || {};
 
@@ -105,7 +105,7 @@ export default function BadgePreview({ template, showQr = true, getAllSelectedFi
                 </Box>
               ))}
 
-        {/* QR Code placeholder */}
+        {/* QR Code */}
         {showQr && layout._qrCode && (
           <Box
             sx={{
@@ -120,17 +120,30 @@ export default function BadgePreview({ template, showQr = true, getAllSelectedFi
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              overflow: "hidden",
             }}
           >
-            <Typography
-              sx={{
-                color: "#000000",
-                fontSize: "10px",
-                fontWeight: "bold",
-              }}
-            >
-              QR CODE
-            </Typography>
+            {qrCodeDataUrl ? (
+              <img
+                src={qrCodeDataUrl}
+                alt="QR Code"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                }}
+              />
+            ) : (
+              <Typography
+                sx={{
+                  color: "#000000",
+                  fontSize: "10px",
+                  fontWeight: "bold",
+                }}
+              >
+                QR CODE
+              </Typography>
+            )}
           </Box>
         )}
       </Box>

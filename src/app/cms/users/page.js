@@ -47,6 +47,7 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { DEFAULT_ISO_CODE } from "@/utils/countryCodes";
+import { validateField } from "@/utils/validationUtils";
 
 const CREATABLE_ROLES = ["admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
@@ -122,14 +123,22 @@ export default function UsersPage() {
 
   const validateForm = () => {
     const newErrors = {};
-    if (!form.full_name.trim()) newErrors.full_name = "Full Name is required";
-    if (!form.email.trim()) newErrors.email = "Email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
-      newErrors.email = "Invalid email";
-    if (!isEditMode && !form.password.trim())
-      newErrors.password = "Password is required";
-    if (form.role === "staff" && !form.staff_type)
-      newErrors.staff_type = "Staff Type is required";
+
+    const fullNameError = validateField({ label: "Full Name", required: true }, form.full_name);
+    if (fullNameError) newErrors.full_name = fullNameError;
+
+    const emailError = validateField({ label: "Email", required: true, inputType: "email" }, form.email);
+    if (emailError) newErrors.email = emailError;
+
+    if (!isEditMode) {
+      const passwordError = validateField({ label: "Password", required: true }, form.password);
+      if (passwordError) newErrors.password = passwordError;
+    }
+
+    if (form.role === "staff") {
+      const staffTypeError = validateField({ label: "Staff Type", required: true }, form.staff_type);
+      if (staffTypeError) newErrors.staff_type = staffTypeError;
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -175,6 +184,7 @@ export default function UsersPage() {
   };
 
   const filteredUsers = useMemo(() => {
+    if (!Array.isArray(users)) return [];
     const filtered = users.filter((u) => {
       const matchSearch =
         u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -106,7 +106,11 @@ export default function StaffVerifyPage() {
     try {
       const updated = await checkInRegistration(result.id);
       if (!updated.error) {
-        setResult(updated);
+        setResult(prev => ({
+          ...prev,
+          status: updated.status || "checked_in",
+          checked_in_at: updated.checkedInAt || updated.checked_in_at || new Date().toISOString()
+        }));
       }
     } finally {
       setActionLoading(false);
@@ -119,7 +123,11 @@ export default function StaffVerifyPage() {
     try {
       const updated = await checkOutRegistration(result.id);
       if (!updated.error) {
-        setResult(updated);
+        setResult(prev => ({
+          ...prev,
+          status: updated.status || "checked_out",
+          checked_out_at: updated.checkedOutAt || updated.checked_out_at || new Date().toISOString()
+        }));
       }
     } finally {
       setActionLoading(false);
@@ -154,9 +162,9 @@ export default function StaffVerifyPage() {
         phone: registration.phone || registration.visitor?.phone || registration.user?.phone || "",
         purposeOfVisit: registration.purpose_of_visit || "",
         hostName: registration.host_name || "",
-        requestedDate: registration.requested_date || registration.requestedDateFrom || "",
-        requestedTimeFrom: registration.requested_time_from || registration.requestedTimeFrom || "",
-        requestedTimeTo: registration.requested_time_to || registration.requestedTimeTo || "",
+        requestedDate: registration.requested_from ? formatDate(registration.requested_from) : "",
+        requestedTimeFrom: registration.requested_from ? formatTime(registration.requested_from) : "",
+        requestedTimeTo: registration.requested_to ? formatTime(registration.requested_to) : "",
         badgeIdentifier: registration.badge_identifier || "",
         token: registration.qr_token || "N/A",
         showQrOnBadge: true,
@@ -256,10 +264,13 @@ export default function StaffVerifyPage() {
           phone: updatedReg.user?.phone || "N/A",
           purpose_of_visit: updatedReg.purposeOfVisit,
           status: updatedReg.status,
-          approved_date_from: updatedReg.approvedDateFrom,
-          approved_date_to: updatedReg.approvedDateTo,
-          approved_time_from: updatedReg.approvedTimeFrom,
-          approved_time_to: updatedReg.approvedTimeTo,
+          requested_from: updatedReg.requestedFrom,
+          requested_to: updatedReg.requestedTo,
+          approved_from: updatedReg.approvedFrom,
+          approved_to: updatedReg.approvedTo,
+          phone_iso_code: updatedReg.phoneIsoCode,
+          checked_in_at: updatedReg.checkedInAt,
+          checked_out_at: updatedReg.checkedOutAt,
           qr_token: updatedReg.qrToken,
           notApproved: !isAccessible,
           visitor: updatedReg.visitor,
@@ -368,14 +379,16 @@ export default function StaffVerifyPage() {
                 <Typography variant="h6" fontWeight={700}>Verification Success</Typography>
                 <Chip label={sc.label} color={sc.color} size="small" sx={{ fontWeight: 600 }} />
               </Box>
-              <Tooltip title="Print Badge">
-                <IconButton
-                  onClick={() => handlePrintBadge(result)}
-                  sx={{ color: "success.main" }}
-                >
-                  <ICONS.print />
-                </IconButton>
-              </Tooltip>
+              {result.status !== "pending" && (
+                <Tooltip title="Print Badge">
+                  <IconButton
+                    onClick={() => handlePrintBadge(result)}
+                    sx={{ color: "success.main" }}
+                  >
+                    <ICONS.print />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Stack>
             
             <Divider sx={{ mb: 2 }} />
@@ -406,9 +419,9 @@ export default function StaffVerifyPage() {
                   { icon: ICONS.person, label: "Name", value: result.full_name },
                   { icon: ICONS.business, label: "Company", value: result.user?.companyName || "N/A" },
                   { icon: ICONS.info, label: "Purpose", value: result.purpose_of_visit },
-                  { icon: ICONS.event, label: "Approved From", value: result.approved_date_from ? formatDate(result.approved_date_from) : "—" },
-                  { icon: ICONS.event, label: "Approved To", value: result.approved_date_to ? formatDate(result.approved_date_to) : "—" },
-                  { icon: ICONS.time, label: "Time", value: `${result.approved_time_from ? formatTime(result.approved_time_from) : "—"} - ${result.approved_time_to ? formatTime(result.approved_time_to) : "—"}` },
+                  { icon: ICONS.event, label: "Approved From", value: result.approved_from ? formatDate(result.approved_from) : "—" },
+                  { icon: ICONS.event, label: "Approved To", value: result.approved_to ? formatDate(result.approved_to) : "—" },
+                  { icon: ICONS.time, label: "Time", value: `${result.approved_from ? formatTime(result.approved_from) : "—"} - ${result.approved_to ? formatTime(result.approved_to) : "—"}` },
                 ].map((item) => (
                   <ListItem key={item.label} disablePadding sx={{ py: 0.8 }}>
                     <ListItemIcon sx={{ minWidth: 36, color: "primary.main" }}><item.icon fontSize="small" /></ListItemIcon>
@@ -423,7 +436,7 @@ export default function StaffVerifyPage() {
               </List>
             )}
 
-            <Stack direction="row" spacing={2} mt={4}>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mt={4}>
               {result.notApproved ? (
                 <Button fullWidth variant="outlined" startIcon={<ICONS.close />} onClick={reset}>Close</Button>
               ) : (

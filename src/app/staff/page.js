@@ -17,6 +17,7 @@ import VisitorLayout from "@/components/layout/VisitorLayout";
 import LoadingState from "@/components/LoadingState";
 import { login } from "@/services/authService";
 import ICONS from "@/utils/iconUtil";
+import { validateRequired } from "@/utils/validationUtils";
 
 const getStaffDestination = (staffUser) =>
   staffUser?.staffType === "kitchen" ? "/staff/kitchen" : "/staff/gate/verify";
@@ -48,8 +49,13 @@ export default function StaffLoginPage() {
 
   const validate = () => {
     const next = {};
-    if (!form.email) next.email = "Email is required";
-    if (!form.password) next.password = "Password is required";
+    
+    const emailError = validateRequired(form.email, "Email");
+    if (emailError) next.email = emailError;
+    
+    const passwordError = validateRequired(form.password, "Password");
+    if (passwordError) next.password = passwordError;
+    
     setErrors(next);
     return Object.keys(next).length === 0;
   };

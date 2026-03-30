@@ -4,30 +4,19 @@ import { useState, useMemo, useEffect } from "react";
 import {
   Box,
   Typography,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
   Stack,
-  Tooltip,
   Dialog,
   DialogContent,
   DialogActions,
   Button,
   TextField,
   Avatar,
-  Chip,
   Divider,
   CircularProgress,
   Pagination,
   FormControl,
   Select,
   InputLabel,
-  InputAdornment,
   MenuItem,
   alpha,
   Tabs,
@@ -50,12 +39,14 @@ import {
   formatDate,
   formatTime,
   formatDateTimeWithLocale,
+  getLocalDate,
+  getLocalTime,
   parse24To12,
   convert12To24,
 } from "@/utils/dateUtils";
+import { validateRequired } from "@/utils/validationUtils";
 
 import AppCard from "@/components/cards/AppCard";
-import FilterModal from "@/components/modals/FilterModal";
 import DialogHeader from "@/components/modals/DialogHeader";
 import ListToolbar from "@/components/ListToolbar";
 import LoadingState from "@/components/LoadingState";
@@ -109,7 +100,7 @@ export default function CmsApprovalsPage() {
     setLoading(true);
     try {
       const data = await getRegistrations("pending");
-      setRows(data);
+      setRows(Array.isArray(data) ? data : []);
     } finally {
       setLoading(false);
     }
@@ -137,6 +128,7 @@ export default function CmsApprovalsPage() {
   }, [on]);
 
   const filtered = useMemo(() => {
+    if (!Array.isArray(rows)) return [];
     return rows
       .filter((r) =>
         [r.full_name, r.email]
@@ -161,33 +153,32 @@ export default function CmsApprovalsPage() {
       let detectedType = "custom";
       let detectedPreset = "fullDay";
 
-      if (fullReg.requested_date_from && fullReg.requested_date_to) {
-        const dateFrom = dayjs(fullReg.requested_date_from);
-        const dateTo = dayjs(fullReg.requested_date_to);
-        const daysDiff = dateTo.diff(dateFrom, "days");
+      if (fullReg.requested_from && fullReg.requested_to) {
+        const dateFrom = getLocalDate(fullReg.requested_from);
+        const dateTo = getLocalDate(fullReg.requested_to);
+        const timeFrom = getLocalTime(fullReg.requested_from);
+        const timeTo = getLocalTime(fullReg.requested_to);
+        
+        if (dateFrom && dateTo) {
+          const d1 = dayjs(dateFrom);
+          const d2 = dayjs(dateTo);
+          const daysDiff = d2.diff(d1, "days");
 
-        if (daysDiff === 0) {
-          if (fullReg.requested_time_from === fullReg.requested_time_to) {
+          if ((daysDiff === 0 || daysDiff === 1) && timeFrom === timeTo) {
             detectedType = "preset";
             detectedPreset = "fullDay";
-          } else {
-            detectedType = "custom";
           }
-        } else if (daysDiff === 1) {
-          if (fullReg.requested_time_from === fullReg.requested_time_to) {
+          else if (daysDiff === 6) {
             detectedType = "preset";
-            detectedPreset = "fullDay";
-          } else {
+            detectedPreset = "fullWeek";
+          }
+          else if (daysDiff === 30) {
+            detectedType = "preset";
+            detectedPreset = "fullMonth";
+          }
+          else {
             detectedType = "custom";
           }
-        } else if (daysDiff === 6) {
-          detectedType = "preset";
-          detectedPreset = "fullWeek";
-        } else if (daysDiff === 30) {
-          detectedType = "preset";
-          detectedPreset = "fullMonth";
-        } else {
-          detectedType = "custom";
         }
       }
 
@@ -196,12 +187,16 @@ export default function CmsApprovalsPage() {
         setSelectedPreset(detectedPreset);
       }
 
-      if (fullReg.requested_date_from) {
-        setScheduledDate(dayjs(fullReg.requested_date_from));
-        setScheduledFrom(
-          fullReg.requested_time_from?.substring(0, 5) || "09:00",
-        );
-        setScheduledTo(fullReg.requested_time_to?.substring(0, 5) || "18:00");
+      if (fullReg.requested_from) {
+        const dateFrom = getLocalDate(fullReg.requested_from);
+        const timeFrom = getLocalTime(fullReg.requested_from) || "09:00";
+        const timeTo = getLocalTime(fullReg.requested_to) || "18:00";
+        
+        if (dateFrom) {
+          setScheduledDate(dayjs(dateFrom));
+          setScheduledFrom(timeFrom);
+          setScheduledTo(timeTo);
+        }
       } else {
         setScheduledDate(dayjs());
         setScheduledFrom("09:00");
@@ -393,8 +388,8 @@ export default function CmsApprovalsPage() {
         let to = date.clone();
 
         if (selectedPreset === "fullDay") {
-          from = from.startOf("day").hour(parseInt(scheduledFrom.split(":")[0])).minute(parseInt(scheduledFrom.split(":")[1]));
-          to = to.add(1, "day").startOf("day").hour(parseInt(scheduledTo.split(":")[0])).minute(parseInt(scheduledTo.split(":")[1]));
+          from = from.hour(parseInt(scheduledFrom.split(":")[0])).minute(parseInt(scheduledFrom.split(":")[1]));
+          to = to.add(1, "day").hour(parseInt(scheduledFrom.split(":")[0])).minute(parseInt(scheduledFrom.split(":")[1]));
         } else if (selectedPreset === "fullWeek") {
           to = from.clone().add(6, "days");
         } else if (selectedPreset === "fullMonth") {
@@ -409,10 +404,8 @@ export default function CmsApprovalsPage() {
       }
 
       const payload = {
-        approvedDateFrom: fromDate,
-        approvedDateTo: toDate,
-        approvedTimeFrom: scheduledFrom,
-        approvedTimeTo: selectedPreset === "fullDay" ? scheduledFrom : scheduledTo,
+        approvedFrom: dayjs(`${fromDate}T${scheduledFrom}`).toISOString(),
+        approvedTo: dayjs(`${toDate}T${selectedPreset === "fullDay" ? scheduledFrom : scheduledTo}`).toISOString(),
       };
 
       await updateRegistrationStatus(approveTarget.id, "approve", payload);
@@ -430,10 +423,14 @@ export default function CmsApprovalsPage() {
   };
 
   const handleReject = async () => {
-    if (!rejectReason.trim()) return;
+    const error = validateRequired(rejectReason, "Rejection reason");
+    if (error) {
+      showMessage(error, "warning");
+      return;
+    }
     try {
       await updateRegistrationStatus(rejectTarget.id, "reject", {
-        rejectionReason: rejectReason,
+        rejectionReason: rejectReason.trim(),
       });
       showMessage(
         `${rejectTarget.full_name}'s registration has been rejected.`,
@@ -679,7 +676,7 @@ export default function CmsApprovalsPage() {
                         {row.purpose_of_visit || "—"}
                       </Typography>
                     </Box>
-                    {row.requested_date_from && (
+                    {row.requested_from && (
                       <Box
                         sx={{
                           display: "flex",
@@ -706,23 +703,35 @@ export default function CmsApprovalsPage() {
                             variant="body2"
                             sx={{ fontWeight: 600, color: "primary.main" }}
                           >
-                            {row.requested_date_from && row.requested_date_to && row.requested_date_from !== row.requested_date_to
-                              ? `${formatDate(row.requested_date_from)} to ${formatDate(row.requested_date_to)}`
-                              : row.requested_date_from ? formatDate(row.requested_date_from) : "—"}
+                            {(() => {
+                              const fromStr = row.requested_from;
+                              const toStr = row.requested_to;
+                              const dateFrom = getLocalDate(fromStr);
+                              const dateTo = getLocalDate(toStr);
+                              
+                              return dateFrom && dateTo && dateFrom !== dateTo
+                                ? `${formatDate(fromStr)} to ${formatDate(toStr)}`
+                                : fromStr ? formatDate(fromStr) : "—";
+                            })()}
                           </Typography>
-                          {(row.requested_time_from || row.requested_time_to) && (
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                fontWeight: 600,
-                                color: "text.secondary",
-                                display: "block",
-                              }}
-                            >
-                              {row.requested_time_from ? formatTime(row.requested_time_from) : "—"} -{" "}
-                              {row.requested_time_to ? formatTime(row.requested_time_to) : "—"}
-                            </Typography>
-                          )}
+                          {(() => {
+                            const fromStr = row.requested_from;
+                            const hTo = row.requested_to;
+                            
+                            return (fromStr || hTo) && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  fontWeight: 600,
+                                  color: "text.secondary",
+                                  display: "block",
+                                }}
+                              >
+                                {fromStr ? formatTime(fromStr) : "—"} -{" "}
+                                {hTo ? formatTime(hTo) : "—"}
+                              </Typography>
+                            );
+                          })()}
                         </Box>
                       </Box>
                     )}
@@ -852,15 +861,30 @@ export default function CmsApprovalsPage() {
                   Requested Slot
                 </Typography>
                 <Typography variant="body2" fontWeight={500}>
-                  {approveTarget?.requested_date_from && approveTarget?.requested_date_to && approveTarget.requested_date_from !== approveTarget.requested_date_to
-                    ? `${formatDate(approveTarget.requested_date_from)} to ${formatDate(approveTarget.requested_date_to)}`
-                    : approveTarget?.requested_date_from ? formatDate(approveTarget.requested_date_from) : "—"}
+                  {(() => {
+                    const fromStr = approveTarget?.requested_from;
+                    const toStr = approveTarget?.requested_to;
+                    const dateFrom = getLocalDate(fromStr);
+                    const dateTo = getLocalDate(toStr);
+                    
+                    if (!dateFrom) return "—";
+                    return dateTo && dateFrom !== dateTo
+                      ? `${formatDate(fromStr)} to ${formatDate(toStr)}`
+                      : formatDate(fromStr);
+                  })()}
                 </Typography>
-                {(approveTarget?.requested_time_from || approveTarget?.requested_time_to) && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                    {approveTarget?.requested_time_from ? formatTime(approveTarget.requested_time_from) : "—"} - {approveTarget?.requested_time_to ? formatTime(approveTarget.requested_time_to) : "—"}
-                  </Typography>
-                )}
+                {(() => {
+                  const fromStr = approveTarget?.requested_from;
+                  const toStr = approveTarget?.requested_to;
+                  const timeFromStr = getLocalTime(fromStr);
+                  const timeToStr = getLocalTime(toStr);
+                  
+                  return (timeFromStr || timeToStr) && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                      {fromStr ? formatTime(fromStr) : "—"} - {toStr ? formatTime(toStr) : "—"}
+                    </Typography>
+                  );
+                })()}
               </Box>
             </Stack>
           </Box>

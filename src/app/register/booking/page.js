@@ -25,7 +25,7 @@ import dayjs from "dayjs";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { formatTime, parse24To12, convert12To24 } from "@/utils/dateUtils";
+import { formatTime, parse24To12, convert12To24, formatDate } from "@/utils/dateUtils";
  
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
@@ -52,7 +52,7 @@ export default function BookingPage() {
     const time24 = convert12To24(next.hour12, next.minute, next.ampm);
     
     setBookingData((prev) => {
-      const newData = { ...prev, [type]: time24 };
+      let newData = { ...prev, [type]: time24 };
       
       if (bookingType === "custom") {
         if (type === "timeFrom" && newData.timeTo <= time24) {
@@ -62,6 +62,12 @@ export default function BookingPage() {
         } else if (type === "timeTo" && newData.timeFrom >= time24) {
            let [h, m] = time24.split(":").map(Number);
            newData.timeFrom = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        }
+      } else if (bookingType === "preset" && selectedPreset === "fullDay") {
+        if (type === "timeFrom") {
+          newData.timeTo = time24;
+        } else if (type === "timeTo") {
+          newData.timeFrom = time24;
         }
       }
       
@@ -151,8 +157,10 @@ export default function BookingPage() {
         let to = date.clone();
 
         if (selectedPreset === "fullDay") {
-          from = from.startOf("day").hour(parseInt(bookingData.timeFrom.split(":")[0])).minute(parseInt(bookingData.timeFrom.split(":")[1]));
-          to = to.add(1, "day").startOf("day").hour(parseInt(bookingData.timeTo.split(":")[0])).minute(parseInt(bookingData.timeTo.split(":")[1]));
+          const fromParts = bookingData.timeFrom.split(":");
+          const toParts = bookingData.timeTo.split(":");
+          from = from.startOf("day").hour(parseInt(fromParts[0])).minute(parseInt(fromParts[1]));
+          to = to.add(1, "day").startOf("day").hour(parseInt(toParts[0])).minute(parseInt(toParts[1]));
         } else if (selectedPreset === "fullWeek") {
           from = from.startOf("day");
           to = to.add(6, "days").endOf("day");
@@ -171,10 +179,9 @@ export default function BookingPage() {
       const payload = {
         userId: visitorData.userId,
         ndaAccepted: flowState?.ndaAccepted === true,
-        requestedDateFrom: fromDate,
-        requestedDateTo: toDate,
-        requestedTimeFrom: bookingData.timeFrom,
-        requestedTimeTo: bookingData.timeTo,
+        requestedFrom: dayjs(`${fromDate}T${bookingData.timeFrom}`).toISOString(),
+        requestedTo: dayjs(`${toDate}T${bookingData.timeTo}`).toISOString(),
+        phoneIsoCode: visitorData.phoneIsoCode,
         purposeOfVisit: visitorData.purposeOfVisit,
         fieldValues: {
           ...visitorData.dynamicFields,
@@ -356,8 +363,7 @@ export default function BookingPage() {
                         if (preset === "fullDay") {
                           setBookingData((prev) => ({
                             ...prev,
-                            timeFrom: "00:00",
-                            timeTo: "00:00",
+                            timeTo: prev.timeFrom,
                           }));
                         } else {
                           setBookingData((prev) => ({
@@ -390,8 +396,10 @@ export default function BookingPage() {
                           let to = date.clone();
 
                           if (selectedPreset === "fullDay") {
-                            from = from.startOf("day").hour(parseInt(bookingData.timeFrom.split(":")[0])).minute(parseInt(bookingData.timeFrom.split(":")[1]));
-                            to = to.add(1, "day").startOf("day").hour(parseInt(bookingData.timeTo.split(":")[0])).minute(parseInt(bookingData.timeTo.split(":")[1]));
+                            const fromParts = bookingData.timeFrom.split(":");
+                            const toParts = bookingData.timeTo.split(":");
+                            from = from.startOf("day").hour(parseInt(fromParts[0])).minute(parseInt(fromParts[1]));
+                            to = to.add(1, "day").startOf("day").hour(parseInt(toParts[0])).minute(parseInt(toParts[1]));
                           } else if (selectedPreset === "fullWeek") {
                             from = from.startOf("day");
                             to = to.add(6, "days").endOf("day");
@@ -400,7 +408,7 @@ export default function BookingPage() {
                             to = to.add(30, "days").endOf("day");
                           }
 
-                          return `${from.format("DD MMMM YYYY")} to ${to.format("DD MMMM YYYY")}`;
+                          return `${formatDate(from.toDate())} to ${formatDate(to.toDate())}`;
                         })()}
                       </Typography>
                     </Box>
