@@ -112,7 +112,7 @@ export default function UsersPage() {
       email: u.email || "",
       password: "",
       role: u.role || "staff",
-      staff_type: u.staff_type || "gate",
+      staff_type: u.staff_type || "",
     });
     setErrors({});
     setIsEditMode(true);
@@ -210,6 +210,7 @@ export default function UsersPage() {
       admin: [],
       staff_gate: [],
       staff_kitchen: [],
+      staff_unassigned: [],
       visitor: [],
     };
 
@@ -223,6 +224,8 @@ export default function UsersPage() {
           groups.staff_gate.push(u);
         } else if (u.staff_type === "kitchen") {
           groups.staff_kitchen.push(u);
+        } else {
+          groups.staff_unassigned.push(u);
         }
       } else {
         groups.visitor.push(u);
@@ -245,6 +248,7 @@ export default function UsersPage() {
       admin: [],
       staff_gate: [],
       staff_kitchen: [],
+      staff_unassigned: [],
       visitor: [],
     };
 
@@ -258,6 +262,8 @@ export default function UsersPage() {
           groups.staff_gate.push(u);
         } else if (u.staff_type === "kitchen") {
           groups.staff_kitchen.push(u);
+        } else {
+          groups.staff_unassigned.push(u);
         }
       } else {
         groups.visitor.push(u);
@@ -432,7 +438,7 @@ export default function UsersPage() {
         />
       ) : (
         <>
-          {["superadmin", "admin", "staff_gate", "staff_kitchen", "visitor"].map((role) => {
+          {["superadmin", "admin", "staff_gate", "staff_kitchen", "staff_unassigned", "visitor"].map((role) => {
             const roleUsers = pagedGroupedUsers[role];
             if (roleUsers.length === 0) return null;
 
@@ -441,6 +447,7 @@ export default function UsersPage() {
               admin: "Admins",
               staff_gate: "Gate Staff",
               staff_kitchen: "Kitchen Staff",
+              staff_unassigned: "Unassigned Staff",
               visitor: "Visitors",
             };
 
