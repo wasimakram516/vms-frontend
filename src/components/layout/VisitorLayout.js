@@ -7,8 +7,8 @@ import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
-const bgPortrait  = "/sinan%201080%20X%201920.png";  // mobile / portrait
-const bgLandscape = "/sinan%201920%20X%201080.png";  // desktop / landscape
+const bgPortrait  = "/bg-portrait.webp";
+const bgLandscape = "/bg-landscape.webp";
 const brandLogoSrc = "/logo-light.png";
 
 const fontStyles = (
