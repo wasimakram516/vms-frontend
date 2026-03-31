@@ -7,7 +7,8 @@ import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
-const backgroundImageUrl = "/bgImage.webp";
+const bgPortrait  = "/sinan%201080%20X%201920.png";  // mobile / portrait
+const bgLandscape = "/sinan%201920%20X%201080.png";  // desktop / landscape
 const brandLogoSrc = "/logo-light.png";
 
 const fontStyles = (
@@ -40,7 +41,18 @@ export default function VisitorLayout({
           flexDirection: { xs: "column", md: "row" },
           position: "relative",
           overflow: "hidden",
-          background: `url(${backgroundImageUrl}) center/cover no-repeat`,
+          background: {
+            xs: `url(${bgPortrait}) center/cover no-repeat`,
+            md: `url(${bgLandscape}) center/cover no-repeat`,
+          },
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0, left: 0, right: 0, bottom: 0,
+            bgcolor: "rgba(0,0,0,0.05)",
+            display: { xs: "none", md: "block" },
+            zIndex: 0,
+          },
         }}
       >
         {/* Left / Background Panel */}
@@ -49,29 +61,30 @@ export default function VisitorLayout({
             position: "relative",
             top: 0, left: 0, right: 0, bottom: 0,
             flex: { xs: "0 0 auto", md: "0 0 45%" },
-            minHeight: {
-              xs: isMobileCardExpanded ? 176 : 312,
-              sm: isMobileCardExpanded ? 208 : 352,
-              md: "auto",
+            minHeight: { md: "auto" },
+            maxHeight: {
+              xs: isMobileCardExpanded ? 0 : 400,
+              sm: isMobileCardExpanded ? 0 : 420,
+              md: "100vh",
             },
             display: "flex",
             flexDirection: "column",
-            justifyContent: { xs: isMobileCardExpanded ? "flex-start" : "center", md: "center" },
+            justifyContent: "center",
             px: { xs: 3, sm: 4, md: 6 },
-            pt: { xs: isMobileCardExpanded ? 2.5 : 4, md: 6 },
-            pb: { xs: isMobileCardExpanded ? 8 : 5, md: 6 },
-            zIndex: { xs: 0, md: 1 },
+            pt: { xs: isMobileCardExpanded ? 0 : 4, md: 6 },
+            pb: { xs: isMobileCardExpanded ? 0 : 5, md: 6 },
+            zIndex: 1,
             overflow: "hidden",
             color: "#fff",
-            transition:
-              "min-height 0.35s ease, padding 0.35s ease, justify-content 0.35s ease",
+            transition: "max-height 0.4s ease, padding 0.4s ease",
             "&::before": {
               content: '""',
               position: "absolute",
               top: 0, left: 0, right: 0, bottom: 0,
-              bgcolor: "rgba(0,0,0,0.5)",
-              zIndex: 0
-            }
+              bgcolor: "rgba(0,0,0,0.35)",
+              display: { xs: "block", md: "none" },
+              zIndex: 0,
+            },
           }}
         >
           <motion.div
@@ -162,24 +175,23 @@ export default function VisitorLayout({
           sx={{
             flex: 1,
             overflowY: "auto",
-            bgcolor: "transparent",
-            backdropFilter: { xs: "blur(20px)", md: "none" },
-            background: {
-              xs: isDark ? "rgba(18, 24, 33, 0.72)" : "rgba(255,255,255,0.68)",
-              md: "transparent",
-            },
+            background: "transparent",
             zIndex: 1,
             position: "relative",
-            mt: { xs: isMobileCardExpanded ? -8 : -3, md: 0 },
-            borderTopLeftRadius: { xs: isMobileCardExpanded ? 40 : 32, md: 0 },
-            borderTopRightRadius: { xs: isMobileCardExpanded ? 40 : 32, md: 0 },
-            boxShadow: {
-              xs: isMobileCardExpanded
-                ? "0 -22px 40px rgba(9, 18, 31, 0.25)"
-                : "0 -16px 32px rgba(9, 18, 31, 0.2)",
-              md: "none",
+            mt: { xs: isMobileCardExpanded ? 0 : -3, md: 0 },
+            borderTopLeftRadius: { xs: 32, md: 0 },
+            borderTopRightRadius: { xs: 32, md: 0 },
+            transition: "margin-top 0.4s ease, border-radius 0.4s ease",
+            "&::before": {
+              content: '""',
+              position: "absolute",
+              top: 0, left: 0, right: 0, bottom: 0,
+              bgcolor: isDark ? "rgba(18,24,33,0.65)" : "rgba(255,255,255,0.55)",
+              display: { xs: "block", md: "none" },
+              zIndex: 0,
+              borderTopLeftRadius: "inherit",
+              borderTopRightRadius: "inherit",
             },
-            transition: "margin-top 0.35s ease, border-radius 0.35s ease, box-shadow 0.35s ease",
           }}
         >
           <Box
@@ -202,8 +214,8 @@ export default function VisitorLayout({
               sx={{
                 appearance: "none",
                 border: 0,
-                bgcolor: "transparent",
-                color: "text.secondary",
+                bgcolor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+                color: isDark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.5)",
                 borderRadius: "50%",
                 width: 32,
                 height: 32,
@@ -235,11 +247,14 @@ export default function VisitorLayout({
               minHeight: "100%",
               display: "flex",
               flexDirection: "column",
-              justifyContent: { xs: "flex-start", md: justifyContent }, 
+              justifyContent: { xs: "flex-start", md: justifyContent },
               alignItems: "center",
-              py: { xs: isMobileCardExpanded ? 3.5 : 4.25, md: 8 }, 
+              pt: { xs: isMobileCardExpanded ? 6 : 7, md: 8 },
+              pb: { xs: isMobileCardExpanded ? 3.5 : 4.25, md: 8 },
               px: { xs: 3, md: 4 },
               transition: "padding 0.35s ease",
+              position: "relative",
+              zIndex: 1,
             }}
           >
             <motion.div
