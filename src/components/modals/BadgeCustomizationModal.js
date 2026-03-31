@@ -608,6 +608,25 @@ export default function BadgeCustomizationModal({
             if (prev.includes(fieldKey)) {
                 return prev.filter(f => f !== fieldKey);
             } else {
+                // Immediately seed default customization so the preview renders it right away
+                setCustomizations(prevC => {
+                    if (prevC[fieldKey]) return prevC;
+                    return {
+                        ...prevC,
+                        [fieldKey]: {
+                            text: fieldKey,
+                            fontSize: 14,
+                            color: "#000000",
+                            isBold: false,
+                            isItalic: false,
+                            isUnderline: false,
+                            fontFamily: "Arial",
+                            x: 0,
+                            y: 0,
+                            alignment: "left",
+                        },
+                    };
+                });
                 return [...prev, fieldKey];
             }
         });
@@ -615,6 +634,7 @@ export default function BadgeCustomizationModal({
 
     useEffect(() => {
         if (open) {
+            setTemplateNameInput(templateName);
             const fetchCustomFields = async () => {
                 try {
                     const fields = await getCustomFields();
@@ -762,7 +782,35 @@ export default function BadgeCustomizationModal({
 
     const handleSave = () => {
         const finalName = templateNameInput.trim() || (isEditing ? templateName : "New Badge Template");
-        onSave({ name: finalName, customizations });
+
+        const defaultFieldCustomization = (fieldKey) => ({
+            text: fieldKey,
+            fontSize: 14,
+            color: "#000000",
+            isBold: false,
+            isItalic: false,
+            isUnderline: false,
+            fontFamily: "Arial",
+            x: 0,
+            y: 0,
+            alignment: "left",
+        });
+
+        const filteredCustomizations = {};
+
+        filteredCustomizations._qrCode = customizations._qrCode || { x: 5, y: 85, size: 70 };
+
+        if (includePurposeOfVisit) {
+            filteredCustomizations.purpose_of_visit =
+                customizations.purpose_of_visit || defaultFieldCustomization("purpose_of_visit");
+        }
+
+        selectedCustomFields.forEach((fieldKey) => {
+            filteredCustomizations[fieldKey] =
+                customizations[fieldKey] || defaultFieldCustomization(fieldKey);
+        });
+
+        onSave({ name: finalName, customizations: filteredCustomizations });
         onClose();
     };
 
@@ -857,7 +905,29 @@ export default function BadgeCustomizationModal({
                                         control={
                                             <Checkbox
                                                 checked={includePurposeOfVisit}
-                                                onChange={() => setIncludePurposeOfVisit(!includePurposeOfVisit)}
+                                                onChange={() => {
+                                                    if (!includePurposeOfVisit) {
+                                                        setCustomizations(prev => {
+                                                            if (prev.purpose_of_visit) return prev;
+                                                            return {
+                                                                ...prev,
+                                                                purpose_of_visit: {
+                                                                    text: "purpose_of_visit",
+                                                                    fontSize: 14,
+                                                                    color: "#000000",
+                                                                    isBold: false,
+                                                                    isItalic: false,
+                                                                    isUnderline: false,
+                                                                    fontFamily: "Arial",
+                                                                    x: 0,
+                                                                    y: 0,
+                                                                    alignment: "left",
+                                                                },
+                                                            };
+                                                        });
+                                                    }
+                                                    setIncludePurposeOfVisit(!includePurposeOfVisit);
+                                                }}
                                                 size="small"
                                             />
                                         }
