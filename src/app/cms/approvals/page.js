@@ -405,7 +405,7 @@ export default function CmsApprovalsPage() {
 
       const payload = {
         approvedFrom: dayjs(`${fromDate}T${scheduledFrom}`).toISOString(),
-        approvedTo: dayjs(`${toDate}T${selectedPreset === "fullDay" ? scheduledFrom : scheduledTo}`).toISOString(),
+        approvedTo: dayjs(`${toDate}T${scheduleType === "preset" && selectedPreset === "fullDay" ? scheduledFrom : scheduledTo}`).toISOString(),
       };
 
       await updateRegistrationStatus(approveTarget.id, "approve", payload);
