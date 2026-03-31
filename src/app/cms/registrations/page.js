@@ -426,16 +426,52 @@ export default function CmsRegistrationsPage() {
       },
     );
 
+    // Convert fieldValues array from backend to key-value object
+    const rawFieldValues = registration.field_values || registration.fieldValues || [];
+    const fieldValues = {};
+    if (Array.isArray(rawFieldValues)) {
+      rawFieldValues.forEach((fv) => {
+        const key = fv.customField?.fieldKey || fv.custom_field?.field_key;
+        if (key) {
+          fieldValues[key] = fv.value;
+        }
+      });
+    } else if (typeof rawFieldValues === 'object') {
+      Object.assign(fieldValues, rawFieldValues);
+    }
+
     const badgeData = {
       fullName:
+        fieldValues["full_name"] ||
+        fieldValues["name"] ||
         registration.full_name ||
         registration.user?.full_name ||
         "Unnamed Visitor",
       company:
-        registration.company_name || registration.user?.company_name || "",
-      email: registration.email || registration.user?.email || "",
-      phone: registration.phone || registration.user?.phone || "",
-      purposeOfVisit: registration.purpose_of_visit || "",
+        fieldValues["company_name"] ||
+        fieldValues["organization"] ||
+        fieldValues["company"] ||
+        registration.company ||
+        registration.user?.company_name ||
+        "",
+      email:
+        fieldValues["email"] ||
+        fieldValues["email_address"] ||
+        registration.email ||
+        registration.user?.email ||
+        "",
+      phone:
+        fieldValues["phone"] ||
+        fieldValues["phone_number"] ||
+        fieldValues["mobile"] ||
+        registration.phone ||
+        registration.user?.phone ||
+        "",
+      purposeOfVisit:
+        fieldValues["purpose_of_visit"] ||
+        fieldValues["purpose"] ||
+        registration.purpose_of_visit ||
+        "",
       hostName: registration.host_name || "",
       requestedDate: getLocalDate(registration.requested_from),
       requestedTimeFrom: getLocalTime(registration.requested_from),
@@ -443,7 +479,7 @@ export default function CmsRegistrationsPage() {
       badgeIdentifier: registration.badge_identifier || "",
       token: registration.qr_token || "N/A",
       showQrOnBadge: true,
-      fieldValues: registration.fieldValues || {},
+      fieldValues: fieldValues,
     };
 
     const doc = (

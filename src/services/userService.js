@@ -11,6 +11,9 @@ const mapUserToFrontend = (user) => ({
   staff_type: user.staffType,
   status: user.status,
   created_at: user.createdAt,
+  updated_at: user.updatedAt,
+  created_by: user.createdBy?.fullName || user.createdById || null,
+  updated_by: user.updatedBy?.fullName || user.updatedById || null,
 });
 
 export const getAllUsers = withApiHandler(async (role) => {
@@ -48,13 +51,17 @@ export const createStaffUser = withApiHandler(
 
 export const updateUser = withApiHandler(
   async (id, data) => {
-    const res = await api.patch(`/users/${id}`, {
+    const payload = {
       fullName: data.full_name,
       email: data.email,
       role: data.role,
-      staffType: data.staff_type,
       password: data.password || undefined,
-    });
+    };
+    // Only include staffType for staff roles
+    if (data.role === "staff") {
+      payload.staffType = data.staff_type;
+    }
+    const res = await api.patch(`/users/${id}`, payload);
     const userData = res.data?.data || res.data;
     return userData ? mapUserToFrontend(userData) : null;
   },

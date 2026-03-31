@@ -254,16 +254,21 @@ function getFieldValue(fieldName, data) {
   const fieldValues = data.fieldValues || {};
   const normalizedFieldName = fieldName.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  // Check fieldValues (custom fields)
-  const customFieldMatch = Object.keys(fieldValues).find(key => 
-    key.toLowerCase().replace(/[^a-z0-9]/g, "") === normalizedFieldName
-  );
-  if (customFieldMatch) {
-    return String(fieldValues[customFieldMatch]);
+  // Check fieldValues first (custom fields and standard fields stored as fieldValues)
+  // Look for exact match first, then normalized match
+  if (fieldValues[fieldName] !== undefined) {
+    return String(fieldValues[fieldName]);
+  }
+  
+  // Check for normalized match in fieldValues keys
+  for (const [key, val] of Object.entries(fieldValues)) {
+    if (key.toLowerCase().replace(/[^a-z0-9]/g, "") === normalizedFieldName) {
+      return String(val);
+    }
   }
 
-  // Map standard fields
-  const fieldMap = {
+  // Map standard fields from data object (normalized matching)
+  const standardFieldMap = {
     fullname: data.fullName,
     full_name: data.fullName,
     name: data.fullName,
@@ -278,13 +283,20 @@ function getFieldValue(fieldName, data) {
     purpose: data.purposeOfVisit,
     purposeofvisit: data.purposeOfVisit,
     hostname: data.hostName,
-    hostName: data.hostName,
+    host_name: data.hostName,
     requesteddate: data.requestedDate,
     requestedtimefrom: data.requestedTimeFrom,
     requestedtimeto: data.requestedTimeTo,
+    badgeidentifier: data.badgeIdentifier,
+    token: data.token,
   };
 
-  return fieldMap[normalizedFieldName] || "";
+  const value = standardFieldMap[normalizedFieldName];
+  if (value !== undefined && value !== null && value !== "") {
+    return String(value);
+  }
+
+  return "";
 }
 
 // Maps web/CSS font names to the built-in PDF font families 

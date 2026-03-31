@@ -25,8 +25,19 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
   const doc = (
     <Document>
       {regs.map((r) => {
-        // Extract field values from registration_field_values if available
-        const fieldValues = r.fieldValues || {};
+        // Convert fieldValues array from backend to key-value object
+        const rawFieldValues = r.field_values || r.fieldValues || [];
+        const fieldValues = {};
+        if (Array.isArray(rawFieldValues)) {
+          rawFieldValues.forEach((fv) => {
+            const key = fv.customField?.fieldKey || fv.custom_field?.field_key;
+            if (key) {
+              fieldValues[key] = fv.value;
+            }
+          });
+        } else if (typeof rawFieldValues === 'object') {
+          Object.assign(fieldValues, rawFieldValues);
+        }
 
         const data = {
           fullName:

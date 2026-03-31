@@ -1,9 +1,22 @@
 import api from "./api";
 import withApiHandler from "@/utils/withApiHandler";
 
+const mapBadgeTemplateToFrontend = (template) => ({
+  id: template.id,
+  name: template.name,
+  isDefault: template.isDefault,
+  isActive: template.isActive,
+  layoutJson: template.layoutJson,
+  created_at: template.createdAt,
+  updated_at: template.updatedAt,
+  created_by: template.createdBy?.fullName || template.createdById || null,
+  updated_by: template.updatedBy?.fullName || template.updatedById || null,
+});
+
 export const getBadgeTemplates = withApiHandler(async () => {
   const response = await api.get("/badge-templates");
-  return response.data;
+  const data = response.data?.data || response.data || [];
+  return data.map(mapBadgeTemplateToFrontend);
 });
 
 export const getDefaultBadgeTemplate = withApiHandler(async () => {

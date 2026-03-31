@@ -1,10 +1,26 @@
 import api from "./api";
 import withApiHandler from "@/utils/withApiHandler";
 
+const mapCustomFieldToFrontend = (field) => ({
+  id: field.id,
+  fieldKey: field.fieldKey,
+  label: field.label,
+  inputType: field.inputType,
+  isRequired: field.isRequired,
+  isActive: field.isActive,
+  sortOrder: field.sortOrder,
+  optionsJson: field.optionsJson,
+  created_at: field.createdAt,
+  updated_at: field.updatedAt,
+  created_by: field.createdBy?.fullName || field.createdById || null,
+  updated_by: field.updatedBy?.fullName || field.updatedById || null,
+});
+
 export const getCustomFields = withApiHandler(async () => {
   const res = await api.get("/custom-fields");
   const data = res.data?.data || [];
-  return data.sort((a, b) => a.sortOrder - b.sortOrder);
+  const mapped = Array.isArray(data) ? data.map(mapCustomFieldToFrontend) : [];
+  return mapped.sort((a, b) => a.sortOrder - b.sortOrder);
 });
 
 export const createCustomField = withApiHandler(

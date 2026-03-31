@@ -28,6 +28,7 @@ import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
 import MediaUploadProgress from "@/components/MediaUploadProgress";
 import RoleGuard from "@/components/auth/RoleGuard";
+import RecordMetadata from "@/components/RecordMetadata";
 import { getHost, createHost, updateHost, deleteHost } from "@/services/hostService";
 import { uploadMediaFiles } from "@/utils/mediaUpload";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
@@ -374,6 +375,19 @@ export default function HostDetailsPage() {
               <DetailItem icon={ICONS.email} primary="Email" secondary={host.contactPersonEmail} />
               <DetailItem icon={ICONS.phone} primary="Phone" secondary={host.contactPersonPhone} />
             </List>
+
+            {/* Logs */}
+            <Divider sx={{ mt: 2 }} />
+            <SectionLabel>Logs</SectionLabel>
+            <Box sx={{ mt: 1 }}>
+              <RecordMetadata
+                createdByName={host.created_by}
+                updatedByName={host.updated_by}
+                createdAt={host.created_at}
+                updatedAt={host.updated_at}
+                locale="en-GB"
+              />
+            </Box>
           </Box>
         )}
 

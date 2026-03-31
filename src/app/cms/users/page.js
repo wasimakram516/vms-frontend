@@ -4,7 +4,6 @@ import {
   Box,
   Typography,
   Button,
-  Paper,
   Avatar,
   IconButton,
   Tooltip,
@@ -16,7 +15,6 @@ import {
   Stack,
   MenuItem,
   CircularProgress,
-  InputAdornment,
   Divider,
   Pagination,
   FormControl,
@@ -29,7 +27,6 @@ import {
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useMessage } from "@/contexts/MessageContext";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import {
@@ -45,16 +42,14 @@ import DialogHeader from "@/components/modals/DialogHeader";
 import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
-import CountryCodeSelector from "@/components/CountryCodeSelector";
-import { DEFAULT_ISO_CODE } from "@/utils/countryCodes";
 import { validateField } from "@/utils/validationUtils";
+import RecordMetadata from "@/components/RecordMetadata";
 
 const CREATABLE_ROLES = ["admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
-  const { showMessage } = useMessage();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const isSuperAdmin = currentUser?.role === "superadmin";
@@ -93,6 +88,7 @@ export default function UsersPage() {
     setLoading(true);
     try {
       const data = await getAllUsers();
+      console.log("Fetched users:", data);
       setUsers(data || []);
     } finally {
       setLoading(false);
@@ -213,37 +209,6 @@ export default function UsersPage() {
       return aOrder - bOrder;
     });
   }, [users, searchQuery, roleFilter, staffTypeFilter]);
-
-  const groupedUsers = useMemo(() => {
-    const groups = {
-      superadmin: [],
-      admin: [],
-      staff_gate: [],
-      staff_kitchen: [],
-      staff_unassigned: [],
-      visitor: [],
-    };
-
-    filteredUsers.forEach((u) => {
-      if (u.role === "superadmin") {
-        groups.superadmin.push(u);
-      } else if (u.role === "admin") {
-        groups.admin.push(u);
-      } else if (u.role === "staff") {
-        if (u.staff_type === "gate") {
-          groups.staff_gate.push(u);
-        } else if (u.staff_type === "kitchen") {
-          groups.staff_kitchen.push(u);
-        } else {
-          groups.staff_unassigned.push(u);
-        }
-      } else {
-        groups.visitor.push(u);
-      }
-    });
-
-    return groups;
-  }, [filteredUsers]);
 
   const pagedUsers = useMemo(() => {
     return filteredUsers.slice(
@@ -664,53 +629,70 @@ export default function UsersPage() {
                       )}
                     </Box>
 
-                    {/* Footer: Icon Buttons */}
-                    {isSuperAdmin && (
-                      <Box
-                        sx={{
-                          p: 1.5,
-                          borderTop: "1px solid",
-                          borderColor: "divider",
-                          bgcolor: isDark
-                            ? "rgba(255,255,255,0.02)"
-                            : "rgba(0,0,0,0.01)",
-                          display: "flex",
-                          justifyContent: "flex-end",
-                          gap: 1,
-                        }}
-                      >
-                        <Tooltip title="Edit User">
-                          <IconButton
-                            color="primary"
-                            onClick={() => handleOpenEdit(u)}
-                            size="small"
-                            sx={{
-                              bgcolor: isDark
-                                ? "rgba(255,255,255,0.05)"
-                                : "rgba(0,0,0,0.03)",
-                            }}
-                          >
-                            <ICONS.edit fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        {u.id !== currentUser.id && (
-                          <Tooltip title="Delete User">
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderTop: "1px solid",
+                        borderColor: "divider",
+                        bgcolor: isDark
+                          ? "rgba(255,255,255,0.02)"
+                          : "rgba(0,0,0,0.01)",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 1,
+                      }}
+                    >
+                      <Box sx={{ flex: 1 }}>
+                        <RecordMetadata
+                          createdByName={u.created_by}
+                          updatedByName={u.updated_by}
+                          createdAt={u.created_at}
+                          updatedAt={u.updated_at}
+                          locale="en-GB"
+                        />
+                      </Box>
+                      {isSuperAdmin && (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            gap: 1,
+                          }}
+                        >
+                          <Tooltip title="Edit User">
                             <IconButton
-                              color="error"
-                              onClick={() => handleDeleteClick(u)}
+                              color="primary"
+                              onClick={() => handleOpenEdit(u)}
                               size="small"
                               sx={{
                                 bgcolor: isDark
-                                  ? "rgba(255,100,100,0.05)"
-                                  : "rgba(255,0,0,0.03)",
+                                  ? "rgba(255,255,255,0.05)"
+                                  : "rgba(0,0,0,0.03)",
                               }}
                             >
-                              <ICONS.delete fontSize="small" />
+                              <ICONS.edit fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                        )}
-                      </Box>
-                    )}
+                          {u.id !== currentUser.id && (
+                            <Tooltip title="Delete User">
+                              <IconButton
+                                color="error"
+                                onClick={() => handleDeleteClick(u)}
+                                size="small"
+                                sx={{
+                                  bgcolor: isDark
+                                    ? "rgba(255,100,100,0.05)"
+                                    : "rgba(255,0,0,0.03)",
+                                }}
+                              >
+                                <ICONS.delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
                   </AppCard>
                 ))}
               </ResponsiveCardGrid>
@@ -769,6 +751,7 @@ export default function UsersPage() {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               error={!!errors.password}
               helperText={errors.password}
+              sx={{ display: form.role === "visitor" ? "none" : "flex" }}
             />
             <TextField
               select

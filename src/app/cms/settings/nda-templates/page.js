@@ -30,6 +30,7 @@ import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
 import RoleGuard from "@/components/auth/RoleGuard";
+import RecordMetadata from "@/components/RecordMetadata";
 import {
   getNdaTemplates,
   createNdaTemplate,
@@ -265,7 +266,7 @@ export default function NdaTemplatesPage() {
                   />
                 </Box>
 
-                {/* Card footer — actions */}
+                {/* Card footer — actions and metadata */}
                 <Box
                   sx={{
                     p: 1.5,
@@ -275,36 +276,42 @@ export default function NdaTemplatesPage() {
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    gap: 1,
                   }}
                 >
-                  {tpl.isActive ? (
-                    <Tooltip title="Remove active status">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="warning"
-                        startIcon={<ICONS.close fontSize="small" />}
-                        onClick={() => setDeactivateTarget(tpl)}
-                        sx={{ borderRadius: 30, fontSize: "0.7rem" }}
-                      >
-                        Deactivate
-                      </Button>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip title="Set as active template">
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="success"
-                        startIcon={<ICONS.check fontSize="small" />}
-                        onClick={() => setActivateTarget(tpl)}
-                        sx={{ borderRadius: 30, fontSize: "0.7rem" }}
-                      >
-                        Activate
-                      </Button>
-                    </Tooltip>
-                  )}
+                  <Box sx={{ flex: 1 }}>
+                    <RecordMetadata
+                      createdByName={tpl.created_by}
+                      updatedByName={tpl.updated_by}
+                      createdAt={tpl.created_at}
+                      updatedAt={tpl.updated_at}
+                      locale="en-GB"
+                    />
+                  </Box>
                   <Stack direction="row" spacing={1}>
+                    {tpl.isActive ? (
+                      <Tooltip title="Deactivate">
+                        <IconButton
+                          size="small"
+                          color="warning"
+                          onClick={() => setDeactivateTarget(tpl)}
+                          sx={{ bgcolor: "action.hover" }}
+                        >
+                          <ICONS.close fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="Activate">
+                        <IconButton
+                          size="small"
+                          color="success"
+                          onClick={() => setActivateTarget(tpl)}
+                          sx={{ bgcolor: "action.hover" }}
+                        >
+                          <ICONS.check fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     <IconButton
                       size="small"
                       color="primary"

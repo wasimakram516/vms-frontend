@@ -577,6 +577,7 @@ export default function BadgeCustomizationModal({
     const [selectedCustomFields, setSelectedCustomFields] = useState([]);
     const [includePurposeOfVisit, setIncludePurposeOfVisit] = useState(false);
     const [templateNameInput, setTemplateNameInput] = useState(templateName);
+    const [nameError, setNameError] = useState("");
     const scrollableContainerRef = useRef(null);
 
     const setScrollableContainerRef = (node) => {
@@ -780,8 +781,21 @@ export default function BadgeCustomizationModal({
         }));
     };
 
+    const validateTemplateName = (name) => {
+        if (!name || !name.trim()) {
+            return "Template name is required";
+        }
+        return "";
+    };
+
     const handleSave = () => {
-        const finalName = templateNameInput.trim() || (isEditing ? templateName : "New Badge Template");
+        const trimmedName = templateNameInput.trim();
+        const error = validateTemplateName(trimmedName);
+        if (error) {
+            setNameError(error);
+            return;
+        }
+        setNameError("");
 
         const defaultFieldCustomization = (fieldKey) => ({
             text: fieldKey,
@@ -810,7 +824,7 @@ export default function BadgeCustomizationModal({
                 customizations[fieldKey] || defaultFieldCustomization(fieldKey);
         });
 
-        onSave({ name: finalName, customizations: filteredCustomizations });
+        onSave({ name: trimmedName, customizations: filteredCustomizations });
         onClose();
     };
 
@@ -883,9 +897,14 @@ export default function BadgeCustomizationModal({
                                 label="Template Name"
                                 placeholder="e.g. Standard Visitor Badge"
                                 value={templateNameInput}
-                                onChange={(e) => setTemplateNameInput(e.target.value)}
+                                onChange={(e) => {
+                                    setTemplateNameInput(e.target.value);
+                                    if (e.target.value.trim()) setNameError("");
+                                }}
                                 size="small"
                                 required
+                                error={!!nameError}
+                                helperText={nameError || ""}
                             />
                             <Divider sx={{ mt: 3 }} />
                         </Box>

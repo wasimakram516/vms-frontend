@@ -1,6 +1,22 @@
 import api from "./api";
 import withApiHandler from "@/utils/withApiHandler";
 
+const mapNdaTemplateToFrontend = (template) => ({
+  id: template.id,
+  name: template.name,
+  version: template.version,
+  preamble: template.preamble,
+  body: template.body,
+  visitorRecordTitle: template.visitorRecordTitle,
+  visitorRecordNote: template.visitorRecordNote,
+  footer: template.footer,
+  isActive: template.isActive,
+  created_at: template.createdAt,
+  updated_at: template.updatedAt,
+  created_by: template.createdBy?.fullName || template.createdById || null,
+  updated_by: template.updatedBy?.fullName || template.updatedById || null,
+});
+
 export const getPublicActiveNdaTemplate = withApiHandler(async () => {
   const res = await api.get("/nda-templates/public/active");
   return res.data?.data || res.data || null;
@@ -8,7 +24,8 @@ export const getPublicActiveNdaTemplate = withApiHandler(async () => {
 
 export const getNdaTemplates = withApiHandler(async () => {
   const res = await api.get("/nda-templates");
-  return res.data?.data || res.data || [];
+  const templates = res.data?.data || res.data || [];
+  return Array.isArray(templates) ? templates.map(mapNdaTemplateToFrontend) : [];
 });
 
 export const getNdaTemplate = withApiHandler(async (id) => {

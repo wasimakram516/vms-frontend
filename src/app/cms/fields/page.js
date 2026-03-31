@@ -4,16 +4,8 @@ import { useState, useEffect } from "react";
 import {
   Box,
   Typography,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   IconButton,
   Stack,
-  Tooltip,
   Dialog,
   DialogContent,
   DialogActions,
@@ -23,17 +15,12 @@ import {
   Switch,
   FormControlLabel,
   Chip,
-  Alert,
   Divider,
   CircularProgress,
-  Menu,
-  Checkbox,
   Pagination,
   FormControl,
   Select,
   InputLabel,
-  InputAdornment,
-  alpha,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useMessage } from "@/contexts/MessageContext";
@@ -52,6 +39,7 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
+import RecordMetadata from "@/components/RecordMetadata";
 
 const INPUT_TYPES = [
   "text",
@@ -422,34 +410,46 @@ export default function CmsFieldsPage() {
                         ? "rgba(255,255,255,0.02)"
                         : "rgba(0,0,0,0.01)",
                       display: "flex",
-                      justifyContent: "flex-end",
+                      justifyContent: "space-between",
+                      alignItems: "center",
                       gap: 1,
                     }}
                   >
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => openEdit(field)}
-                      sx={{
-                        bgcolor: isDark
-                          ? "rgba(255,255,255,0.05)"
-                          : "rgba(0,0,0,0.03)",
-                      }}
-                    >
-                      <ICONS.edit fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => setDeleteTarget(field)}
-                      sx={{
-                        bgcolor: isDark
-                          ? "rgba(255,100,100,0.05)"
-                          : "rgba(255,0,0,0.03)",
-                      }}
-                    >
-                      <ICONS.delete fontSize="small" />
-                    </IconButton>
+                    <Box sx={{ flex: 1 }}>
+                      <RecordMetadata
+                        createdByName={field.created_by}
+                        updatedByName={field.updated_by}
+                        createdAt={field.created_at}
+                        updatedAt={field.updated_at}
+                        locale="en-GB"
+                      />
+                    </Box>
+                    <Stack direction="row" spacing={1}>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => openEdit(field)}
+                        sx={{
+                          bgcolor: isDark
+                            ? "rgba(255,255,255,0.05)"
+                            : "rgba(0,0,0,0.03)",
+                        }}
+                      >
+                        <ICONS.edit fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => setDeleteTarget(field)}
+                        sx={{
+                          bgcolor: isDark
+                            ? "rgba(255,100,100,0.05)"
+                            : "rgba(255,0,0,0.03)",
+                        }}
+                      >
+                        <ICONS.delete fontSize="small" />
+                      </IconButton>
+                    </Stack>
                   </Box>
                 </AppCard>
               ))}
