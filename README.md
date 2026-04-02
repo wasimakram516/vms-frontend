@@ -1,6 +1,6 @@
-# Sinan VMS — Frontend
+# Sinan Sentry - Frontend
 
-Visitor Management System frontend for Sinan, built with Next.js and MUI. Developed by **Whitewall Digital Solutions**.
+Sinan Sentry frontend for visitor management, built with Next.js and MUI. Developed by **Whitewall Digital Solutions**.
 
 ## Tech Stack
 
@@ -44,8 +44,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 Deployed automatically via **Vercel**:
 
-- UAT branch → UAT environment
-- Main branch → Production environment
+- UAT branch -> UAT environment
+- Main branch -> Production environment
 
 ## Backend APIs
 
