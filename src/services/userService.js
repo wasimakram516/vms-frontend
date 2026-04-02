@@ -10,6 +10,7 @@ const mapUserToFrontend = (user) => ({
   iso_code: user.isoCode,
   staff_type: user.staffType,
   status: user.status,
+  departments: Array.isArray(user.departments) ? user.departments : [],
   created_at: user.createdAt,
   updated_at: user.updatedAt,
   created_by: user.createdBy?.fullName || user.createdById || null,
@@ -72,6 +73,14 @@ export const deleteUser = withApiHandler(
   async (id) => {
     await api.delete(`/users/${id}`);
     return { success: true };
+  },
+  { showSuccess: true }
+);
+
+export const assignUserDepartments = withApiHandler(
+  async (userId, departmentIds) => {
+    const res = await api.put(`/users/${userId}/departments`, { departmentIds });
+    return res.data?.data || res.data;
   },
   { showSuccess: true }
 );

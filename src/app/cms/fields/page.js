@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -21,6 +21,8 @@ import {
   FormControl,
   Select,
   InputLabel,
+  OutlinedInput,
+  Alert,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useMessage } from "@/contexts/MessageContext";
@@ -53,8 +55,11 @@ const INPUT_TYPES = [
   "date",
   "time",
   "file",
+  "country",
 ];
 const SUPPORTED_INPUT_TYPES = new Set(INPUT_TYPES);
+const HAS_OPTIONS = ["select", "radio", "checkbox"];
+const HAS_DEPENDENTS = ["select", "radio"];
 
 const emptyForm = () => ({
   fieldKey: "",
@@ -64,6 +69,7 @@ const emptyForm = () => ({
   isActive: true,
   sortOrder: 99,
   options: "",
+  dependentsJson: {},
 });
 
 export default function CmsFieldsPage() {
@@ -97,12 +103,41 @@ export default function CmsFieldsPage() {
     fetchData();
   }, []);
 
+  // Fields available as dependent targets (all except the one being edited)
+  const dependentCandidates = useMemo(
+    () => fields.filter((f) => f.id !== editId),
+    [fields, editId]
+  );
+
+  // Reverse map: childFieldId → [{ parentLabel, triggerValue }]
+  const childToParents = useMemo(() => {
+    const map = {};
+    fields.forEach((f) => {
+      const deps = f.dependentsJson || f.dependents_json || {};
+      Object.entries(deps).forEach(([triggerValue, childIds]) => {
+        childIds.forEach((childId) => {
+          if (!map[childId]) map[childId] = [];
+          map[childId].push({ parentLabel: f.label, triggerValue });
+        });
+      });
+    });
+    return map;
+  }, [fields]);
+
+  // Parsed option list from comma-separated string
+  const parsedOptions = useMemo(
+    () =>
+      form.options
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean),
+    [form.options]
+  );
+
   const openAdd = () => {
     const used = new Set(fields.map((f) => Number(f.sortOrder)));
     let nextSortOrder = 1;
-    while (used.has(nextSortOrder)) {
-      nextSortOrder++;
-    }
+    while (used.has(nextSortOrder)) nextSortOrder++;
     setForm({ ...emptyForm(), sortOrder: nextSortOrder });
     setEditId(null);
     setDialogOpen(true);
@@ -119,40 +154,69 @@ export default function CmsFieldsPage() {
       isActive: field.isActive,
       sortOrder: field.sortOrder,
       options: (field.optionsJson || []).join(", "),
+      dependentsJson: field.dependentsJson || {},
     });
     setEditId(field.id);
     setDialogOpen(true);
   };
 
+  // Keep dependentsJson keys in sync when options change
+  const handleOptionsChange = (value) => {
+    const newOptions = value
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean);
+    setForm((p) => {
+      const cleaned = {};
+      for (const opt of newOptions) {
+        cleaned[opt] = p.dependentsJson?.[opt] || [];
+      }
+      return { ...p, options: value, dependentsJson: cleaned };
+    });
+  };
+
+  // Update which child fields are shown for a given option value
+  const handleDependentsChange = (optionValue, selectedFieldIds) => {
+    setForm((p) => ({
+      ...p,
+      dependentsJson: {
+        ...p.dependentsJson,
+        [optionValue]: selectedFieldIds,
+      },
+    }));
+  };
+
   const handleSave = async () => {
     if (!SUPPORTED_INPUT_TYPES.has(form.inputType)) {
       showMessage(
-        `The "${form.inputType}" field type is not supported by the backend. Please use one of the available field types.`,
-        "error",
+        `The "${form.inputType}" field type is not supported. Please use one of the available field types.`,
+        "error"
       );
       return;
     }
 
-    const optionsJson = ["select", "radio", "checkbox"].includes(form.inputType)
+    const optionsJson = HAS_OPTIONS.includes(form.inputType)
       ? form.options
           .split(",")
           .map((o) => o.trim())
           .filter(Boolean)
       : [];
 
-    if (
-      ["select", "radio", "checkbox"].includes(form.inputType) &&
-      optionsJson.length < 2
-    ) {
-      showMessage(
-        "Please provide at least 2 options for this field type.",
-        "error",
-      );
+    if (HAS_OPTIONS.includes(form.inputType) && optionsJson.length < 2) {
+      showMessage("Please provide at least 2 options for this field type.", "error");
       return;
     }
 
-    setSaving(true);
+    // Only save dependentsJson for select/radio; clear for others
+    const dependentsJson = HAS_DEPENDENTS.includes(form.inputType)
+      ? Object.fromEntries(
+          Object.entries(form.dependentsJson || {}).filter(
+            ([, ids]) => ids.length > 0
+          )
+        )
+      : null;
 
+    setSaving(true);
     const payload = {
       fieldKey: form.fieldKey.trim().toLowerCase().replace(/\s+/g, "_"),
       label: form.label.trim(),
@@ -161,6 +225,7 @@ export default function CmsFieldsPage() {
       isActive: form.isActive,
       sortOrder: Number(form.sortOrder) || 99,
       optionsJson,
+      dependentsJson: Object.keys(dependentsJson || {}).length ? dependentsJson : null,
     };
 
     try {
@@ -193,7 +258,8 @@ export default function CmsFieldsPage() {
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
-  const needsOptions = ["select", "radio", "checkbox"].includes(form.inputType);
+  const needsOptions = HAS_OPTIONS.includes(form.inputType);
+  const needsDependents = HAS_DEPENDENTS.includes(form.inputType) && parsedOptions.length >= 2;
 
   return (
     <Box>
@@ -213,27 +279,12 @@ export default function CmsFieldsPage() {
           <Typography variant="h5" fontWeight="bold">
             Registration Fields
           </Typography>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ mt: 0.5, opacity: 0.8 }}
-          >
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, opacity: 0.8 }}>
             Global dynamic fields used in the public visitor registration form.
           </Typography>
         </Box>
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
-            gap: 1,
-            width: { xs: "100%", sm: "auto" },
-          }}
-        >
-          <Button
-            variant="contained"
-            startIcon={<ICONS.add />}
-            onClick={openAdd}
-          >
+        <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, width: { xs: "100%", sm: "auto" } }}>
+          <Button variant="contained" startIcon={<ICONS.add />} onClick={openAdd}>
             Create
           </Button>
         </Box>
@@ -247,15 +298,9 @@ export default function CmsFieldsPage() {
         actionsSlot={
           <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 160 } }}>
             <InputLabel>Records per page</InputLabel>
-            <Select
-              value={rowsPerPage}
-              onChange={handleChangeRowsPerPage}
-              label="Records per page"
-            >
+            <Select value={rowsPerPage} onChange={handleChangeRowsPerPage} label="Records per page">
               {[6, 12, 24, 48].map((n) => (
-                <MenuItem key={n} value={n}>
-                  {n}
-                </MenuItem>
+                <MenuItem key={n} value={n}>{n}</MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -274,14 +319,7 @@ export default function CmsFieldsPage() {
           ) : (
             <ResponsiveCardGrid>
               {pagedFields.map((field) => (
-                <AppCard
-                  key={field.id}
-                  sx={{
-                    height: "100%",
-                    width: "100%",
-                  }}
-                >
-                  {/* Header with gradient + ID */}
+                <AppCard key={field.id} sx={{ height: "100%", width: "100%" }}>
                   <Box
                     sx={{
                       background: isDark
@@ -295,124 +333,105 @@ export default function CmsFieldsPage() {
                     <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
                       <Box
                         sx={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 2,
-                          bgcolor: "primary.main",
-                          color: "primary.contrastText",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontWeight: 800,
-                          fontSize: "1rem",
+                          width: 40, height: 40, borderRadius: 2,
+                          bgcolor: "primary.main", color: "primary.contrastText",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontWeight: 800, fontSize: "1rem",
                         }}
                       >
                         {field.sortOrder}
                       </Box>
                       <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight={800}
-                          noWrap
-                          sx={{ lineHeight: 1.2 }}
-                        >
+                        <Typography variant="subtitle1" fontWeight={800} noWrap sx={{ lineHeight: 1.2 }}>
                           {field.label}
                         </Typography>
-                        <Typography
-                          variant="caption"
-                          fontFamily="monospace"
-                          color="text.secondary"
-                          sx={{ opacity: 0.7 }}
-                        >
+                        <Typography variant="caption" fontFamily="monospace" color="text.secondary" sx={{ opacity: 0.7 }}>
                           {field.fieldKey}
                         </Typography>
                       </Box>
                     </Stack>
                   </Box>
 
-                  {/* Dynamic Fields */}
                   <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
                     <Box
                       sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        py: 0.8,
-                        borderBottom: "1px solid",
-                        borderColor: "divider",
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        py: 0.8, borderBottom: "1px solid", borderColor: "divider",
                       }}
                     >
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontWeight: 800,
-                          color: "text.secondary",
-                          textTransform: "uppercase",
-                        }}
-                      >
+                      <Typography variant="caption" sx={{ fontWeight: 800, color: "text.secondary", textTransform: "uppercase" }}>
                         Field Type
                       </Typography>
                       <Chip
                         label={field.inputType.toUpperCase()}
                         size="small"
                         variant="tonal"
-                        sx={{
-                          fontWeight: 800,
-                          borderRadius: 1,
-                          fontSize: "0.65rem",
-                          height: 22,
-                        }}
+                        sx={{ fontWeight: 800, borderRadius: 1, fontSize: "0.65rem", height: 22 }}
                       />
                     </Box>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        py: 0.8,
-                        borderBottom: "none",
-                      }}
-                    >
+                    {field.dependentsJson && Object.keys(field.dependentsJson).length > 0 && (
+                      <Box
+                        sx={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          py: 0.8, borderBottom: "1px solid", borderColor: "divider",
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ fontWeight: 800, color: "text.secondary", textTransform: "uppercase" }}>
+                          Triggers
+                        </Typography>
+                        <Chip
+                          label={`${Object.values(field.dependentsJson).flat().length} child field(s)`}
+                          size="small"
+                          color="info"
+                          variant="tonal"
+                          sx={{ fontWeight: 800, borderRadius: 1, fontSize: "0.65rem", height: 22 }}
+                        />
+                      </Box>
+                    )}
+                    {childToParents[field.id]?.length > 0 && (
+                      <Box sx={{ py: 0.8, borderBottom: "1px solid", borderColor: "divider" }}>
+                        <Typography variant="caption" sx={{ fontWeight: 800, color: "text.secondary", textTransform: "uppercase", display: "block", mb: 0.5 }}>
+                          Shown when
+                        </Typography>
+                        <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                          {childToParents[field.id].map(({ parentLabel, triggerValue }, i) => (
+                            <Chip
+                              key={i}
+                              label={`${parentLabel} = "${triggerValue}"`}
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                              sx={{ fontWeight: 700, fontSize: "0.6rem", height: 20 }}
+                            />
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", py: 0.8 }}>
                       <Stack direction="row" spacing={1}>
                         <Chip
                           label={field.isRequired ? "Required" : "Optional"}
                           size="small"
                           color={field.isRequired ? "error" : "default"}
                           variant={field.isRequired ? "filled" : "outlined"}
-                          sx={{
-                            fontWeight: 800,
-                            fontSize: "0.65rem",
-                            height: 20,
-                          }}
+                          sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
                         />
                         <Chip
                           label={field.isActive ? "Active" : "Hidden"}
                           size="small"
                           color={field.isActive ? "success" : "default"}
                           variant={field.isActive ? "filled" : "outlined"}
-                          sx={{
-                            fontWeight: 800,
-                            fontSize: "0.65rem",
-                            height: 20,
-                          }}
+                          sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
                         />
                       </Stack>
                     </Box>
                   </Box>
 
-                  {/* Actions / Footer */}
                   <Box
                     sx={{
-                      p: 1.5,
-                      borderTop: "1px solid",
-                      borderColor: "divider",
-                      bgcolor: isDark
-                        ? "rgba(255,255,255,0.02)"
-                        : "rgba(0,0,0,0.01)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 1,
+                      p: 1.5, borderTop: "1px solid", borderColor: "divider",
+                      bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)",
+                      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1,
                     }}
                   >
                     <Box sx={{ flex: 1 }}>
@@ -426,26 +445,14 @@ export default function CmsFieldsPage() {
                     </Box>
                     <Stack direction="row" spacing={1}>
                       <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={() => openEdit(field)}
-                        sx={{
-                          bgcolor: isDark
-                            ? "rgba(255,255,255,0.05)"
-                            : "rgba(0,0,0,0.03)",
-                        }}
+                        size="small" color="primary" onClick={() => openEdit(field)}
+                        sx={{ bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)" }}
                       >
                         <ICONS.edit fontSize="small" />
                       </IconButton>
                       <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => setDeleteTarget(field)}
-                        sx={{
-                          bgcolor: isDark
-                            ? "rgba(255,100,100,0.05)"
-                            : "rgba(255,0,0,0.03)",
-                        }}
+                        size="small" color="error" onClick={() => setDeleteTarget(field)}
+                        sx={{ bgcolor: isDark ? "rgba(255,100,100,0.05)" : "rgba(255,0,0,0.03)" }}
                       >
                         <ICONS.delete fontSize="small" />
                       </IconButton>
@@ -482,9 +489,7 @@ export default function CmsFieldsPage() {
           onClose={() => setDialogOpen(false)}
         />
         <Divider />
-        <DialogContent
-          sx={{ pt: 2, display: "flex", flexDirection: "column", gap: 2 }}
-        >
+        <DialogContent sx={{ pt: 2, display: "flex", flexDirection: "column", gap: 2 }}>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
             <TextField
               fullWidth
@@ -507,10 +512,7 @@ export default function CmsFieldsPage() {
               placeholder="e.g. full_name"
               value={form.fieldKey}
               onChange={(e) =>
-                setForm((p) => ({
-                  ...p,
-                  fieldKey: e.target.value.toLowerCase().replace(/\s+/g, "_"),
-                }))
+                setForm((p) => ({ ...p, fieldKey: e.target.value.toLowerCase().replace(/\s+/g, "_") }))
               }
             />
           </Stack>
@@ -522,13 +524,11 @@ export default function CmsFieldsPage() {
               label="Input Type"
               value={form.inputType}
               onChange={(e) =>
-                setForm((p) => ({ ...p, inputType: e.target.value }))
+                setForm((p) => ({ ...p, inputType: e.target.value, dependentsJson: {} }))
               }
             >
               {INPUT_TYPES.map((t) => (
-                <MenuItem key={t} value={t}>
-                  {t}
-                </MenuItem>
+                <MenuItem key={t} value={t}>{t}</MenuItem>
               ))}
             </TextField>
             <TextField
@@ -536,9 +536,7 @@ export default function CmsFieldsPage() {
               label="Sort Order"
               type="number"
               value={form.sortOrder}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, sortOrder: e.target.value }))
-              }
+              onChange={(e) => setForm((p) => ({ ...p, sortOrder: e.target.value }))}
             />
           </Stack>
 
@@ -546,13 +544,59 @@ export default function CmsFieldsPage() {
             <TextField
               fullWidth
               label="Options (comma separated)"
-              placeholder="e.g. Meeting, Delivery, Interview, Other"
+              placeholder="e.g. Oman ID, Passport"
               value={form.options}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, options: e.target.value }))
-              }
+              onChange={(e) => handleOptionsChange(e.target.value)}
               helperText="Enter options separated by commas"
             />
+          )}
+
+          {/* Dependent Fields Configuration */}
+          {needsDependents && (
+            <Box>
+              <Divider sx={{ mb: 2 }} />
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
+                Dependent Fields
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+                Choose which fields appear when each option is selected. Leave empty for no dependents.
+              </Typography>
+              {dependentCandidates.length === 0 ? (
+                <Alert severity="info" sx={{ borderRadius: 2 }}>
+                  No other fields available yet. Create more fields first.
+                </Alert>
+              ) : (
+                <Stack spacing={2}>
+                  {parsedOptions.map((opt) => (
+                    <FormControl key={opt} fullWidth size="small">
+                      <InputLabel>{`When "${opt}" → show`}</InputLabel>
+                      <Select
+                        multiple
+                        value={form.dependentsJson?.[opt] || []}
+                        onChange={(e) => handleDependentsChange(opt, e.target.value)}
+                        input={<OutlinedInput label={`When "${opt}" → show`} />}
+                        renderValue={(selected) =>
+                          selected
+                            .map((id) => dependentCandidates.find((f) => f.id === id)?.label || id)
+                            .join(", ")
+                        }
+                      >
+                        {dependentCandidates.map((f) => (
+                          <MenuItem key={f.id} value={f.id}>
+                            <Box>
+                              <Typography variant="body2">{f.label}</Typography>
+                              <Typography variant="caption" color="text.secondary" fontFamily="monospace">
+                                {f.fieldKey}
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ))}
+                </Stack>
+              )}
+            </Box>
           )}
 
           <Stack direction="row" spacing={3}>
@@ -560,10 +604,8 @@ export default function CmsFieldsPage() {
               control={
                 <Switch
                   checked={form.isRequired}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, isRequired: e.target.checked }))
-                  }
-                  color="error"
+                  onChange={(e) => setForm((p) => ({ ...p, isRequired: e.target.checked }))}
+                  color="success"
                 />
               }
               label="Required"
@@ -572,9 +614,7 @@ export default function CmsFieldsPage() {
               control={
                 <Switch
                   checked={form.isActive}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, isActive: e.target.checked }))
-                  }
+                  onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
                   color="success"
                 />
               }
@@ -593,13 +633,7 @@ export default function CmsFieldsPage() {
           </Button>
           <Button
             variant="contained"
-            startIcon={
-              saving ? (
-                <CircularProgress size={20} color="inherit" />
-              ) : (
-                <ICONS.save />
-              )
-            }
+            startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <ICONS.save />}
             onClick={handleSave}
             disabled={saving || !form.label.trim() || !form.fieldKey.trim()}
             sx={{ borderRadius: 30 }}

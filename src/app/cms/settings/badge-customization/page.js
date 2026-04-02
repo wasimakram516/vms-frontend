@@ -24,7 +24,7 @@ import {
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 import QRCode from "qrcode";
-import RoleGuard from "@/components/auth/RoleGuard";
+import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
 import RecordMetadata from "@/components/RecordMetadata";
 import BadgeCustomizationModal from "@/components/modals/BadgeCustomizationModal";
 import BadgePreview from "@/components/BadgePreview";
@@ -36,6 +36,7 @@ import {
 } from "@/services/badgeService";
 import { getCustomFields } from "@/services/customFieldService";
 import { useMessage } from "@/contexts/MessageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
@@ -56,6 +57,8 @@ const getAvailableBadgeFields = () => {
 };
 
 export default function BadgeCustomizationPage() {
+  const { user } = useAuth();
+  const readOnly = user?.role !== "superadmin";
   const { showMessage } = useMessage();
   const [badgeTemplates, setBadgeTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -219,7 +222,7 @@ export default function BadgeCustomizationPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
       <Box>
         {/* Page header */}
         <Box
@@ -248,22 +251,24 @@ export default function BadgeCustomizationPage() {
             </Typography>
           </Box>
 
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: { xs: "column", sm: "row" },
-              gap: 1,
-              width: { xs: "100%", sm: "auto" },
-            }}
-          >
-            <Button
-              variant="contained"
-              startIcon={<ICONS.add />}
-              onClick={handleCreateNew}
+          {!readOnly && (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                gap: 1,
+                width: { xs: "100%", sm: "auto" },
+              }}
             >
-              Create
-            </Button>
-          </Box>
+              <Button
+                variant="contained"
+                startIcon={<ICONS.add />}
+                onClick={handleCreateNew}
+              >
+                Create
+              </Button>
+            </Box>
+          )}
         </Box>
 
         <Divider sx={{ mb: 3 }} />
@@ -415,58 +420,60 @@ export default function BadgeCustomizationPage() {
                         />
 
                         {/* Right side: Activate/Deactivate + Edit/Delete */}
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          {template.isActive ? (
-                            <Tooltip title="Remove active status">
+                        {!readOnly && (
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            {template.isActive ? (
+                              <Tooltip title="Remove active status">
+                                <IconButton
+                                  size="small"
+                                  color="warning"
+                                  onClick={() => handleSetInactive(template)}
+                                >
+                                  <ICONS.close fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip title="Set as active template">
+                                <IconButton
+                                  size="small"
+                                  color="success"
+                                  onClick={() => handleSetActive(template)}
+                                >
+                                  <ICONS.check fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                            <Tooltip title="Edit template">
                               <IconButton
                                 size="small"
-                                color="warning"
-                                onClick={() => handleSetInactive(template)}
-                              >
-                                <ICONS.close fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          ) : (
-                            <Tooltip title="Set as active template">
-                              <IconButton
-                                size="small"
-                                color="success"
-                                onClick={() => handleSetActive(template)}
-                              >
-                                <ICONS.check fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                          <Tooltip title="Edit template">
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => handleEditTemplate(template)}
-                              sx={{ bgcolor: "action.hover" }}
-                            >
-                              <ICONS.edit fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip
-                            title={
-                              template.isActive
-                                ? "Deactivate before deleting"
-                                : "Delete template"
-                            }
-                          >
-                            <span>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                disabled={template.isActive}
-                                onClick={() => handleDeleteTemplate(template)}
+                                color="primary"
+                                onClick={() => handleEditTemplate(template)}
                                 sx={{ bgcolor: "action.hover" }}
                               >
-                                <ICONS.delete fontSize="small" />
+                                <ICONS.edit fontSize="small" />
                               </IconButton>
-                            </span>
-                          </Tooltip>
-                        </Stack>
+                            </Tooltip>
+                            <Tooltip
+                              title={
+                                template.isActive
+                                  ? "Deactivate before deleting"
+                                  : "Delete template"
+                              }
+                            >
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  disabled={template.isActive}
+                                  onClick={() => handleDeleteTemplate(template)}
+                                  sx={{ bgcolor: "action.hover" }}
+                                >
+                                  <ICONS.delete fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Stack>
+                        )}
                       </Box>
                     </Box>
                   </AppCard>
@@ -528,6 +535,6 @@ export default function BadgeCustomizationPage() {
           </DialogActions>
         </Dialog>
       </Box>
-    </RoleGuard>
+    </PermissionGuard>
   );
 }

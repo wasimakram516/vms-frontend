@@ -35,7 +35,9 @@ import {
   deleteUser,
   createStaffUser,
   createAdminUser,
+  assignUserDepartments,
 } from "@/services/userService";
+import { getDepartments } from "@/services/departmentService";
 import AppCard from "@/components/cards/AppCard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
@@ -55,6 +57,7 @@ export default function UsersPage() {
   const isSuperAdmin = currentUser?.role === "superadmin";
 
   const [users, setUsers] = useState([]);
+  const [allDepartments, setAllDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -75,6 +78,7 @@ export default function UsersPage() {
     password: "",
     role: "staff",
     staff_type: "gate",
+    department_ids: [],
   };
 
   const [form, setForm] = useState(defaultForm);
@@ -82,6 +86,9 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers();
+    getDepartments().then((res) => {
+      if (Array.isArray(res)) setAllDepartments(res);
+    });
   }, []);
 
   const fetchUsers = async () => {
@@ -110,6 +117,7 @@ export default function UsersPage() {
       password: "",
       role: u.role || "staff",
       staff_type: u.staff_type || "",
+      department_ids: Array.isArray(u.departments) ? u.departments.map((d) => d.id) : [],
     });
     setErrors({});
     setIsEditMode(true);
@@ -155,6 +163,10 @@ export default function UsersPage() {
       }
 
       if (!res?.error) {
+        const savedId = isEditMode ? selectedUserId : res?.id;
+        if (form.role === "admin" && savedId) {
+          await assignUserDepartments(savedId, form.department_ids);
+        }
         setModalOpen(false);
         fetchUsers();
       }
@@ -552,7 +564,8 @@ export default function UsersPage() {
                           alignItems: "flex-start",
                           py: 0.8,
                           borderBottom:
-                            u.role === "staff" && u.staff_type
+                            (u.role === "staff" && u.staff_type) ||
+                            (u.role === "admin" && u.departments?.length > 0)
                               ? "1px solid"
                               : "none",
                           borderColor: "divider",
@@ -625,6 +638,23 @@ export default function UsersPage() {
                           >
                             {u.staff_type}
                           </Typography>
+                        </Box>
+                      )}
+
+                      {u.role === "admin" && u.departments?.length > 0 && (
+                        <Box sx={{ py: 0.8, borderBottom: "none" }}>
+                          <Typography
+                            variant="body2"
+                            sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary", mb: 0.5 }}
+                          >
+                            <ICONS.apartment fontSize="small" sx={{ opacity: 0.6 }} />{" "}
+                            Departments
+                          </Typography>
+                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
+                            {u.departments.map((d) => (
+                              <Chip key={d.id} label={d.name} size="small" variant="outlined" sx={{ fontSize: "0.7rem" }} />
+                            ))}
+                          </Box>
                         </Box>
                       )}
                     </Box>
@@ -787,6 +817,32 @@ export default function UsersPage() {
                   <MenuItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</MenuItem>
                 ))}
               </TextField>
+            )}
+
+            {form.role === "admin" && (
+              <FormControl fullWidth>
+                <InputLabel>Departments</InputLabel>
+                <Select
+                  multiple
+                  value={form.department_ids}
+                  onChange={(e) => setForm({ ...form, department_ids: e.target.value })}
+                  label="Departments"
+                  renderValue={(selected) => (
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {selected.map((id) => {
+                        const dept = allDepartments.find((d) => d.id === id);
+                        return dept ? <Chip key={id} label={dept.name} size="small" /> : null;
+                      })}
+                    </Box>
+                  )}
+                >
+                  {allDepartments.map((dept) => (
+                    <MenuItem key={dept.id} value={dept.id}>
+                      {dept.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             )}
           </Stack>
         </DialogContent>

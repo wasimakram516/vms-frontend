@@ -21,6 +21,7 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import { useMessage } from "@/contexts/MessageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import ICONS from "@/utils/iconUtil";
 import AppCard from "@/components/cards/AppCard";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -29,7 +30,7 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
-import RoleGuard from "@/components/auth/RoleGuard";
+import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
 import RecordMetadata from "@/components/RecordMetadata";
 import {
   getNdaTemplates,
@@ -67,6 +68,8 @@ function FieldLabel({ children }) {
 }
 
 export default function NdaTemplatesPage() {
+  const { user } = useAuth();
+  const readOnly = user?.role !== "superadmin";
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -176,7 +179,7 @@ export default function NdaTemplatesPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
       <Box>
         {/* Page header */}
         <Box
@@ -199,11 +202,13 @@ export default function NdaTemplatesPage() {
               Manage Non-Disclosure Agreement templates. Only one template can be active at a time.
             </Typography>
           </Box>
-          <Box>
-            <Button variant="contained" startIcon={<ICONS.add />} onClick={openCreate}>
-              Create Template
-            </Button>
-          </Box>
+          {!readOnly && (
+            <Box>
+              <Button variant="contained" startIcon={<ICONS.add />} onClick={openCreate}>
+                Create Template
+              </Button>
+            </Box>
+          )}
         </Box>
 
         <Divider sx={{ mb: 3 }} />
@@ -288,52 +293,54 @@ export default function NdaTemplatesPage() {
                       locale="en-GB"
                     />
                   </Box>
-                  <Stack direction="row" spacing={1}>
-                    {tpl.isActive ? (
-                      <Tooltip title="Deactivate">
-                        <IconButton
-                          size="small"
-                          color="warning"
-                          onClick={() => setDeactivateTarget(tpl)}
-                          sx={{ bgcolor: "action.hover" }}
-                        >
-                          <ICONS.close fontSize="small" />
-                        </IconButton>
+                  {!readOnly && (
+                    <Stack direction="row" spacing={1}>
+                      {tpl.isActive ? (
+                        <Tooltip title="Deactivate">
+                          <IconButton
+                            size="small"
+                            color="warning"
+                            onClick={() => setDeactivateTarget(tpl)}
+                            sx={{ bgcolor: "action.hover" }}
+                          >
+                            <ICONS.close fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip title="Activate">
+                          <IconButton
+                            size="small"
+                            color="success"
+                            onClick={() => setActivateTarget(tpl)}
+                            sx={{ bgcolor: "action.hover" }}
+                          >
+                            <ICONS.check fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => openEdit(tpl)}
+                        sx={{ bgcolor: "action.hover" }}
+                      >
+                        <ICONS.edit fontSize="small" />
+                      </IconButton>
+                      <Tooltip title={tpl.isActive ? "Deactivate before deleting" : "Delete template"}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            disabled={tpl.isActive}
+                            onClick={() => setDeleteTarget(tpl)}
+                            sx={{ bgcolor: "action.hover" }}
+                          >
+                            <ICONS.delete fontSize="small" />
+                          </IconButton>
+                        </span>
                       </Tooltip>
-                    ) : (
-                      <Tooltip title="Activate">
-                        <IconButton
-                          size="small"
-                          color="success"
-                          onClick={() => setActivateTarget(tpl)}
-                          sx={{ bgcolor: "action.hover" }}
-                        >
-                          <ICONS.check fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => openEdit(tpl)}
-                      sx={{ bgcolor: "action.hover" }}
-                    >
-                      <ICONS.edit fontSize="small" />
-                    </IconButton>
-                    <Tooltip title={tpl.isActive ? "Deactivate before deleting" : "Delete template"}>
-                      <span>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          disabled={tpl.isActive}
-                          onClick={() => setDeleteTarget(tpl)}
-                          sx={{ bgcolor: "action.hover" }}
-                        >
-                          <ICONS.delete fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  </Stack>
+                    </Stack>
+                  )}
                 </Box>
               </AppCard>
             ))}
@@ -510,6 +517,6 @@ export default function NdaTemplatesPage() {
           confirmButtonIcon={<ICONS.delete fontSize="small" />}
         />
       </Box>
-    </RoleGuard>
+    </PermissionGuard>
   );
 }

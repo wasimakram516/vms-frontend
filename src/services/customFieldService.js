@@ -10,6 +10,7 @@ const mapCustomFieldToFrontend = (field) => ({
   isActive: field.isActive,
   sortOrder: field.sortOrder,
   optionsJson: field.optionsJson,
+  dependentsJson: field.dependentsJson ?? null,
   created_at: field.createdAt,
   updated_at: field.updatedAt,
   created_by: field.createdBy?.fullName || field.createdById || null,

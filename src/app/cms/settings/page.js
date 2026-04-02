@@ -2,12 +2,13 @@
 
 import { Box, Typography, Divider, Button } from "@mui/material";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import AppCard from "@/components/cards/AppCard";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ICONS from "@/utils/iconUtil";
 import RoleGuard from "@/components/auth/RoleGuard";
 
-const SETTING_CARDS = [
+const SUPERADMIN_CARDS = [
   {
     icon: ICONS.business,
     label: "Host Details",
@@ -31,17 +32,33 @@ const SETTING_CARDS = [
   },
 ];
 
+const SHARED_CARDS = [
+  {
+    icon: ICONS.apartment,
+    label: "Departments",
+    description:
+      "Manage the departments available for visitor registrations. Visitors select a department when submitting a request.",
+    path: "/cms/settings/departments",
+  },
+  {
+    icon: ICONS.key,
+    label: "Access Levels",
+    description:
+      "Define access levels (e.g. Restricted, General, Escorted) that admins assign to approved visits.",
+    path: "/cms/settings/access-levels",
+  },
+];
+
 export default function SettingsPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "superadmin";
 
-  const handleCardClick = (card) => {
-    router.push(card.path);
-  };
+  const visibleCards = [...SUPERADMIN_CARDS, ...SHARED_CARDS];
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin", "admin"]}>
       <Box>
-        {/* Page header */}
         <Box
           sx={{
             display: "flex",
@@ -59,7 +76,9 @@ export default function SettingsPage() {
               Settings
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, opacity: 0.8 }}>
-              System-wide configuration and content management for SuperAdmins.
+              {isSuperAdmin
+                ? "System-wide configuration and content management."
+                : "View system configuration. Contact a Super Admin to make changes."}
             </Typography>
           </Box>
         </Box>
@@ -67,70 +86,70 @@ export default function SettingsPage() {
         <Divider sx={{ mb: 3 }} />
 
         <ResponsiveCardGrid>
-          {SETTING_CARDS.map(({ icon: Icon, label, description, path }) => (
-            <AppCard key={path}>
-              {/* Card header */}
-              <Box
-                sx={{
-                  bgcolor: "action.hover",
-                  borderBottom: "1px solid",
-                  borderColor: "divider",
-                  p: 2.5,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 2,
-                }}
-              >
+          {visibleCards.map(({ icon: Icon, label, description, path }) => {
+            const isManage = isSuperAdmin;
+            return (
+              <AppCard key={path}>
                 <Box
                   sx={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 2,
-                    bgcolor: "primary.main",
-                    color: "primary.contrastText",
+                    bgcolor: "action.hover",
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
+                    p: 2.5,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
+                    gap: 2,
                   }}
                 >
-                  <Icon fontSize="small" />
+                  <Box
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 2,
+                      bgcolor: "primary.main",
+                      color: "primary.contrastText",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Icon fontSize="small" />
+                  </Box>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    {label}
+                  </Typography>
                 </Box>
-                <Typography variant="subtitle1" fontWeight={700}>
-                  {label}
-                </Typography>
-              </Box>
 
-              {/* Card body */}
-              <Box sx={{ flexGrow: 1, px: 2.5, py: 2 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
-                  {description}
-                </Typography>
-              </Box>
+                <Box sx={{ flexGrow: 1, px: 2.5, py: 2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
+                    {description}
+                  </Typography>
+                </Box>
 
-              {/* Card footer */}
-              <Box
-                sx={{
-                  px: 2.5,
-                  pb: 2.5,
-                  pt: 1,
-                  borderTop: "1px solid",
-                  borderColor: "divider",
-                  bgcolor: "action.hover",
-                }}
-              >
-                <Button
-                  variant="contained"
-                  size="small"
-                  startIcon={<ICONS.edit fontSize="small" />}
-                  onClick={() => handleCardClick({ path })}
-                  sx={{ borderRadius: 30 }}
+                <Box
+                  sx={{
+                    px: 2.5,
+                    pb: 2.5,
+                    pt: 1,
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "action.hover",
+                  }}
                 >
-                  Customize
-                </Button>
-              </Box>
-            </AppCard>
-          ))}
+                  <Button
+                    variant={isManage ? "contained" : "outlined"}
+                    size="small"
+                    startIcon={isManage ? <ICONS.edit fontSize="small" /> : <ICONS.view fontSize="small" />}
+                    onClick={() => router.push(path)}
+                    sx={{ borderRadius: 30 }}
+                  >
+                    {isManage ? "Manage" : "View"}
+                  </Button>
+                </Box>
+              </AppCard>
+            );
+          })}
         </ResponsiveCardGrid>
       </Box>
     </RoleGuard>
