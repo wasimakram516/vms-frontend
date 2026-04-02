@@ -118,11 +118,12 @@ export default function RegisterOtpPage() {
     try {
       const res = await verifyOtp(visitorData.identity, code);
       if (!res.error && res.success) {
-        setFlowState((prev) => ({ 
-          ...prev, 
-          otpVerified: true, 
-          ndaAccepted: true, 
-          currentStep: "details" 
+        setFlowState((prev) => ({
+          ...prev,
+          otpVerified: true,
+          ndaAccepted: true,
+          isReturning: true,
+          currentStep: "booking"
         }));
 
         setVisitorData((prev) => {
@@ -161,7 +162,7 @@ export default function RegisterOtpPage() {
           return newData;
         });
 
-        router.push("/register/details");
+        router.push("/register/booking");
       } else {
         setOtp(Array(OTP_LENGTH).fill(""));
         inputRefs.current[0]?.focus();

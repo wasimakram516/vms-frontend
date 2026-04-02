@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Box,
   Button,
@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   IconButton,
   FormControl,
   InputLabel,
@@ -28,10 +29,13 @@ import {
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { getFields } from "@/services/registrationService";
+import { getDepartments } from "@/services/departmentService";
 import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
+import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
+import CountryPicker from "@/components/CountryPicker";
 import RichTextEditor from "@/components/RichTextEditor";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
@@ -49,7 +53,7 @@ export default function DetailsPage() {
   const [ndaAccepted, setNdaAccepted] = useState(flowState.ndaAccepted || false);
   const [ndaTemplate, setNdaTemplate] = useState(null);
   const [ndaLoading, setNdaLoading] = useState(true);
-  const [purposeInput, setPurposeInput] = useState(visitorData.purposeOfVisit || "");
+  const [departments, setDepartments] = useState([]);
 
   useEffect(() => {
     const fetchFields = async () => {
@@ -100,8 +104,10 @@ export default function DetailsPage() {
   }, [visitorData.phoneIsoCode]);
 
   useEffect(() => {
-    setPurposeInput(visitorData.purposeOfVisit || "");
-  }, [visitorData.purposeOfVisit]);
+    getDepartments(true).then((res) => {
+      if (Array.isArray(res)) setDepartments(res);
+    });
+  }, []);
 
   useEffect(() => {
     const fetchNdaTemplate = async () => {
@@ -113,20 +119,6 @@ export default function DetailsPage() {
 
     fetchNdaTemplate();
   }, []);
-
-  const handleFieldChange = (key, value) => {
-    setVisitorData((prev) => ({
-      ...prev,
-      dynamicFields: { ...prev.dynamicFields, [key]: value },
-    }));
-    if (errors[key]) {
-      setErrors((p) => {
-        const next = { ...p };
-        delete next[key];
-        return next;
-      });
-    }
-  };
 
   const getPhoneDisplayValue = (phone, isoCode) => {
     if (!phone) return "";
@@ -149,10 +141,94 @@ export default function DetailsPage() {
     }));
   };
 
+  // ── Dependent field visibility ─────────────────────────────────────────────
+  // Build a set of all child field IDs that appear in any dependentsJson
+  const allChildFieldIds = useMemo(() => {
+    const ids = new Set();
+    fields.forEach((f) => {
+      const deps = f.dependents_json || f.dependentsJson;
+      if (deps) {
+        Object.values(deps).forEach((childIds) => childIds.forEach((id) => ids.add(id)));
+      }
+    });
+    return ids;
+  }, [fields]);
+
+  // Compute which field IDs are currently visible — BFS supports arbitrary nesting depth
+  const visibleFieldIds = useMemo(() => {
+    const visible = new Set();
+    const fieldById = Object.fromEntries(fields.map((f) => [f.id, f]));
+    const queue = [];
+
+    // Seed with top-level fields (not a child of any parent)
+    fields.forEach((f) => {
+      if (!allChildFieldIds.has(f.id)) {
+        visible.add(f.id);
+        queue.push(f);
+      }
+    });
+
+    // BFS: for each visible field, resolve its triggered children and enqueue them
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const deps = current.dependents_json || current.dependentsJson;
+      if (!deps) continue;
+      const currentValue = visitorData.dynamicFields?.[current.field_key || current.fieldKey];
+      if (currentValue && deps[currentValue]) {
+        deps[currentValue].forEach((childId) => {
+          if (!visible.has(childId)) {
+            visible.add(childId);
+            const child = fieldById[childId];
+            if (child) queue.push(child);
+          }
+        });
+      }
+    }
+
+    return visible;
+  }, [fields, allChildFieldIds, visitorData.dynamicFields]);
+
+  // Recursively clear values for all fields that are no longer visible under a given parent
+  const clearHiddenChildren = (parentField, newValue, updatedDynamicFields) => {
+    const deps = parentField?.dependents_json || parentField?.dependentsJson;
+    if (!deps) return;
+    Object.entries(deps).forEach(([triggerVal, childIds]) => {
+      if (triggerVal !== newValue) {
+        childIds.forEach((childId) => {
+          const childField = fields.find((f) => f.id === childId);
+          if (childField) {
+            const childKey = childField.field_key || childField.fieldKey;
+            const currentChildValue = updatedDynamicFields[childKey];
+            delete updatedDynamicFields[childKey];
+            // Recurse: also clear grandchildren that were triggered by this child
+            clearHiddenChildren(childField, currentChildValue, updatedDynamicFields);
+          }
+        });
+      }
+    });
+  };
+
+  // Clear hidden dependent field values when they become invisible
+  const handleFieldChange = (key, value) => {
+    setVisitorData((prev) => {
+      const updated = { ...prev.dynamicFields, [key]: value };
+      const field = fields.find((f) => (f.field_key || f.fieldKey) === key);
+      clearHiddenChildren(field, value, updated);
+      return { ...prev, dynamicFields: updated };
+    });
+    if (errors[key]) {
+      setErrors((p) => {
+        const next = { ...p };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
 
-    fields.forEach((f) => {
+    fields.filter((f) => visibleFieldIds.has(f.id)).forEach((f) => {
       const fieldKey = f.field_key || f.fieldKey;
       const val = visitorData.dynamicFields[fieldKey];
       const isoCode = visitorData.countryIsoCodes?.[fieldKey];
@@ -175,7 +251,11 @@ export default function DetailsPage() {
       }
     });
 
-    const purposeError = validateRequired(purposeInput, "Purpose of Visit");
+    if (!visitorData.departmentId) {
+      newErrors.departmentId = "Department is required";
+    }
+
+    const purposeError = validateRequired(visitorData.purposeOfVisit, "Purpose of Visit");
     if (purposeError) {
       newErrors.purposeOfVisit = purposeError;
     }
@@ -186,8 +266,6 @@ export default function DetailsPage() {
 
   const handleNext = () => {
     if (!validate() || !ndaAccepted) return;
-
-    const trimmedPurpose = purposeInput.trim();
 
     const processedFields = { ...visitorData.dynamicFields };
     let phoneIsoCode = null;
@@ -221,7 +299,6 @@ export default function DetailsPage() {
     setVisitorData((prev) => ({
       ...prev,
       dynamicFields: processedFields,
-      purposeOfVisit: trimmedPurpose,
       phoneIsoCode: phoneIsoCode || DEFAULT_ISO_CODE,
     }));
 
@@ -261,7 +338,7 @@ export default function DetailsPage() {
                 minHeight={220}
               />
             ) : (
-              fields.map((f) => {
+              fields.filter((f) => visibleFieldIds.has(f.id)).map((f) => {
                 const fieldKey = f.field_key || f.fieldKey;
                 const isRequired = f.is_required || f.isRequired;
                 const inputType = (f.input_type || f.inputType || "text").toLowerCase();
@@ -389,6 +466,20 @@ export default function DetailsPage() {
                   );
                 }
 
+                if (inputType === "country") {
+                  return (
+                    <CountryPicker
+                      key={f.id || fieldKey}
+                      label={f.label}
+                      value={val || ""}
+                      onChange={(iso) => handleFieldChange(fieldKey, iso)}
+                      required={isRequired}
+                      error={Boolean(error)}
+                      helperText={error}
+                    />
+                  );
+                }
+
                 if (inputType === "textarea") {
                   return (
                     <Box key={f.id || fieldKey}>
@@ -477,76 +568,70 @@ export default function DetailsPage() {
 
           <Divider />
 
-          <TextField
+          <FormControl
             fullWidth
-            label="Purpose of Visit"
-            value={purposeInput}
-            onChange={(e) => {
-              setPurposeInput(e.target.value);
+            required
+            error={Boolean(errors.departmentId)}
+          >
+            <InputLabel>Department</InputLabel>
+            <Select
+              value={visitorData.departmentId || ""}
+              label="Department"
+              onChange={(e) => {
+                setVisitorData((prev) => ({ ...prev, departmentId: e.target.value }));
+                if (errors.departmentId) {
+                  setErrors((p) => { const n = { ...p }; delete n.departmentId; return n; });
+                }
+              }}
+              sx={{ borderRadius: 30 }}
+            >
+              {departments.map((dept) => (
+                <MenuItem key={dept.id} value={dept.id}>
+                  {dept.name}
+                </MenuItem>
+              ))}
+            </Select>
+            {errors.departmentId && <FormHelperText>{errors.departmentId}</FormHelperText>}
+          </FormControl>
+
+          <PurposeOfVisitInput
+            value={visitorData.purposeOfVisit || ""}
+            onChange={(val) => {
+              setVisitorData((prev) => ({ ...prev, purposeOfVisit: val }));
               if (errors.purposeOfVisit) {
-                setErrors((p) => {
-                  const next = { ...p };
-                  delete next.purposeOfVisit;
-                  return next;
-                });
+                setErrors((p) => { const n = { ...p }; delete n.purposeOfVisit; return n; });
               }
             }}
             required
             error={Boolean(errors.purposeOfVisit)}
             helperText={errors.purposeOfVisit}
-            placeholder="Tell us why you're visiting"
-            multiline
-            rows={2}
-            size="small"
-            sx={{
-              "& .MuiOutlinedInput-root": {
-                borderRadius: 30,
-              },
-            }}
+            rounded
           />
 
           <Divider />
 
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={ndaAccepted}
-                onChange={(e) => setNdaAccepted(e.target.checked)}
-                color="primary"
-              />
-            }
-            label={
-              <Typography component="span" variant="body2" fontWeight={600}>
-                I have read and agree to the{" "}
-                <Box
-                  component="button"
-                  type="button"
-                  sx={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    p: 0,
-                    border: 0,
-                    bgcolor: "transparent",
-                    appearance: "none",
-                    color: "primary.main",
-                    font: "inherit",
-                    fontWeight: "inherit",
-                    lineHeight: "inherit",
-                    textDecoration: "underline",
-                    cursor: "pointer",
-                    verticalAlign: "baseline",
+          <Stack spacing={0.75}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={ndaAccepted}
+                  onChange={() => {
+                    if (!ndaAccepted) setNdaOpen(true);
+                    else setNdaAccepted(false);
                   }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setNdaOpen(true);
-                  }}
-                >
-                  NDA
-                </Box>
-              </Typography>
-            }
-          />
+                  color="primary"
+                />
+              }
+              label={
+                <Typography component="span" variant="body2" fontWeight={600}>
+                  I have read and agree to the Non-Disclosure Agreement
+                </Typography>
+              }
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ pl: 4 }}>
+              Please review our NDA before scheduling your visit. The Schedule button will be enabled once you agree.
+            </Typography>
+          </Stack>
 
           <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
             <Button
@@ -563,7 +648,7 @@ export default function DetailsPage() {
               fullWidth
               disabled={!ndaAccepted || fields.length === 0}
               startIcon={<ICONS.event />}
-              onClick={handleNext}
+              onClick={() => handleNext()}
               sx={{ py: 1.5, borderRadius: 30 }}
             >
               Schedule
@@ -594,6 +679,24 @@ export default function DetailsPage() {
             <NdaTemplateContent template={ndaTemplate} />
           )}
         </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setNdaOpen(false)}
+            sx={{ borderRadius: 30 }}
+          >
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<ICONS.check />}
+            onClick={() => { setNdaAccepted(true); setNdaOpen(false); }}
+            sx={{ borderRadius: 30 }}
+          >
+            I Agree
+          </Button>
+        </DialogActions>
       </Dialog>
     </VisitorLayout>
   );

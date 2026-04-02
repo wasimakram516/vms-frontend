@@ -14,18 +14,25 @@ import {
   alpha,
   Tabs,
   Tab,
+  FormControl,
+  InputLabel,
+  Select,
+  FormHelperText,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { createRegistration } from "@/services/registrationService";
+import { getDepartments } from "@/services/departmentService";
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
+import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { formatTime, parse24To12, convert12To24, formatDate } from "@/utils/dateUtils";
+import { validateRequired } from "@/utils/validationUtils";
  
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
@@ -33,14 +40,25 @@ const PERIODS = ["AM", "PM"];
 
 export default function BookingPage() {
   const router = useRouter();
-  const { visitorData, bookingData, setBookingData, resetVisitorFlow, flowState } = useVisitor();
+  const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState } = useVisitor();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
+  const isReturning = flowState?.isReturning === true;
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
+  const [departments, setDepartments] = useState([]);
+  const [fieldErrors, setFieldErrors] = useState({});
 
-  const [bookingType, setBookingType] = useState("custom"); // "custom" or "preset"
-  const [selectedPreset, setSelectedPreset] = useState("fullDay"); // "fullDay", "fullWeek", "fullMonth"
+  const [bookingType, setBookingType] = useState("custom");
+  const [selectedPreset, setSelectedPreset] = useState("fullDay");
+
+  useEffect(() => {
+    if (isReturning) {
+      getDepartments(true).then((res) => {
+        if (Array.isArray(res)) setDepartments(res);
+      });
+    }
+  }, [isReturning]);
 
   const handleDateChange = (newDate) => {
     setBookingData((prev) => ({ ...prev, date: newDate }));
@@ -144,8 +162,14 @@ export default function BookingPage() {
   };
 
   const handleSubmit = async () => {
-    if (!bookingData.date) {
-      return;
+    if (!bookingData.date) return;
+
+    if (isReturning) {
+      const errs = {};
+      if (!visitorData.departmentId) errs.departmentId = "Department is required";
+      const purposeErr = validateRequired(visitorData.purposeOfVisit, "Purpose of Visit");
+      if (purposeErr) errs.purposeOfVisit = purposeErr;
+      if (Object.keys(errs).length) { setFieldErrors(errs); return; }
     }
 
     setSubmitting(true);
@@ -183,6 +207,7 @@ export default function BookingPage() {
         requestedTo: dayjs(`${toDate}T${bookingData.timeTo}`).toISOString(),
         phoneIsoCode: visitorData.phoneIsoCode,
         purposeOfVisit: visitorData.purposeOfVisit,
+        departmentId: visitorData.departmentId || undefined,
         fieldValues: {
           ...visitorData.dynamicFields,
           full_name: visitorData.fullName || visitorData.dynamicFields.full_name,
@@ -246,6 +271,42 @@ export default function BookingPage() {
         </Box>
 
         <Divider />
+
+        {isReturning && (
+          <Stack spacing={2}>
+            <FormControl fullWidth required error={Boolean(fieldErrors.departmentId)}>
+              <InputLabel>Department</InputLabel>
+              <Select
+                value={visitorData.departmentId || ""}
+                label="Department"
+                onChange={(e) => {
+                  setVisitorData((prev) => ({ ...prev, departmentId: e.target.value }));
+                  if (fieldErrors.departmentId) setFieldErrors((p) => { const n = { ...p }; delete n.departmentId; return n; });
+                }}
+                sx={{ borderRadius: 30 }}
+              >
+                {departments.map((dept) => (
+                  <MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>
+                ))}
+              </Select>
+              {fieldErrors.departmentId && <FormHelperText>{fieldErrors.departmentId}</FormHelperText>}
+            </FormControl>
+
+            <PurposeOfVisitInput
+              value={visitorData.purposeOfVisit || ""}
+              onChange={(val) => {
+                setVisitorData((prev) => ({ ...prev, purposeOfVisit: val }));
+                if (fieldErrors.purposeOfVisit) setFieldErrors((p) => { const n = { ...p }; delete n.purposeOfVisit; return n; });
+              }}
+              required
+              error={Boolean(fieldErrors.purposeOfVisit)}
+              helperText={fieldErrors.purposeOfVisit}
+              rounded
+            />
+
+            <Divider />
+          </Stack>
+        )}
 
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 6 }}>
@@ -442,16 +503,18 @@ export default function BookingPage() {
         <Divider />
 
         <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            fullWidth
-            disabled={submitting}
-            startIcon={<ICONS.back />}
-            onClick={() => router.back()}
-            sx={{ py: 1.5, borderRadius: 30 }}
-          >
-            Back
-          </Button>
+          {!isReturning && (
+            <Button
+              variant="outlined"
+              fullWidth
+              disabled={submitting}
+              startIcon={<ICONS.back />}
+              onClick={() => router.back()}
+              sx={{ py: 1.5, borderRadius: 30 }}
+            >
+              Back
+            </Button>
+          )}
           <Button
             variant="contained"
             fullWidth

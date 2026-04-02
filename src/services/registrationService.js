@@ -39,31 +39,39 @@ export const createRegistration = withApiHandler(
   { showSuccess: true }
 );
 
+const mapRegistration = (r) => ({
+  id: r.id,
+  full_name: r.user?.fullName || "N/A",
+  email: r.user?.email || "N/A",
+  phone: r.user?.phone || "N/A",
+  purpose_of_visit: r.purposeOfVisit,
+  status: r.status,
+  requested_from: r.requestedFrom,
+  requested_to: r.requestedTo,
+  approved_from: r.approvedFrom,
+  approved_to: r.approvedTo,
+  phone_iso_code: r.phoneIsoCode,
+  created_at: r.createdAt,
+  qr_token: r.qrToken,
+  rejection_reason: r.rejectionReason,
+  allow_multi_checkin: r.allowMultiCheckin,
+  department: r.department,
+  department_id: r.departmentId,
+  access_level: r.accessLevel,
+  access_level_id: r.accessLevelId,
+  admin_approved_at: r.adminApprovedAt,
+  admin_approved_by_user_id: r.adminApprovedByUserId,
+  admin_rejection_reason: r.adminRejectionReason,
+  ...r,
+});
+
 export const getRegistrations = withApiHandler(async (status = null) => {
   const params = status && status !== "all" ? { status } : {};
   const res = await api.get("/registrations", { params });
   const registrations = res.data?.data || res.data || [];
 
   return Array.isArray(registrations)
-    ? registrations.map((r) => ({
-        id: r.id,
-        full_name: r.user?.fullName || "N/A",
-        email: r.user?.email || "N/A",
-        phone: r.user?.phone || "N/A",
-        purpose_of_visit: r.purposeOfVisit,
-        status: r.status,
-        requested_from: r.requestedFrom,
-        requested_to: r.requestedTo,
-        approved_from: r.approvedFrom,
-        approved_to: r.approvedTo,
-        phone_iso_code: r.phoneIsoCode,
-        created_at: r.createdAt,
-        checked_in_at: r.checkedInAt,
-        checked_out_at: r.checkedOutAt,
-        qr_token: r.qrToken,
-        rejection_reason: r.rejectionReason,
-        ...r,
-      }))
+    ? registrations.map(mapRegistration)
     : [];
 });
 
@@ -71,27 +79,6 @@ export const getRegistrationById = withApiHandler(async (id) => {
   const res = await api.get(`/registrations/${id}`);
   const r = res.data?.data || res.data;
   if (!r) return null;
-
-  const mapRegistration = (reg) => ({
-    id: reg.id,
-    full_name: reg.user?.fullName || r.user?.fullName || "N/A",
-    email: reg.user?.email || r.user?.email || "N/A",
-    phone: reg.user?.phone || r.user?.phone || "N/A",
-    purpose_of_visit: reg.purposeOfVisit,
-    status: reg.status,
-    requested_from: reg.requestedFrom,
-    requested_to: reg.requestedTo,
-    approved_from: reg.approvedFrom,
-    approved_to: reg.approvedTo,
-    phone_iso_code: reg.phoneIsoCode,
-    created_at: reg.createdAt,
-    checked_in_at: reg.checkedInAt,
-    checked_out_at: reg.checkedOutAt,
-    qr_token: reg.qrToken,
-    rejection_reason: reg.rejectionReason,
-    fieldValues: reg.fieldValues,
-    ...reg,
-  });
 
   const mapped = mapRegistration(r);
   if (Array.isArray(r.history)) {
@@ -101,10 +88,9 @@ export const getRegistrationById = withApiHandler(async (id) => {
   return mapped;
 });
 
-export const updateRegistrationStatus = withApiHandler(
-  async (id, action, payload = {}) => {
-    const endpoint = `/registrations/${id}/${action}`;
-    const res = await api.patch(endpoint, payload);
+export const updateStatus = withApiHandler(
+  async (id, payload) => {
+    const res = await api.patch(`/registrations/${id}/status`, payload);
     return res.data?.data || res.data;
   },
   { showSuccess: true }
@@ -118,6 +104,11 @@ export const updateRegistration = withApiHandler(
   { showSuccess: true }
 );
 
+export const getRegistrationActivityLogs = withApiHandler(async (id) => {
+  const res = await api.get(`/registrations/${id}/activity-logs`);
+  return res.data?.data || res.data || [];
+});
+
 export const verifyRegistrationByToken = withApiHandler(async (token) => {
   const { data } = await api.get(`/registrations/verify`, { params: { token } });
   const result = data?.data || data;
@@ -129,39 +120,9 @@ export const verifyRegistrationByToken = withApiHandler(async (token) => {
   }
 
   return {
-    id: result.id,
-    full_name: result.user?.fullName || "N/A",
-    email: result.user?.email || "N/A",
-    phone: result.user?.phone || "N/A",
-    purpose_of_visit: result.purposeOfVisit,
-    status: result.status,
-    requested_from: result.requestedFrom,
-    requested_to: result.requestedTo,
-    approved_from: result.approvedFrom,
-    approved_to: result.approvedTo,
-    phone_iso_code: result.phoneIsoCode,
-    checked_in_at: result.checkedInAt,
-    checked_out_at: result.checkedOutAt,
-    qr_token: result.qrToken,
+    ...mapRegistration(result),
     notApproved: result.notApproved,
     visitor: result.visitor,
-    user: result.user,
-    ...result,
+    visitEnded: result.visitEnded,
   };
 });
-
-export const checkInRegistration = withApiHandler(
-  async (id) => {
-    const { data } = await api.patch(`/registrations/${id}/checkin`);
-    return data?.data || data;
-  },
-  { showSuccess: true }
-);
-
-export const checkOutRegistration = withApiHandler(
-  async (id) => {
-    const { data } = await api.patch(`/registrations/${id}/checkout`);
-    return data?.data || data;
-  },
-  { showSuccess: true }
-);

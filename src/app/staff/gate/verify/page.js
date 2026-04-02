@@ -33,17 +33,19 @@ import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useSocket } from "@/contexts/SocketContext";
-import { verifyRegistrationByToken, checkInRegistration, checkOutRegistration } from "@/services/registrationService";
+import { verifyRegistrationByToken, updateStatus } from "@/services/registrationService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
 
 const STATUS_CONFIG = {
-  pending:     { label: "Pending",    color: "warning" },
-  approved:    { label: "Approved",   color: "success" },
-  rejected:    { label: "Rejected",   color: "error" },
-  checked_in:  { label: "Checked In", color: "info" },
-  checked_out: { label: "Checked Out",color: "default" },
-  cancelled:   { label: "Cancelled",  color: "default" },
-  expired:     { label: "Expired",    color: "default" },
+  pending:       { label: "Pending",         color: "warning" },
+  admin_approved:{ label: "Dept. Approved",  color: "info" },
+  approved:      { label: "Approved",        color: "success" },
+  rejected:      { label: "Rejected",        color: "error" },
+  checked_in:    { label: "Checked In",      color: "info" },
+  checked_out:   { label: "Checked Out",     color: "default" },
+  visit_ended:   { label: "Visit Ended",     color: "default" },
+  cancelled:     { label: "Cancelled",       color: "default" },
+  expired:       { label: "Expired",         color: "default" },
 };
 
 export default function StaffVerifyPage() {
@@ -104,13 +106,9 @@ export default function StaffVerifyPage() {
     if (!result?.id) return;
     setActionLoading(true);
     try {
-      const updated = await checkInRegistration(result.id);
-      if (!updated.error) {
-        setResult(prev => ({
-          ...prev,
-          status: updated.status || "checked_in",
-          checked_in_at: updated.checkedInAt || updated.checked_in_at || new Date().toISOString()
-        }));
+      const updated = await updateStatus(result.id, { status: "checked_in" });
+      if (!updated?.error) {
+        setResult(prev => ({ ...prev, status: updated?.status || "checked_in" }));
       }
     } finally {
       setActionLoading(false);
@@ -121,13 +119,9 @@ export default function StaffVerifyPage() {
     if (!result?.id) return;
     setActionLoading(true);
     try {
-      const updated = await checkOutRegistration(result.id);
-      if (!updated.error) {
-        setResult(prev => ({
-          ...prev,
-          status: updated.status || "checked_out",
-          checked_out_at: updated.checkedOutAt || updated.checked_out_at || new Date().toISOString()
-        }));
+      const updated = await updateStatus(result.id, { status: "checked_out" });
+      if (!updated?.error) {
+        setResult(prev => ({ ...prev, status: updated?.status || "checked_out" }));
       }
     } finally {
       setActionLoading(false);
@@ -154,8 +148,12 @@ export default function StaffVerifyPage() {
           registration.user?.full_name ||
           "Unnamed Visitor",
         company:
+          registration.organisation ||
+          registration.companyName ||
           registration.company_name ||
           registration.visitor?.companyName ||
+          registration.visitor?.organisation ||
+          registration.user?.companyName ||
           registration.user?.company_name ||
           "",
         email: registration.email || registration.visitor?.email || registration.user?.email || "",
@@ -269,9 +267,8 @@ export default function StaffVerifyPage() {
           approved_from: updatedReg.approvedFrom,
           approved_to: updatedReg.approvedTo,
           phone_iso_code: updatedReg.phoneIsoCode,
-          checked_in_at: updatedReg.checkedInAt,
-          checked_out_at: updatedReg.checkedOutAt,
           qr_token: updatedReg.qrToken,
+          allow_multi_checkin: updatedReg.allowMultiCheckin,
           notApproved: !isAccessible,
           visitor: updatedReg.visitor,
           user: updatedReg.user,
@@ -398,7 +395,7 @@ export default function StaffVerifyPage() {
               <List dense disablePadding>
                 {[
                   { icon: ICONS.person, label: "Name", value: result.visitor?.fullName || result.full_name },
-                  { icon: ICONS.business, label: "Company", value: result.visitor?.companyName || result.user?.companyName || "N/A" },
+                  { icon: ICONS.business, label: "Company", value: result.visitor?.companyName || result.visitor?.organisation || result.organisation || result.companyName || result.user?.companyName || "N/A" },
                   { icon: ICONS.info, label: "Purpose", value: result.visitor?.purposeOfVisit || result.purpose_of_visit },
                 ].map((item) => (
                   <ListItem key={item.label} disablePadding sx={{ py: 0.8 }}>
@@ -417,7 +414,7 @@ export default function StaffVerifyPage() {
               <List dense disablePadding>
                 {[
                   { icon: ICONS.person, label: "Name", value: result.full_name },
-                  { icon: ICONS.business, label: "Company", value: result.user?.companyName || "N/A" },
+                  { icon: ICONS.business, label: "Company", value: result.organisation || result.companyName || result.visitor?.companyName || result.user?.companyName || "N/A" },
                   { icon: ICONS.info, label: "Purpose", value: result.purpose_of_visit },
                   { icon: ICONS.event, label: "Approved From", value: result.approved_from ? formatDate(result.approved_from) : "—" },
                   { icon: ICONS.event, label: "Approved To", value: result.approved_to ? formatDate(result.approved_to) : "—" },
@@ -441,11 +438,19 @@ export default function StaffVerifyPage() {
                 <Button fullWidth variant="outlined" startIcon={<ICONS.close />} onClick={reset}>Close</Button>
               ) : (
                 <>
+                  {result.status === "visit_ended" && (
+                    <Alert severity="info" sx={{ width: "100%", borderRadius: 2 }}>
+                      Visit concluded. No further check-ins allowed.
+                      {(result.allow_multi_checkin ?? result.allowMultiCheckin) && (
+                        <Chip label="Multi Check-in Allowed" size="small" color="primary" variant="outlined" sx={{ ml: 1, height: 18, fontSize: "0.6rem" }} />
+                      )}
+                    </Alert>
+                  )}
                   {result.status === "approved" && (
-                    <Button 
-                      fullWidth 
-                      variant="contained" 
-                      color="success" 
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      color="success"
                       startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
                       onClick={handleCheckInAction}
                       disabled={actionLoading}
@@ -454,7 +459,7 @@ export default function StaffVerifyPage() {
                     </Button>
                   )}
                   {result.status === "checked_in" && (
-                    <Button 
+                    <Button
                       fullWidth
                       variant="contained"
                       color="error"
@@ -465,8 +470,23 @@ export default function StaffVerifyPage() {
                       Check Out
                     </Button>
                   )}
-                  {(result.status === "checked_out" || result.status === "checked_in") && (
+                  {result.status === "checked_out" && (result.allow_multi_checkin ?? result.allowMultiCheckin) && (
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      color="success"
+                      startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
+                      onClick={handleCheckInAction}
+                      disabled={actionLoading}
+                    >
+                      Check In Again
+                    </Button>
+                  )}
+                  {["checked_in", "checked_out"].includes(result.status) && (
                     <Button fullWidth variant="outlined" startIcon={<ICONS.check />} onClick={reset}>Close</Button>
+                  )}
+                  {result.status === "visit_ended" && (
+                    <Button fullWidth variant="outlined" startIcon={<ICONS.close />} onClick={reset}>Close</Button>
                   )}
                 </>
               )}
