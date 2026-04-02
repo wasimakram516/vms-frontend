@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -21,6 +21,9 @@ import {
   alpha,
   Tabs,
   Tab,
+  Switch,
+  FormControlLabel,
+  Chip,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -28,13 +31,15 @@ import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import dayjs from "dayjs";
 import { useMessage } from "@/contexts/MessageContext";
 import { useSocket } from "@/contexts/SocketContext";
+import { useAuth } from "@/contexts/AuthContext";
 import ICONS from "@/utils/iconUtil";
 
 import {
   getRegistrations,
-  updateRegistrationStatus,
+  updateStatus,
   getRegistrationById,
 } from "@/services/registrationService";
+import { getAccessLevels } from "@/services/accessLevelService";
 import {
   formatDate,
   formatTime,
@@ -74,6 +79,8 @@ const MINUTES = Array.from({ length: 60 }, (_, i) =>
 const PERIODS = ["AM", "PM"];
 
 export default function CmsApprovalsPage() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "superadmin";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -95,37 +102,50 @@ export default function CmsApprovalsPage() {
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
+  const [accessLevels, setAccessLevels] = useState([]);
+  const [selectedAccessLevelId, setSelectedAccessLevelId] = useState("");
+  const [allowMultiCheckin, setAllowMultiCheckin] = useState(false);
+  const [accessLevelError, setAccessLevelError] = useState("");
 
-  const fetchPending = async () => {
+  const fetchPending = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getRegistrations("pending");
-      setRows(Array.isArray(data) ? data : []);
+      if (isSuperAdmin) {
+        const [pending, adminApproved] = await Promise.all([
+          getRegistrations("pending"),
+          getRegistrations("admin_approved"),
+        ]);
+        setRows([
+          ...(Array.isArray(pending) ? pending : []),
+          ...(Array.isArray(adminApproved) ? adminApproved : []),
+        ]);
+      } else {
+        const data = await getRegistrations("pending");
+        setRows(Array.isArray(data) ? data : []);
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     fetchPending();
-  }, []);
+    getAccessLevels().then((res) => {
+      if (Array.isArray(res)) setAccessLevels(res.filter((al) => al.isActive !== false));
+    });
+  }, [fetchPending]);
 
   const { on } = useSocket();
 
   useEffect(() => {
-    const unsubNew = on("registration:new", () => {
-      fetchPending();
-    });
-
-    const unsubUpdated = on("registration:updated", () => {
-      fetchPending();
-    });
+    const unsubNew = on("registration:new", () => fetchPending());
+    const unsubUpdated = on("registration:updated", () => fetchPending());
 
     return () => {
       unsubNew?.();
       unsubUpdated?.();
     };
-  }, [on]);
+  }, [on, fetchPending]);
 
   const filtered = useMemo(() => {
     if (!Array.isArray(rows)) return [];
@@ -150,15 +170,21 @@ export default function CmsApprovalsPage() {
       const fullReg = await getRegistrationById(row.id);
       setApproveTarget(fullReg);
 
+      // For admin_approved registrations (superadmin doing final approval),
+      // prefill from what the dept admin already set; otherwise use visitor's requested slot.
+      const isAdminApproved = fullReg.status === "admin_approved";
+      const scheduleFrom = isAdminApproved ? fullReg.approved_from : fullReg.requested_from;
+      const scheduleTo   = isAdminApproved ? fullReg.approved_to   : fullReg.requested_to;
+
       let detectedType = "custom";
       let detectedPreset = "fullDay";
 
-      if (fullReg.requested_from && fullReg.requested_to) {
-        const dateFrom = getLocalDate(fullReg.requested_from);
-        const dateTo = getLocalDate(fullReg.requested_to);
-        const timeFrom = getLocalTime(fullReg.requested_from);
-        const timeTo = getLocalTime(fullReg.requested_to);
-        
+      if (scheduleFrom && scheduleTo) {
+        const dateFrom = getLocalDate(scheduleFrom);
+        const dateTo = getLocalDate(scheduleTo);
+        const timeFrom = getLocalTime(scheduleFrom);
+        const timeTo = getLocalTime(scheduleTo);
+
         if (dateFrom && dateTo) {
           const d1 = dayjs(dateFrom);
           const d2 = dayjs(dateTo);
@@ -167,16 +193,13 @@ export default function CmsApprovalsPage() {
           if ((daysDiff === 0 || daysDiff === 1) && timeFrom === timeTo) {
             detectedType = "preset";
             detectedPreset = "fullDay";
-          }
-          else if (daysDiff === 6) {
+          } else if (daysDiff === 6) {
             detectedType = "preset";
             detectedPreset = "fullWeek";
-          }
-          else if (daysDiff === 30) {
+          } else if (daysDiff === 30) {
             detectedType = "preset";
             detectedPreset = "fullMonth";
-          }
-          else {
+          } else {
             detectedType = "custom";
           }
         }
@@ -187,11 +210,11 @@ export default function CmsApprovalsPage() {
         setSelectedPreset(detectedPreset);
       }
 
-      if (fullReg.requested_from) {
-        const dateFrom = getLocalDate(fullReg.requested_from);
-        const timeFrom = getLocalTime(fullReg.requested_from) || "09:00";
-        const timeTo = getLocalTime(fullReg.requested_to) || "18:00";
-        
+      if (scheduleFrom) {
+        const dateFrom = getLocalDate(scheduleFrom);
+        const timeFrom = getLocalTime(scheduleFrom) || "09:00";
+        const timeTo = getLocalTime(scheduleTo) || "18:00";
+
         if (dateFrom) {
           setScheduledDate(dayjs(dateFrom));
           setScheduledFrom(timeFrom);
@@ -202,6 +225,10 @@ export default function CmsApprovalsPage() {
         setScheduledFrom("09:00");
         setScheduledTo("18:00");
       }
+
+      setSelectedAccessLevelId(isAdminApproved ? (fullReg.access_level_id || fullReg.accessLevelId || "") : "");
+      setAllowMultiCheckin(isAdminApproved ? (fullReg.allow_multi_checkin ?? false) : false);
+      setAccessLevelError("");
     } finally {
       setFetchingProfile(false);
       setLoadingId(null);
@@ -379,6 +406,10 @@ export default function CmsApprovalsPage() {
       showMessage("Please select a date.", "warning");
       return;
     }
+    if (!selectedAccessLevelId) {
+      setAccessLevelError("Access level is required");
+      return;
+    }
     setSubmitting(true);
     try {
       let fromDate, toDate;
@@ -406,13 +437,16 @@ export default function CmsApprovalsPage() {
       const payload = {
         approvedFrom: dayjs(`${fromDate}T${scheduledFrom}`).toISOString(),
         approvedTo: dayjs(`${toDate}T${scheduleType === "preset" && selectedPreset === "fullDay" ? scheduledFrom : scheduledTo}`).toISOString(),
+        accessLevelId: selectedAccessLevelId,
+        allowMultiCheckin,
       };
 
-      await updateRegistrationStatus(approveTarget.id, "approve", payload);
+      await updateStatus(approveTarget.id, { status: isSuperAdmin ? "approved" : "admin_approved", ...payload });
       showMessage(
-        `${approveTarget.full_name}'s registration has been approved.`,
+        `${approveTarget.full_name}'s registration has been ${isSuperAdmin ? "finally approved" : "dept. approved"}.`,
         "success",
       );
+      setRows((prev) => prev.filter((r) => r.id !== approveTarget.id));
       setApproveTarget(null);
       fetchPending();
     } catch (err) {
@@ -429,13 +463,12 @@ export default function CmsApprovalsPage() {
       return;
     }
     try {
-      await updateRegistrationStatus(rejectTarget.id, "reject", {
-        rejectionReason: rejectReason.trim(),
-      });
+      await updateStatus(rejectTarget.id, { status: "rejected", rejectionReason: rejectReason.trim() });
       showMessage(
         `${rejectTarget.full_name}'s registration has been rejected.`,
         "warning",
       );
+      setRows((prev) => prev.filter((r) => r.id !== rejectTarget.id));
       setRejectTarget(null);
       setRejectReason("");
       fetchPending();
@@ -449,6 +482,30 @@ export default function CmsApprovalsPage() {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
+
+  const isAdminApprovedTarget =
+    isSuperAdmin && approveTarget?.status === "admin_approved";
+  const slotLabel = isAdminApprovedTarget ? "Approved Slot" : "Requested Slot";
+  const slotFrom = isAdminApprovedTarget
+    ? approveTarget?.approved_from
+    : approveTarget?.requested_from;
+  const slotTo = isAdminApprovedTarget
+    ? approveTarget?.approved_to
+    : approveTarget?.requested_to;
+  const slotDateText = (() => {
+    const dateFrom = getLocalDate(slotFrom);
+    const dateTo = getLocalDate(slotTo);
+
+    if (!dateFrom) return "-";
+
+    return dateTo && dateFrom !== dateTo
+      ? `${formatDate(slotFrom)} to ${formatDate(slotTo)}`
+      : formatDate(slotFrom);
+  })();
+  const slotTimeText =
+    getLocalTime(slotFrom) || getLocalTime(slotTo)
+      ? `${slotFrom ? formatTime(slotFrom) : "-"} - ${slotTo ? formatTime(slotTo) : "-"}`
+       : "-";
 
   return (
     <Box>
@@ -563,8 +620,8 @@ export default function CmsApprovalsPage() {
                           sx={{
                             width: 40,
                             height: 40,
-                            bgcolor: "warning.light",
-                            color: "warning.dark",
+                            bgcolor: row.status === "admin_approved" ? "info.light" : "warning.light",
+                            color: row.status === "admin_approved" ? "info.dark" : "warning.dark",
                             fontSize: "1rem",
                             fontWeight: 800,
                           }}
@@ -585,6 +642,14 @@ export default function CmsApprovalsPage() {
                             {row.full_name}
                           </Typography>
                         </Box>
+                        {row.status === "admin_approved" && (
+                          <Chip
+                            label="Dept. Approved"
+                            size="small"
+                            color="info"
+                            sx={{ fontWeight: 700, fontSize: "0.6rem", height: 20, flexShrink: 0 }}
+                          />
+                        )}
                       </Stack>
                       <Typography
                         variant="caption"
@@ -653,29 +718,75 @@ export default function CmsApprovalsPage() {
                     >
                       <Typography
                         variant="body2"
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 0.6,
-                          color: "text.secondary",
-                        }}
+                        sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}
                       >
-                        <ICONS.info fontSize="small" sx={{ opacity: 0.6 }} />{" "}
-                        Purpose
+                        <ICONS.info fontSize="small" sx={{ opacity: 0.6 }} /> Purpose
                       </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontWeight: 600,
-                          ml: 2,
-                          flex: 1,
-                          textAlign: "right",
-                          color: "text.primary",
-                        }}
-                      >
+                      <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
                         {row.purpose_of_visit || "—"}
                       </Typography>
                     </Box>
+                    {row.department?.name && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          py: 0.8,
+                          borderBottom: "1px solid",
+                          borderColor: "divider",
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
+                          <ICONS.apartment fontSize="small" sx={{ opacity: 0.6 }} /> Department
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
+                          {row.department.name}
+                        </Typography>
+                      </Box>
+                    )}
+                    {isSuperAdmin && row.status === "admin_approved" && row.access_level?.name && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          py: 0.8,
+                          borderBottom: "1px solid",
+                          borderColor: "divider",
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
+                          <ICONS.key fontSize="small" sx={{ opacity: 0.6 }} /> Access Level
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
+                          {row.access_level.name}
+                        </Typography>
+                      </Box>
+                    )}
+                    {isSuperAdmin && row.status === "admin_approved" && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          py: 0.8,
+                          borderBottom: "1px solid",
+                          borderColor: "divider",
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
+                          <ICONS.replay fontSize="small" sx={{ opacity: 0.6 }} /> Multi Check-in
+                        </Typography>
+                        <Chip
+                          label={row.allow_multi_checkin ? "Allowed" : "Not Allowed"}
+                          size="small"
+                          color={row.allow_multi_checkin ? "success" : "default"}
+                          variant={row.allow_multi_checkin ? "filled" : "outlined"}
+                          sx={{ fontWeight: 700, fontSize: "0.6rem", height: 20 }}
+                        />
+                      </Box>
+                    )}
                     {row.requested_from && (
                       <Box
                         sx={{
@@ -711,7 +822,7 @@ export default function CmsApprovalsPage() {
                               
                               return dateFrom && dateTo && dateFrom !== dateTo
                                 ? `${formatDate(fromStr)} to ${formatDate(toStr)}`
-                                : fromStr ? formatDate(fromStr) : "—";
+                                : fromStr ? formatDate(fromStr)  : "-";
                             })()}
                           </Typography>
                           {(() => {
@@ -753,13 +864,13 @@ export default function CmsApprovalsPage() {
                     <Button
                       fullWidth
                       variant="contained"
-                      color="success"
+                      color={row.status === "admin_approved" ? "primary" : "success"}
                       onClick={() => openApprove(row)}
                       disabled={loadingId === row.id}
                       startIcon={loadingId === row.id ? <CircularProgress size={16} /> : <ICONS.check />}
                       sx={{ borderRadius: 30, fontWeight: 700 }}
                     >
-                      Approve
+                      {row.status === "admin_approved" ? "Final Approve" : "Approve"}
                     </Button>
                     <Button
                       fullWidth
@@ -803,7 +914,7 @@ export default function CmsApprovalsPage() {
         }}
       >
         <DialogHeader
-          title="Approve & Schedule"
+          title={isSuperAdmin ? "Final Approve & Schedule" : "Approve & Schedule"}
           onClose={() => setApproveTarget(null)}
         />
         <Divider />
@@ -839,55 +950,119 @@ export default function CmsApprovalsPage() {
               </Box>
             </Stack>
             <Divider sx={{ my: 1.5 }} />
-            <Stack direction="row" justifyContent="space-between">
-              <Box>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ display: "block" }}
-                >
-                  Purpose
-                </Typography>
-                <Typography variant="body2" fontWeight={500}>
-                  {approveTarget?.purpose_of_visit}
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: "right" }}>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ display: "block" }}
-                >
-                  Requested Slot
-                </Typography>
-                <Typography variant="body2" fontWeight={500}>
-                  {(() => {
-                    const fromStr = approveTarget?.requested_from;
-                    const toStr = approveTarget?.requested_to;
-                    const dateFrom = getLocalDate(fromStr);
-                    const dateTo = getLocalDate(toStr);
-                    
-                    if (!dateFrom) return "—";
-                    return dateTo && dateFrom !== dateTo
-                      ? `${formatDate(fromStr)} to ${formatDate(toStr)}`
-                      : formatDate(fromStr);
-                  })()}
-                </Typography>
-                {(() => {
-                  const fromStr = approveTarget?.requested_from;
-                  const toStr = approveTarget?.requested_to;
-                  const timeFromStr = getLocalTime(fromStr);
-                  const timeToStr = getLocalTime(toStr);
-                  
-                  return (timeFromStr || timeToStr) && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                      {fromStr ? formatTime(fromStr) : "—"} - {toStr ? formatTime(toStr) : "—"}
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={{ xs: 2, sm: 4 }}
+              justifyContent="space-between"
+              alignItems="flex-start"
+            >
+              <Stack spacing={1.25} sx={{ flex: 1, minWidth: 0 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Purpose
+                  </Typography>
+                  <Typography variant="body2" fontWeight={600} sx={{ mt: 0.25 }}>
+                    {approveTarget?.purpose_of_visit || "-"}
+                  </Typography>
+                </Box>
+                {approveTarget?.department?.name && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Department
                     </Typography>
-                  );
-                })()}
+                    <Typography variant="body2" fontWeight={500} sx={{ mt: 0.25 }}>
+                      {approveTarget.department.name}
+                    </Typography>
+                  </Box>
+                )}
+                {isSuperAdmin && approveTarget?.status === "admin_approved" && approveTarget?.access_level?.name && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Access Level
+                    </Typography>
+                    <Typography variant="body2" fontWeight={500} sx={{ mt: 0.25 }}>
+                      {approveTarget.access_level.name}
+                    </Typography>
+                  </Box>
+                )}
+                {isSuperAdmin && approveTarget?.status === "admin_approved" && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Multi Check-in
+                    </Typography>
+                    <Chip
+                      label={approveTarget?.allow_multi_checkin ? "Allowed" : "Not Allowed"}
+                      size="small"
+                      color={approveTarget?.allow_multi_checkin ? "success" : "default"}
+                      variant={approveTarget?.allow_multi_checkin ? "filled" : "outlined"}
+                      sx={{ mt: 0.5, fontWeight: 700, fontSize: "0.6rem", height: 20 }}
+                    />
+                  </Box>
+                )}
+              </Stack>
+              <Box
+                sx={{
+                  width: { xs: "100%", sm: "auto" },
+                  minWidth: { sm: 260 },
+                  textAlign: { xs: "left", sm: "right" },
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  {slotLabel}
+                </Typography>
+                <Typography variant="body2" fontWeight={600} sx={{ mt: 0.25 }}>
+                  {slotDateText}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                  {slotTimeText}
+                </Typography>
               </Box>
             </Stack>
           </Box>
+
+          {/* Access Level + Multi-Checkin */}
+          <Stack spacing={2}>
+            <FormControl fullWidth required error={Boolean(accessLevelError)}>
+              <InputLabel>Access Level</InputLabel>
+              <Select
+                value={selectedAccessLevelId}
+                label="Access Level"
+                onChange={(e) => { setSelectedAccessLevelId(e.target.value); setAccessLevelError(""); }}
+                sx={{ borderRadius: 2 }}
+              >
+                {accessLevels.map((al) => (
+                  <MenuItem key={al.id} value={al.id}>{al.name}</MenuItem>
+                ))}
+              </Select>
+              {accessLevelError && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.5 }}>{accessLevelError}</Typography>
+              )}
+            </FormControl>
+
+            <FormControlLabel
+              sx={{ mb: 1 }}
+              control={
+                <Switch
+                  checked={allowMultiCheckin}
+                  onChange={(e) => setAllowMultiCheckin(e.target.checked)}
+                  color="success"
+                />
+              }
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2">Allow Multiple Check-ins</Typography>
+                  <Chip
+                    label={allowMultiCheckin ? "Enabled" : "Disabled"}
+                    size="small"
+                    color={allowMultiCheckin ? "success" : "default"}
+                    sx={{ fontWeight: 700, height: 20, fontSize: "0.65rem" }}
+                  />
+                </Stack>
+              }
+            />
+          </Stack>
+
+          <Divider sx={{ my: 1 }} />
 
           <Box>
             <Typography
@@ -1058,6 +1233,7 @@ export default function CmsApprovalsPage() {
                 </Stack>
               </Grid>
             </Grid>
+
           </Box>
         </DialogContent>
         <Divider />
@@ -1077,7 +1253,7 @@ export default function CmsApprovalsPage() {
             disabled={!scheduledDate || submitting}
             sx={{ borderRadius: 30, px: 4, fontWeight: 700 }}
           >
-            Approve
+            {isSuperAdmin ? "Final Approve" : "Approve"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1132,3 +1308,5 @@ export default function CmsApprovalsPage() {
     </Box>
   );
 }
+
+
