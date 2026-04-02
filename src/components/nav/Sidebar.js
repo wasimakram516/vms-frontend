@@ -25,13 +25,10 @@ const getNavItems = (role) => {
     { label: "Registrations", icon: ICONS.appRegister, path: "/cms/registrations" },
     { label: "Approvals", icon: ICONS.checkCircle, path: "/cms/approvals" },
     { label: "Fields", icon: ICONS.form, path: "/cms/fields" },
+    { label: "NDA Forms", icon: ICONS.description, path: "/cms/nda-forms" },
     { label: "Users", icon: ICONS.people, path: "/cms/users" },
+    { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
   ];
-
-  if (role === "superadmin") {
-    base.push({ label: "NDA Forms", icon: ICONS.description, path: "/cms/nda-forms" });
-    base.push({ label: "Settings", icon: ICONS.settings, path: "/cms/settings" });
-  }
 
   return base;
 };

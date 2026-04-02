@@ -21,7 +21,7 @@ const fontStyles = (
 
 export default function VisitorLayout({ 
   children, 
-  title = "Sinan VMS", 
+  title = "Sinan Sentry",
   subtitle = "Experience a seamless visitor journey at Sinan. Please select your visit type to proceed.",
   maxWidth = 450,
   justifyContent = "flex-start",
@@ -107,7 +107,7 @@ export default function VisitorLayout({
               <Box
                 component="img"
                 src={brandLogoSrc}
-                alt="Sinan VMS logo"
+                alt="Sinan Sentry logo"
                 sx={{
                   width: {
                     xs: isMobileCardExpanded ? 110 : 176,

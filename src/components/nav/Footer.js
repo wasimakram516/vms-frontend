@@ -4,7 +4,7 @@ import { Box, Divider, Typography } from "@mui/material";
 import Image from "next/image";
 
 export default function Footer() {
-  const appName = "Sinan VMS";
+  const appName = "Sinan Sentry";
 
   return (
     <Box

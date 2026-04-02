@@ -14,6 +14,8 @@ import { getTheme } from "@/styles/theme";
 import ThemeSwitchOverlay from "@/components/ThemeSwitchOverlay";
 
 const ColorModeContext = createContext({ toggleColorMode: () => {} });
+const THEME_STORAGE_KEY = "sinan-sentry-theme";
+const LEGACY_THEME_STORAGE_KEY = "sinan-vms-theme";
 
 export const useColorMode = () => useContext(ColorModeContext);
 
@@ -26,9 +28,13 @@ export const ThemeContextProvider = ({ children }) => {
   const pendingModeRef = useRef(null);
 
   useEffect(() => {
-    const savedMode = localStorage.getItem("sinan-vms-theme");
+    const savedMode =
+      localStorage.getItem(THEME_STORAGE_KEY) ??
+      localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+
     if (savedMode === "light" || savedMode === "dark") {
       setMode(savedMode);
+      localStorage.setItem(THEME_STORAGE_KEY, savedMode);
     }
   }, []);
 
@@ -53,7 +59,7 @@ export const ThemeContextProvider = ({ children }) => {
     const m = pendingModeRef.current;
     if (!m) return;
     setMode(m);
-    localStorage.setItem("sinan-vms-theme", m);
+    localStorage.setItem(THEME_STORAGE_KEY, m);
   }, []);
 
   // Called by the overlay after fade-out completes

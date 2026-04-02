@@ -95,7 +95,7 @@ export default function Navbar() {
               <Box
                 component="img"
                 src={brandLogo}
-                alt="Sinan VMS logo mark"
+                alt="Sinan Sentry logo mark"
                 sx={{
                   width: { xs: 30, sm: 34 },
                   height: { xs: 30, sm: 34 },
@@ -109,7 +109,7 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "block", sm: "none" } }}
               >
-                {"Sinan VMS"}
+                {"Sinan Sentry"}
               </Typography>
 
               <Typography
@@ -119,7 +119,7 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "none", sm: "block" } }}
               >
-                {"Sinan VMS"}
+                {"Sinan Sentry"}
               </Typography>
             </Stack>
           </Link>

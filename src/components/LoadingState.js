@@ -3,7 +3,7 @@
 import SinanLoader from "@/components/SinanLoader";
 
 const DEFAULT_LOADING_COPY = {
-  title: "Loading Sinan VMS",
+  title: "Loading Sinan Sentry",
   description: "Preparing your experience...",
 };
 

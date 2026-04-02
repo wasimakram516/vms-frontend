@@ -5,7 +5,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import AppCard from "@/components/cards/AppCard";
 
 export default function SinanLoader({
-  title = "Loading Sinan VMS",
+  title = "Loading Sinan Sentry",
   description = "Preparing your experience...",
   fullScreen = false,
   minHeight = 360,
@@ -234,7 +234,7 @@ export default function SinanLoader({
               <Box
                 component="img"
                 src={logoSrc}
-                alt="Sinan loading mark"
+                alt="Sinan Sentry loading mark"
                 sx={{
                   width: "auto",
                   height: "auto",

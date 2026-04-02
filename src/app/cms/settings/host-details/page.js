@@ -21,13 +21,14 @@ import {
   ListItemText,
 } from "@mui/material";
 import { useMessage } from "@/contexts/MessageContext";
+import { useAuth } from "@/contexts/AuthContext";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
 import MediaUploadProgress from "@/components/MediaUploadProgress";
-import RoleGuard from "@/components/auth/RoleGuard";
+import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
 import RecordMetadata from "@/components/RecordMetadata";
 import { getHost, createHost, updateHost, deleteHost } from "@/services/hostService";
 import { uploadMediaFiles } from "@/utils/mediaUpload";
@@ -82,6 +83,8 @@ function DetailItem({ icon: Icon, primary, secondary }) {
 }
 
 export default function HostDetailsPage() {
+  const { user } = useAuth();
+  const readOnly = user?.role !== "superadmin";
   const [host, setHost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -272,7 +275,7 @@ export default function HostDetailsPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
       <Box>
         {/* Page header */}
         <Box
@@ -295,7 +298,7 @@ export default function HostDetailsPage() {
               Organization profile displayed on visitor-facing communications and documents.
             </Typography>
           </Box>
-          {host && (
+          {host && !readOnly && (
             <Stack direction="row" spacing={1}>
               <Button
                 variant="outlined"
@@ -328,11 +331,13 @@ export default function HostDetailsPage() {
               title="No host profile yet"
               description="Set up your organization profile to display it on visitor communications and documents."
             />
-            <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
-              <Button variant="contained" startIcon={<ICONS.add />} onClick={openCreate}>
-                Create Host Profile
-              </Button>
-            </Box>
+            {!readOnly && (
+              <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+                <Button variant="contained" startIcon={<ICONS.add />} onClick={openCreate}>
+                  Create Host Profile
+                </Button>
+              </Box>
+            )}
           </Box>
         ) : (
           <Box>
@@ -342,7 +347,13 @@ export default function HostDetailsPage() {
                 src={host.logoUrl}
                 alt={host.name}
                 variant="rounded"
-                sx={{ width: 64, height: 64, bgcolor: "primary.main", fontSize: "1.5rem", flexShrink: 0 }}
+                sx={{
+                  width: 64,
+                  height: 64,
+                  bgcolor: "rgba(0,0,0,0.08)",
+                  fontSize: "1.5rem",
+                  flexShrink: 0,
+                }}
               >
                 {host.name?.[0]?.toUpperCase()}
               </Avatar>
@@ -412,7 +423,13 @@ export default function HostDetailsPage() {
                 src={logoPreview}
                 alt="Logo"
                 variant="rounded"
-                sx={{ width: 64, height: 64, bgcolor: "action.selected", fontSize: "1.6rem", flexShrink: 0 }}
+                sx={{
+                  width: 64,
+                  height: 64,
+                  bgcolor: "rgba(0,0,0,0.08)",
+                  fontSize: "1.6rem",
+                  flexShrink: 0,
+                }}
               >
                 <ICONS.image />
               </Avatar>
@@ -582,6 +599,6 @@ export default function HostDetailsPage() {
           confirmButtonIcon={<ICONS.delete fontSize="small" />}
         />
       </Box>
-    </RoleGuard>
+    </PermissionGuard>
   );
 }

@@ -4,33 +4,33 @@ import Navbar from "@/components/nav/Navbar";
 import { Box } from "@mui/material";
 
 export const metadata = {
-  title: "Sinan VMS",
+  title: "Sinan Sentry",
   description:
-    "Sinan VMS is a visitor management platform for registration, approvals, and gate check-in.",
+    "Sinan Sentry is a visitor management platform for registration, approvals, and gate check-in.",
   icons: {
     apple: "/logo-mark-light.png",
   },
   keywords:
-    "Sinan VMS, visitor management, registrations, approvals, gate check-in",
+    "Sinan Sentry, visitor management, registrations, approvals, gate check-in",
   openGraph: {
-    title: "Sinan VMS",
+    title: "Sinan Sentry",
     description:
       "Manage visitor registrations, approvals, and gate check-in in one platform.",
     url: "https://sinan.whitewall.solutions",
-    siteName: "Sinan VMS",
+    siteName: "Sinan Sentry",
     images: [
       {
         url: "/sinan.png",
         width: 512,
         height: 512,
-        alt: "Sinan VMS",
+        alt: "Sinan Sentry",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sinan VMS",
+    title: "Sinan Sentry",
     description:
       "Manage visitor registrations, approvals, and gate check-in in one platform.",
     images: ["/background.png"],

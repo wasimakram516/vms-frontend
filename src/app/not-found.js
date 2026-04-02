@@ -88,7 +88,7 @@ export default function NotFoundPage() {
         <Divider sx={{ width: "100%", my: 4 }} />
 
         <Typography variant="caption" color="text.disabled">
-          Powered by <Typography component="span" variant="caption" fontWeight={700} color="text.secondary">Sinan VMS</Typography>
+          Powered by <Typography component="span" variant="caption" fontWeight={700} color="text.secondary">Sinan Sentry</Typography>
         </Typography>
       </Paper>
     </Box>

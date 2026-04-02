@@ -87,7 +87,7 @@ export default function LoginPage() {
   return (
     <VisitorLayout 
       title="Admin Portal" 
-      subtitle="Enter your credentials to access the Sinan VMS admin tools."
+      subtitle="Enter your credentials to access the Sinan Sentry admin tools."
       justifyContent="center"
     >
       <Box sx={{ position: "relative", mb: 4 }}>
@@ -121,7 +121,7 @@ export default function LoginPage() {
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
             Enter your credentials to access the{" "}
-            <strong>{"Sinan VMS admin"}</strong> portal.
+            <strong>{"Sinan Sentry admin"}</strong> portal.
           </Typography>
         </Box>
       </Box>
