@@ -6,8 +6,11 @@ import { GlobalStyles } from "@mui/material";
 
 import RoleGuard from "@/components/auth/RoleGuard";
 import BreadcrumbsNav from "@/components/nav/BreadcrumbsNav";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function CmsLayout({ children }) {
+  const { user } = useAuth();
+  const isDev = user?.role === "dev";
   const flatpickrStyles = (
     <GlobalStyles
       styles={{
@@ -34,10 +37,10 @@ export default function CmsLayout({ children }) {
   );
 
   return (
-    <RoleGuard allowedRoles={["admin", "superadmin"]}>
+    <RoleGuard allowedRoles={["admin", "superadmin", "dev"]}>
       <Box sx={{ display: "flex", height: "calc(100vh - 64px)" }}>
         {flatpickrStyles}
-        <Sidebar />
+        {!isDev && <Sidebar />}
         <Box
           component="main"
           sx={{

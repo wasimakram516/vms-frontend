@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import ICONS from "@/utils/iconUtil";
 import { capitalize } from "@/utils/stringUtil";
+import { useAuth } from "@/contexts/AuthContext";
 
 const segmentMap = {
   dashboard: {
@@ -61,12 +62,16 @@ const formatSegment = (seg) => {
 export default function BreadcrumbsNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { user } = useAuth();
+
+  const isDev = user?.role === "dev";
+  const dashboardHref = isDev ? "/cms/settings" : "/cms/dashboard";
 
   // Only render inside /cms
   if (!pathname.startsWith("/cms")) return null;
 
-  // Don't render on the dashboard root itself
-  if (pathname === "/cms" || pathname === "/cms/dashboard") return null;
+  // Don't render on the home root for the current role
+  if (pathname === "/cms" || pathname === dashboardHref) return null;
 
   const segments = pathname
     .split("/")
@@ -92,10 +97,10 @@ export default function BreadcrumbsNav() {
         <Link
           underline="hover"
           color="inherit"
-          href="/cms/dashboard"
+          href={dashboardHref}
           onClick={(e) => {
             e.preventDefault();
-            router.push("/cms/dashboard");
+            router.push(dashboardHref);
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center" }}>

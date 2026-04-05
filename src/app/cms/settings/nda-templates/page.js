@@ -30,6 +30,7 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
+import RoleGuard from "@/components/auth/RoleGuard";
 import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
 import RecordMetadata from "@/components/RecordMetadata";
 import {
@@ -69,7 +70,7 @@ function FieldLabel({ children }) {
 
 export default function NdaTemplatesPage() {
   const { user } = useAuth();
-  const readOnly = user?.role !== "superadmin";
+  const readOnly = user?.role !== "dev";
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -179,7 +180,8 @@ export default function NdaTemplatesPage() {
   };
 
   return (
-    <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
+    <RoleGuard allowedRoles={["dev"]}>
+    <PermissionGuard fullAccessRoles={["dev"]} readOnlyRoles={[]}>
       <Box>
         {/* Page header */}
         <Box
@@ -518,5 +520,6 @@ export default function NdaTemplatesPage() {
         />
       </Box>
     </PermissionGuard>
+    </RoleGuard>
   );
 }

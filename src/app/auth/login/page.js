@@ -30,6 +30,8 @@ export default function LoginPage() {
     if (!authLoading && user) {
       if (user.role === "staff") {
         router.replace(getStaffDestination(user));
+      } else if (user.role === "dev") {
+        router.replace("/cms/settings");
       } else {
         router.replace("/cms/dashboard");
       }
@@ -72,7 +74,7 @@ export default function LoginPage() {
           await logout("/auth/login");
         } else {
           setUser(response.user);
-          router.push("/cms/dashboard");
+          router.push(response.user.role === "dev" ? "/cms/settings" : "/cms/dashboard");
         }
       }
     } finally {

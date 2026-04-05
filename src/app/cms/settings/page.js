@@ -16,6 +16,9 @@ const SUPERADMIN_CARDS = [
       "Set up your organization profile — name, logo, contact info, and more. This profile is displayed on visitor-facing communications and documents.",
     path: "/cms/settings/host-details",
   },
+];
+
+const DEV_CARDS = [
   {
     icon: ICONS.description,
     label: "NDA Templates",
@@ -60,11 +63,16 @@ export default function SettingsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "superadmin";
+  const isDev = user?.role === "dev";
 
-  const visibleCards = [...SUPERADMIN_CARDS, ...SHARED_CARDS];
+  const visibleCards = [
+    ...(isDev ? DEV_CARDS : []),
+    ...(!isDev ? SUPERADMIN_CARDS : []),
+    ...(!isDev ? SHARED_CARDS : []),
+  ];
 
   return (
-    <RoleGuard allowedRoles={["superadmin", "admin"]}>
+    <RoleGuard allowedRoles={["superadmin", "admin", "dev"]}>
       <Box>
         <Box
           sx={{
@@ -83,7 +91,9 @@ export default function SettingsPage() {
               Settings
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, opacity: 0.8 }}>
-              {isSuperAdmin
+              {isDev
+                ? "Developer controls — NDA templates and badge customization."
+                : isSuperAdmin
                 ? "System-wide configuration and content management."
                 : "View system configuration. Contact a Super Admin to make changes."}
             </Typography>
@@ -94,7 +104,7 @@ export default function SettingsPage() {
 
         <ResponsiveCardGrid>
           {visibleCards.map(({ icon: Icon, label, description, path }) => {
-            const isManage = isSuperAdmin;
+            const isManage = isSuperAdmin || isDev;
             return (
               <AppCard key={path}>
                 <Box

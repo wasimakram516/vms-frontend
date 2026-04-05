@@ -201,12 +201,14 @@ export default function Navbar() {
                     <Typography variant="body2">{user.full_name}</Typography>
                   </MenuItem>
 
-                  {["admin", "superadmin", "staff"].includes(user.role) && (
+                  {["admin", "superadmin", "staff", "dev"].includes(user.role) && (
                     <MenuItem
                       onClick={() => {
                         handleClose();
                         if (user.role === "staff") {
                           router.push(user.staffType === "kitchen" ? "/staff/kitchen" : "/staff/gate/verify");
+                        } else if (user.role === "dev") {
+                          router.push("/cms/settings");
                         } else {
                           router.push("/cms/dashboard");
                         }

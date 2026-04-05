@@ -24,6 +24,7 @@ import {
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 import QRCode from "qrcode";
+import RoleGuard from "@/components/auth/RoleGuard";
 import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
 import RecordMetadata from "@/components/RecordMetadata";
 import BadgeCustomizationModal from "@/components/modals/BadgeCustomizationModal";
@@ -58,7 +59,7 @@ const getAvailableBadgeFields = () => {
 
 export default function BadgeCustomizationPage() {
   const { user } = useAuth();
-  const readOnly = user?.role !== "superadmin";
+  const readOnly = user?.role !== "dev";
   const { showMessage } = useMessage();
   const [badgeTemplates, setBadgeTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -222,7 +223,8 @@ export default function BadgeCustomizationPage() {
   }
 
   return (
-    <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
+    <RoleGuard allowedRoles={["dev"]}>
+    <PermissionGuard fullAccessRoles={["dev"]} readOnlyRoles={[]}>
       <Box>
         {/* Page header */}
         <Box
@@ -536,5 +538,6 @@ export default function BadgeCustomizationPage() {
         </Dialog>
       </Box>
     </PermissionGuard>
+    </RoleGuard>
   );
 }

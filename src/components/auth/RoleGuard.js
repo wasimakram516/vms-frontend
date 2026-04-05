@@ -34,6 +34,8 @@ export default function RoleGuard({ children, allowedRoles = [], allowedStaffTyp
       } else if (roles.length > 0 && !roles.includes(user.role)) {
         if (user.role === "staff") {
           router.replace("/staff/gate/verify");
+        } else if (user.role === "dev") {
+          router.replace("/cms/settings");
         } else if (["admin", "superadmin"].includes(user.role)) {
           router.replace("/cms/dashboard");
         } else {
