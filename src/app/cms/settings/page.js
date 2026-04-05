@@ -47,6 +47,13 @@ const SHARED_CARDS = [
       "Define access levels (e.g. Restricted, General, Escorted) that admins assign to approved visits.",
     path: "/cms/settings/access-levels",
   },
+  {
+    icon: ICONS.diningTable,
+    label: "Kitchen Menu",
+    description:
+      "Manage the food and beverages available in the staff kitchen. Add new items, update descriptions, and toggle availability.",
+    path: "/cms/settings/kitchen-menu",
+  },
 ];
 
 export default function SettingsPage() {
