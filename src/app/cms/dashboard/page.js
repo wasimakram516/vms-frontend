@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Box,
   Paper,
@@ -9,7 +9,7 @@ import {
   Button,
   Chip,
   Avatar,
-  Divider,
+  Skeleton,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { useRouter } from "next/navigation";
@@ -17,45 +17,78 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { motion } from "framer-motion";
 import { BarChart, PieChart } from "@mui/x-charts";
+import { io } from "socket.io-client";
 import ICONS from "@/utils/iconUtil";
 import AppCard from "@/components/cards/AppCard";
+import LiveVisitorsCard from "@/components/dashboard/LiveVisitorsCard";
+import ExportDialog from "@/components/dashboard/ExportDialog";
+import { getDashboardStats } from "@/services/dashboardService";
 
-const STAT_CARDS = [
-  {
-    title: "Total Registrations",
-    value: "1,280",
-    trend: "+12.5%",
-    icon: ICONS.appRegister,
-    color: "#000000",
-  },
-  {
-    title: "Pending Approvals",
-    value: "14",
-    trend: "High Priority",
-    icon: ICONS.time,
-    color: "#000000",
-  },
-  {
-    title: "Checked In Today",
-    value: "86",
-    trend: "+5.2%",
-    icon: ICONS.checkin,
-    color: "#000000",
-  },
-  {
-    title: "Active Fields",
-    value: "8",
-    trend: "Optimized",
-    icon: ICONS.form,
-    color: "#000000",
-  },
+const SOCKET_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
+  "http://localhost:4000";
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// All possible statuses in display order
+const ALL_STATUSES = [
+  { key: "pending",        label: "Pending",        dark: "rgba(255,200,0,0.8)",   light: "#F59E0B" },
+  { key: "admin_approved", label: "Dept. Approved", dark: "rgba(100,180,255,0.8)", light: "#3B82F6" },
+  { key: "approved",       label: "Approved",       dark: "#ffffff",               light: "#000000" },
+  { key: "checked_in",     label: "Checked In",     dark: "rgba(76,175,80,0.9)",   light: "#16A34A" },
+  { key: "checked_out",    label: "Checked Out",    dark: "rgba(160,160,160,0.7)", light: "#6B7280" },
+  { key: "rejected",       label: "Rejected",       dark: "rgba(239,68,68,0.8)",   light: "#DC2626" },
+  { key: "cancelled",      label: "Cancelled",      dark: "rgba(251,146,60,0.8)",  light: "#EA580C" },
+  { key: "visit_ended",    label: "Visit Ended",    dark: "rgba(148,163,184,0.6)", light: "#94A3B8" },
+  { key: "expired",        label: "Expired",        dark: "rgba(100,100,100,0.5)", light: "#9CA3AF" },
 ];
 
-const RECENT_ACTIVITY = [
-  { id: 1, name: "Sara Ajaz", action: "Registration Approved", time: "10 mins ago", status: "success" },
-  { id: 2, name: "Omar Ali", action: "Checked In at Gate A", time: "25 mins ago", status: "info" },
-  { id: 3, name: "Ali Hassan", action: "New Registration", time: "45 mins ago", status: "warning" },
-];
+const ACTIVITY_LABELS = {
+  submitted:      "New Registration",
+  admin_approved: "Admin Approved",
+  approved:       "Registration Approved",
+  rejected:       "Registration Rejected",
+  cancelled:      "Registration Cancelled",
+  nda_signed:     "NDA Signed",
+  qr_generated:   "QR Generated",
+  scanned:        "QR Scanned",
+  badge_printed:  "Badge Printed",
+  checked_in:     "Checked In",
+  checked_out:    "Checked Out",
+  visit_ended:    "Visit Ended",
+};
+
+const ACTIVITY_STATUS = {
+  submitted:      "warning",
+  admin_approved: "info",
+  approved:       "success",
+  rejected:       "error",
+  cancelled:      "error",
+  checked_in:     "success",
+  checked_out:    "info",
+  visit_ended:    "default",
+};
+
+function timeAgo(dateStr) {
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function StatCardSkeleton() {
+  return (
+    <AppCard variant="frosted" sx={{ p: 3, height: "100%" }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
+        <Skeleton variant="rounded" width={44} height={44} sx={{ borderRadius: 2.5 }} />
+        <Skeleton variant="rounded" width={70} height={20} sx={{ borderRadius: 10 }} />
+      </Stack>
+      <Skeleton variant="text" width={80} height={48} />
+      <Skeleton variant="text" width={120} height={20} />
+    </AppCard>
+  );
+}
 
 export default function CmsDashboardPage() {
   const router = useRouter();
@@ -63,6 +96,10 @@ export default function CmsDashboardPage() {
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const [greeting, setGreeting] = useState("Welcome");
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
+  const socketRef = useRef(null);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -71,79 +108,171 @@ export default function CmsDashboardPage() {
     else setGreeting("Good Evening");
   }, []);
 
+  const fetchStats = useCallback(async () => {
+    const result = await getDashboardStats();
+    if (result && !result.error) {
+      setStats(result);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  // Refresh on any registration socket event
+  useEffect(() => {
+    const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+    socketRef.current = socket;
+
+    socket.on("registration:new", fetchStats);
+    socket.on("registration:updated", fetchStats);
+    socket.on("dashboard:live-update", fetchStats);
+    socket.on("dashboard:stats-update", fetchStats);
+
+    return () => socket.disconnect();
+  }, [fetchStats]);
+
+  // Build stat cards from live data
+  const statCards = [
+    {
+      title: "Total Registrations",
+      value: stats?.totalRegistrations ?? 0,
+      trend: null,
+      icon: ICONS.appRegister,
+    },
+    {
+      title: "Pending Approvals",
+      value: stats?.pendingApprovals ?? 0,
+      trend: (stats?.pendingApprovals ?? 0) > 0 ? "Needs Attention" : "All Clear",
+      trendPositive: (stats?.pendingApprovals ?? 0) === 0,
+      icon: ICONS.time,
+    },
+    {
+      title: "Checked In Today",
+      value: stats?.checkedInToday ?? 0,
+      trend: null,
+      icon: ICONS.checkin,
+    },
+    {
+      title: "Active Fields",
+      value: stats?.activeFields ?? 0,
+      trend: "Configured",
+      trendPositive: null,
+      icon: ICONS.form,
+    },
+  ];
+
+  // Build pie chart data
+  const distMap = Object.fromEntries(
+    (stats?.statusDistribution ?? []).map((s) => [s.status, s.count])
+  );
+  const pieData = ALL_STATUSES
+    .map((s, i) => ({
+      id: i,
+      value: distMap[s.key] ?? 0,
+      label: s.label,
+      color: s[isDark ? "dark" : "light"],
+    }))
+    .filter((s) => s.value > 0);
+
+  // Build bar chart data from monthlyVolume
+  const approvedSeries = (stats?.monthlyVolume ?? Array.from({ length: 12 }, (_, i) => ({ month: i + 1, approved: 0, rejected: 0 }))).map((m) => m.approved);
+  const rejectedSeries = (stats?.monthlyVolume ?? Array.from({ length: 12 }, (_, i) => ({ month: i + 1, approved: 0, rejected: 0 }))).map((m) => m.rejected);
+
   return (
     <Box sx={{ maxWidth: 1400, mx: "auto" }}>
-      {/* Header Section */}
+      {/* Header */}
       <Box sx={{ mb: 5 }}>
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Typography variant="h3" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", mb: 1 }}>
-            {greeting}, {user?.name?.split(" ")[0] || "Admin"}
-          </Typography>
-          <Typography color="text.secondary" variant="body1">
-            Explore your visitor analytics and operational insights for today.
-          </Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+            <Box>
+              <Typography variant="h3" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", mb: 1 }}>
+                {greeting}, {user?.name?.split(" ")[0] || "Admin"}
+              </Typography>
+              <Typography color="text.secondary" variant="body1">
+                Explore your visitor analytics and operational insights for today.
+              </Typography>
+            </Box>
+            <Button
+              variant="outlined"
+              startIcon={<ICONS.download />}
+              onClick={() => setExportOpen(true)}
+              sx={{ borderRadius: 3, px: 3, py: 1, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}
+            >
+              Export Report
+            </Button>
+          </Stack>
         </motion.div>
       </Box>
 
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+
       {/* Primary Stats Grid */}
       <Grid container spacing={3} mb={5}>
-        {STAT_CARDS.map((card, index) => (
+        {statCards.map((card, index) => (
           <Grid size={{ xs: 12, sm: 6, md: 3 }} key={card.title}>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
             >
-              <AppCard
-                variant="frosted"
-                sx={{
-                  p: 3,
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center"
-                }}
-              >
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                  <Box
-                    sx={{
-                      p: 1.5,
-                      borderRadius: 2.5,
-                      bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
-                      color: isDark ? "#ffffff" : "#000000",
-                      display: "flex",
-                    }}
-                  >
-                    <card.icon />
-                  </Box>
-                  <Chip
-                    label={card.trend}
-                    size="small"
-                    sx={{
-                      height: 20,
-                      fontSize: "0.7rem",
-                      fontWeight: 700,
-                      bgcolor: card.trend.includes("+") 
-                        ? (isDark ? "rgba(46, 125, 50, 0.2)" : "success.light") 
-                        : (isDark ? "rgba(255,255,255,0.1)" : "grey.100"),
-                      color: card.trend.includes("+") 
-                        ? (isDark ? "#81c784" : "success.dark") 
-                        : (isDark ? "rgba(255,255,255,0.7)" : "text.secondary"),
-                      border: "none",
-                    }}
-                  />
-                </Stack>
-                <Typography variant="h4" fontWeight={800} mb={0.5}>
-                  {card.value}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" fontWeight={600}>
-                  {card.title}
-                </Typography>
-              </AppCard>
+              {loading ? (
+                <StatCardSkeleton />
+              ) : (
+                <AppCard
+                  variant="frosted"
+                  sx={{ p: 3, height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}
+                >
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 2.5,
+                        bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+                        color: isDark ? "#ffffff" : "#000000",
+                        display: "flex",
+                      }}
+                    >
+                      <card.icon />
+                    </Box>
+                    {card.trend && (
+                      <Chip
+                        label={card.trend}
+                        size="small"
+                        sx={{
+                          height: 20,
+                          fontSize: "0.7rem",
+                          fontWeight: 700,
+                          bgcolor:
+                            card.trendPositive === true
+                              ? isDark ? "rgba(46,125,50,0.2)" : "success.light"
+                              : card.trendPositive === false
+                              ? isDark ? "rgba(211,47,47,0.2)" : "error.light"
+                              : isDark ? "rgba(255,255,255,0.1)" : "grey.100",
+                          color:
+                            card.trendPositive === true
+                              ? isDark ? "#81c784" : "success.dark"
+                              : card.trendPositive === false
+                              ? "#ffffff"
+                              : isDark ? "rgba(255,255,255,0.7)" : "text.secondary",
+                          border: "none",
+                        }}
+                      />
+                    )}
+                  </Stack>
+                  <Typography variant="h4" fontWeight={800} mb={0.5}>
+                    {card.value.toLocaleString()}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" fontWeight={600}>
+                    {card.title}
+                  </Typography>
+                </AppCard>
+              )}
             </motion.div>
           </Grid>
         ))}
@@ -151,30 +280,41 @@ export default function CmsDashboardPage() {
 
       {/* Charts & Activity Section */}
       <Grid container spacing={3}>
-        {/* Registration Volume Chart */}
+        {/* Registration Volume Bar Chart */}
         <Grid size={{ xs: 12, md: 8 }}>
-          <AppCard
-            variant="frosted"
-            sx={{
-              p: 3,
-              minHeight: 400,
-            }}
-          >
+          <AppCard variant="frosted" sx={{ p: 3, minHeight: 400 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
               <Typography variant="h6" fontWeight={700}>Registration Volume</Typography>
-              <Button size="small" variant="text" startIcon={<ICONS.download />} sx={{ fontWeight: 700, borderRadius: 30 }}>Export CSV</Button>
             </Stack>
-            <Box sx={{ width: "100%", height: 300 }}>
-              <BarChart
-                series={[
-                  { data: [35, 44, 24, 34, 48, 22, 19, 30, 40, 50, 45, 60], label: "Approved", color: isDark ? "#ffffff" : "#000000" },
-                  { data: [51, 6, 49, 30, 15, 20, 25, 30, 35, 40, 30, 20], label: "Rejected", color: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)" },
-                ]}
-                xAxis={[{ data: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], scaleType: "band" }]}
-                height={300}
-                slotProps={{ legend: { direction: 'row', position: { vertical: 'top', horizontal: 'middle' }, padding: 0 } }}
-              />
-            </Box>
+            {loading ? (
+              <Skeleton variant="rounded" width="100%" height={300} />
+            ) : (
+              <Box sx={{ width: "100%", height: 300 }}>
+                <BarChart
+                  series={[
+                    {
+                      data: approvedSeries,
+                      label: "Approved",
+                      color: isDark ? "#ffffff" : "#000000",
+                    },
+                    {
+                      data: rejectedSeries,
+                      label: "Rejected",
+                      color: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)",
+                    },
+                  ]}
+                  xAxis={[{ data: MONTH_LABELS, scaleType: "band" }]}
+                  height={300}
+                  slotProps={{
+                    legend: {
+                      direction: "row",
+                      position: { vertical: "top", horizontal: "middle" },
+                      padding: 0,
+                    },
+                  }}
+                />
+              </Box>
+            )}
           </AppCard>
         </Grid>
 
@@ -182,29 +322,57 @@ export default function CmsDashboardPage() {
         <Grid size={{ xs: 12, md: 4 }}>
           <AppCard
             variant="frosted"
-            sx={{
-              p: 3,
-              height: "100%",
-              display: "flex",
-              flexDirection: "column",
-            }}
+            sx={{ p: 3, height: "100%", display: "flex", flexDirection: "column" }}
           >
             <Typography variant="h6" fontWeight={700} mb={3}>Recent Activity</Typography>
-            <Stack spacing={3} flexGrow={1}>
-              {RECENT_ACTIVITY.map((act) => (
-                <Stack key={act.id} direction="row" spacing={2} alignItems="center">
-                  <Avatar sx={{ width: 40, height: 40, bgcolor: `${act.status}.light`, color: `${act.status}.dark`, fontWeight: 800, fontSize: "0.8rem" }}>
-                    {act.name.charAt(0)}
-                  </Avatar>
-                  <Box>
-                    <Typography variant="body2" fontWeight={700}>{act.name}</Typography>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      {act.action} • {act.time}
-                    </Typography>
-                  </Box>
-                </Stack>
-              ))}
-            </Stack>
+            {loading ? (
+              <Stack spacing={3}>
+                {[1, 2, 3].map((i) => (
+                  <Stack key={i} direction="row" spacing={2} alignItems="center">
+                    <Skeleton variant="circular" width={40} height={40} />
+                    <Box sx={{ flex: 1 }}>
+                      <Skeleton variant="text" width="60%" />
+                      <Skeleton variant="text" width="80%" />
+                    </Box>
+                  </Stack>
+                ))}
+              </Stack>
+            ) : (
+              <Stack spacing={3} flexGrow={1}>
+                {(stats?.recentActivity ?? []).length === 0 ? (
+                  <Typography variant="body2" color="text.disabled">No recent activity</Typography>
+                ) : (
+                  (stats?.recentActivity ?? []).map((act) => {
+                    const statusKey = ACTIVITY_STATUS[act.activityType] ?? "default";
+                    const label = ACTIVITY_LABELS[act.activityType] ?? act.activityType;
+                    return (
+                      <Stack key={act.id} direction="row" spacing={2} alignItems="center">
+                        <Avatar
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            bgcolor: `${statusKey}.light`,
+                            color: `${statusKey}.dark`,
+                            fontWeight: 800,
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          {act.visitorName.charAt(0).toUpperCase()}
+                        </Avatar>
+                        <Box>
+                          <Typography variant="body2" fontWeight={700}>
+                            {act.visitorName}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {label} • {timeAgo(act.createdAt)}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    );
+                  })
+                )}
+              </Stack>
+            )}
             <Button
               fullWidth
               variant="outlined"
@@ -219,35 +387,38 @@ export default function CmsDashboardPage() {
 
         {/* Status Distribution Pie Chart */}
         <Grid size={{ xs: 12, md: 6 }}>
-            <AppCard
-                variant="frosted"
-                sx={{
-                    p: 3,
-                    minHeight: 320,
-                }}
-            >
-                <Typography variant="h6" fontWeight={700} mb={2}>Status Distribution</Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                    <PieChart
-                        series={[
-                        {
-                            data: [
-                              { id: 0, value: 45, label: 'Approved', color: isDark ? '#ffffff' : '#000000' },
-                              { id: 1, value: 25, label: 'Pending', color: 'rgba(128,128,128,0.5)' },
-                              { id: 2, value: 15, label: 'Checked In', color: 'rgba(128,128,128,0.3)' },
-                              { id: 3, value: 15, label: 'Rejected', color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' },
-                            ],
-                            innerRadius: 80,
-                            paddingAngle: 5,
-                            cornerRadius: 5,
-                        },
-                        ]}
-                        height={240}
-                    />
-                </Box>
-            </AppCard>
+          <AppCard variant="frosted" sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={700} mb={1}>Status Distribution</Typography>
+            {loading ? (
+              <Box sx={{ display: "flex", justifyContent: "center" }}>
+                <Skeleton variant="circular" width={170} height={170} />
+              </Box>
+            ) : pieData.length === 0 ? (
+              <Typography variant="body2" color="text.disabled" sx={{ mt: 2 }}>
+                No registration data yet
+              </Typography>
+            ) : (
+              <Box sx={{ display: "flex", justifyContent: "center" }}>
+                <PieChart
+                  series={[
+                    {
+                      data: pieData,
+                      innerRadius: 55,
+                      paddingAngle: 5,
+                      cornerRadius: 5,
+                    },
+                  ]}
+                  height={170}
+                />
+              </Box>
+            )}
+          </AppCard>
         </Grid>
 
+        {/* Live Visitors Card */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <LiveVisitorsCard />
+        </Grid>
       </Grid>
     </Box>
   );
