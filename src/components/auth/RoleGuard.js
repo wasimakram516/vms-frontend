@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import LoadingState from "@/components/LoadingState";
 
+import { getStaffDestination } from "@/utils/navigationUtils";
+
 /**
  * RoleGuard Component
  * @param {Object} props
@@ -33,7 +35,7 @@ export default function RoleGuard({ children, allowedRoles = [], allowedStaffTyp
         }
       } else if (roles.length > 0 && !roles.includes(user.role)) {
         if (user.role === "staff") {
-          router.replace("/staff/gate/verify");
+          router.replace(getStaffDestination(user));
         } else if (user.role === "dev") {
           router.replace("/cms/settings");
         } else if (["admin", "superadmin"].includes(user.role)) {
@@ -42,11 +44,7 @@ export default function RoleGuard({ children, allowedRoles = [], allowedStaffTyp
           router.replace("/");
         }
       } else if (staffTypes.length > 0 && user.role === "staff" && !staffTypes.includes(user.staffType)) {
-        if (user.staffType === "kitchen") {
-          router.replace("/staff/kitchen");
-        } else {
-          router.replace("/staff/gate/verify");
-        }
+        router.replace(getStaffDestination(user));
       }
     }
   }, [user, loading, router, pathname]);

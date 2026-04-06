@@ -21,6 +21,8 @@ import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 
 import ICONS from "@/utils/iconUtil";
 
+import { getStaffDestination } from "@/utils/navigationUtils";
+
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useColorMode();
@@ -206,7 +208,7 @@ export default function Navbar() {
                       onClick={() => {
                         handleClose();
                         if (user.role === "staff") {
-                          router.push(user.staffType === "kitchen" ? "/staff/kitchen" : "/staff/gate/verify");
+                          router.push(getStaffDestination(user));
                         } else if (user.role === "dev") {
                           router.push("/cms/settings");
                         } else {

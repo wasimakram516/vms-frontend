@@ -262,10 +262,6 @@ function KitchenMenuContent() {
                     borderBottom: "1px solid",
                     borderColor: "divider",
                     p: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 1,
                   }}
                 >
                   <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>

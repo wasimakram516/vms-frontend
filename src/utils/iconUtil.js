@@ -34,6 +34,7 @@ import {
   Badge as BadgeIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
+  Remove as RemoveIcon,
 } from "@mui/icons-material";
 
 // Social Media
@@ -160,6 +161,9 @@ import {
   Sync as SyncIcon,
   ReceiptLong as ListIcon,
   Chat as ChatIcon,
+  Inbox as InboxIcon,
+  Restaurant as RestaurantIcon,
+  RoomService as RoomServiceIcon,
 } from "@mui/icons-material";
 
 const ICONS = {
@@ -204,6 +208,7 @@ const ICONS = {
   start: StartIcon,
   stop: StopIcon,
   sync: SyncIcon,
+  remove: RemoveIcon,
   view: VisibilityIcon,
 
   // Status & Feedback
@@ -297,6 +302,7 @@ const ICONS = {
   clear: ClearIcon,
   cloud: CloudIcon,
   description: DescriptionIcon,
+  roomService: RoomServiceIcon,
   desk: DeskIcon,
   door: DoorIcon,
   email: EmailIcon,
@@ -304,9 +310,11 @@ const ICONS = {
   forum: ForumIcon,
   group: GroupIcon,
   help: HelpIcon,
+  inbox: InboxIcon,
   people: PeopleIcon,
   phone: PhoneIcon,
   refresh: RefreshIcon,
+  restaurant: RestaurantIcon,
   send: SendIcon,
   thumb: ThumbUpIcon,
   thumbOff: ThumbUpOffAltIcon,

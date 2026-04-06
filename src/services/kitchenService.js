@@ -106,7 +106,10 @@ export const getOrderHistory = withApiHandler(async (id) => {
 export const createOrder = withApiHandler(
   async (data) => {
     const res = await api.post("/kitchen/orders", data);
-    return mapOrderToFrontend(res.data?.data || res.data);
+    return {
+      data: mapOrderToFrontend(res.data?.data || res.data),
+      message: res.data?.message || "Order placed successfully",
+    };
   },
   { showSuccess: true }
 );
@@ -114,7 +117,10 @@ export const createOrder = withApiHandler(
 export const updateOrderStatus = withApiHandler(
   async (id, data) => {
     const res = await api.patch(`/kitchen/orders/${id}/status`, data);
-    return mapOrderToFrontend(res.data?.data || res.data);
+    return {
+      data: mapOrderToFrontend(res.data?.data || res.data),
+      message: res.data?.message || "Status updated successfully",
+    };
   },
   { showSuccess: true }
 );

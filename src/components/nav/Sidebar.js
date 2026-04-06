@@ -28,6 +28,7 @@ const getNavItems = (role) => {
     { label: "NDA Forms", icon: ICONS.description, path: "/cms/nda-forms" },
     { label: "Users", icon: ICONS.people, path: "/cms/users" },
     { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
+    { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" }
   ];
 
   return base;

@@ -16,11 +16,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import LoadingState from "@/components/LoadingState";
 import { login } from "@/services/authService";
+import { getStaffDestination } from "@/utils/navigationUtils";
 import ICONS from "@/utils/iconUtil";
 import { validateRequired } from "@/utils/validationUtils";
-
-const getStaffDestination = (staffUser) =>
-  staffUser?.staffType === "kitchen" ? "/staff/kitchen" : "/staff/gate/verify";
 
 export default function StaffLoginPage() {
   const router = useRouter();

@@ -19,7 +19,7 @@ import { login } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { validateRequired } from "@/utils/validationUtils";
-
+import { getStaffDestination } from "@/utils/navigationUtils";
 export default function LoginPage() {
   const router = useRouter();
   const { user, setUser, logout, loading: authLoading } = useAuth();
