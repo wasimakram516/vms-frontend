@@ -7,15 +7,16 @@ import {
   Chip,
   Stack,
   Divider,
-  Paper,
   Tabs,
   Tab,
   alpha,
   useTheme,
   useMediaQuery,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -334,6 +335,90 @@ function KitchenDashboardContent() {
   const [updatingId, setUpdatingId] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isAudioPrimed, setIsAudioPrimed] = useState(false);
+  const audioRef = useRef(null);
+
+  // Initialize Audio & Mute State
+  useEffect(() => {
+    const saved = localStorage.getItem("kitchen_is_muted");
+    const muted = saved === "true";
+    setIsMuted(muted);
+    
+    // Pre-initialize audio
+    if (!audioRef.current) {
+      audioRef.current = new Audio("/new-order-alert.mp3");
+      audioRef.current.load();
+    }
+  }, []);
+
+  // "Prime" the audio on first interaction to bypass browser autoplay policy
+  useEffect(() => {
+    if (isAudioPrimed || isMuted) return;
+
+    const primeAudio = async () => {
+      if (!audioRef.current || isAudioPrimed) return;
+      try {
+        await audioRef.current.play();
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        setIsAudioPrimed(true);
+        console.log("Audio primed on user interaction");
+        
+        window.removeEventListener("click", primeAudio);
+        window.removeEventListener("touchstart", primeAudio);
+      } catch (e) {
+        console.warn("Failed to prime audio:", e);
+      }
+    };
+
+    window.addEventListener("click", primeAudio);
+    window.addEventListener("touchstart", primeAudio);
+    return () => {
+      window.removeEventListener("click", primeAudio);
+      window.removeEventListener("touchstart", primeAudio);
+    };
+  }, [isAudioPrimed, isMuted]);
+
+  const primeAudio = useCallback(async () => {
+    if (!audioRef.current || isAudioPrimed) return;
+    try {
+      await audioRef.current.play();
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setIsAudioPrimed(true);
+      return true;
+    } catch (e) {
+      console.warn("Failed to prime audio:", e);
+      return false;
+    }
+  }, [isAudioPrimed]);
+
+  const playAlert = useCallback(async () => {
+    if (isMuted || !isAudioPrimed || !audioRef.current) return;
+    try {
+      audioRef.current.currentTime = 0;
+      await audioRef.current.play();
+    } catch (e) {
+      console.warn("Audio play blocked by browser:", e);
+      setIsAudioPrimed(false);
+    }
+  }, [isMuted, isAudioPrimed]);
+
+  const toggleMute = async () => {
+    if (!isAudioPrimed) {
+      const success = await primeAudio();
+      if (success) {
+        setIsMuted(false);
+        localStorage.setItem("kitchen_is_muted", "false");
+      }
+      return;
+    }
+
+    const newVal = !isMuted;
+    setIsMuted(newVal);
+    localStorage.setItem("kitchen_is_muted", String(newVal));
+  };
 
   const fetchData = useCallback(async () => {
     const res = await getAllOrders();
@@ -354,6 +439,7 @@ function KitchenDashboardContent() {
         setOrders((prev) => [mapped, ...prev]);
         setLastUpdated(new Date());
         showMessage(`New order from ${mapped.requester}`, "info");
+        playAlert();
       },
       "kitchen-order:updated": (updated) => {
         const mapped = mapOrder(updated);
@@ -368,7 +454,7 @@ function KitchenDashboardContent() {
         });
         setLastUpdated(new Date());
       },
-    }), [showMessage])
+    }), [showMessage, playAlert])
   );
 
   const mapOrder = (raw) => ({
@@ -443,23 +529,46 @@ function KitchenDashboardContent() {
               <ICONS.restaurant sx={{ fontSize: 24, color: "primary.main" }} />
             </Box>
             <Box>
-              <Typography
-                variant="h5"
-                sx={{
-                  fontWeight: 900,
-                  letterSpacing: "-0.5px",
-                  fontFamily: "'Comfortaa', cursive",
-                  color: "text.primary",
-                  lineHeight: 1.2,
-                }}
-              >
-                Kitchen Dashboard
-              </Typography>
-              {lastUpdated && (
-                <Typography variant="caption" color="text.disabled" fontWeight={500}>
-                  Updated {dayjs(lastUpdated).fromNow()}
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Typography
+                  variant="h5"
+                  sx={{
+                    fontWeight: 900,
+                    letterSpacing: "-0.5px",
+                    fontFamily: "'Comfortaa', cursive",
+                    color: "text.primary",
+                    lineHeight: 1.2,
+                  }}
+                >
+                  Kitchen Dashboard
                 </Typography>
-              )}
+                
+                <Tooltip title={(!isAudioPrimed || isMuted) ? "Unmute Alerts" : "Mute Alerts"}>
+                  <IconButton 
+                    size="small"
+                    onClick={toggleMute}
+                    sx={{ 
+                      width: 34,
+                      height: 34,
+                      bgcolor: (isMuted || !isAudioPrimed) ? alpha(theme.palette.error.main, 0.1) : alpha(theme.palette.primary.main, 0.1),
+                      color: (isMuted || !isAudioPrimed) ? "error.main" : "primary.main",
+                      borderRadius: 2,
+                      "&:hover": {
+                        bgcolor: (isMuted || !isAudioPrimed) ? alpha(theme.palette.error.main, 0.2) : alpha(theme.palette.primary.main, 0.2),
+                      }
+                    }}
+                  >
+                    {(isMuted || !isAudioPrimed) ? <ICONS.volumeOff sx={{ fontSize: 18 }} /> : <ICONS.volumeUp sx={{ fontSize: 18 }} />}
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+              <Stack direction="row" alignItems="center" spacing={1} mt={0.5}>
+                {lastUpdated && (
+                  <Typography variant="caption" color="text.disabled" fontWeight={500}>
+                    Updated {dayjs(lastUpdated).fromNow()}
+                  </Typography>
+                )}
+              </Stack>
             </Box>
           </Stack>
 

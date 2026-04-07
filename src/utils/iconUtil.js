@@ -35,6 +35,7 @@ import {
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
   Remove as RemoveIcon,
+  ChevronRight as ChevronRightIcon,
 } from "@mui/icons-material";
 
 // Social Media
@@ -88,6 +89,8 @@ import {
   PhotoLibrary as PhotoLibraryIcon,
   CameraAlt as CameraIcon,
   Wallpaper as WallpaperIcon,
+  VolumeUp as VolumeUpIcon,
+  VolumeOff as VolumeOffIcon,
 } from "@mui/icons-material";
 
 // Time & Location
@@ -176,6 +179,7 @@ const ICONS = {
   check: CheckIcon,
   close: CloseIcon,
   create: AddIcon,
+  chevronRight: ChevronRightIcon,
   delete: DeleteIcon,
   down: ExpandMoreIcon,
   expandMore: ExpandMoreIcon,
@@ -235,6 +239,8 @@ const ICONS = {
   upload: FileUploadIcon,
   video: VideoIcon,
   wallpaper: WallpaperIcon,
+  volumeUp: VolumeUpIcon,
+  volumeOff: VolumeOffIcon,
 
   // Time & Location
   diningTable: TableRestaurantIcon,

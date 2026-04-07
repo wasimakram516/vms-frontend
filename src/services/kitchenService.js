@@ -74,8 +74,16 @@ export const deleteMenuItem = withApiHandler(
 );
 
 // Orders
-export const getAllOrders = withApiHandler(async () => {
-  const res = await api.get("/kitchen/orders");
+export const getAllOrders = withApiHandler(async (date) => {
+  const url = date ? `/kitchen/orders?date=${date}` : "/kitchen/orders";
+  const res = await api.get(url);
+  const orders = res.data?.data || res.data || [];
+  return Array.isArray(orders) ? orders.map(mapOrderToFrontend) : [];
+});
+
+export const getMyOrders = withApiHandler(async (date) => {
+  const url = date ? `/kitchen/orders/my-orders?date=${date}` : "/kitchen/orders/my-orders";
+  const res = await api.get(url);
   const orders = res.data?.data || res.data || [];
   return Array.isArray(orders) ? orders.map(mapOrderToFrontend) : [];
 });

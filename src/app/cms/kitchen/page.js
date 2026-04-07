@@ -9,7 +9,6 @@ import {
   Stack,
   CircularProgress,
   Divider,
-  Autocomplete,
   Badge,
   Chip,
   Drawer,
@@ -36,41 +35,32 @@ import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import PermissionGuard from "@/components/auth/PermissionGuard";
 import { useAuth } from "@/contexts/AuthContext";
 import { getActiveMenuItems, createOrder } from "@/services/kitchenService";
-import { getAllUsers } from "@/services/userService";
-import { useMessage } from "@/contexts/MessageContext";
+import OrderTrackingModal from "./OrderTrackingModal";
 
 function OrderingContent() {
   const { user } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { showMessage } = useMessage();
   const [items, setItems] = useState([]);
-  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
+  const [trackingOpen, setTrackingOpen] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(12);
   const [page, setPage] = useState(0);
 
   const [cart, setCart] = useState({});
-  const [selectedUser, setSelectedUser] = useState(null);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const savedCart = localStorage.getItem("kitchen_cart");
-    const savedUser = localStorage.getItem("kitchen_selected_user");
     
     if (savedCart) {
       try { setCart(JSON.parse(savedCart)); } catch (e) { console.error(e); }
     }
     
-    let userToLoad = null;
-    if (savedUser) {
-      try { userToLoad = JSON.parse(savedUser); } catch (e) { console.error(e); }
-    }
-
-    fetchData(userToLoad).finally(() => setIsReady(true));
+    fetchData().finally(() => setIsReady(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -79,31 +69,11 @@ function OrderingContent() {
     localStorage.setItem("kitchen_cart", JSON.stringify(cart));
   }, [cart, isReady]);
 
-  useEffect(() => {
-    if (!isReady) return;
-    if (selectedUser) {
-      localStorage.setItem("kitchen_selected_user", JSON.stringify(selectedUser));
-    } else {
-      localStorage.removeItem("kitchen_selected_user");
-    }
-  }, [selectedUser, isReady]);
-
-  const fetchData = async (savedUser) => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const [menuRes, usersRes] = await Promise.all([
-        getActiveMenuItems(),
-        getAllUsers(),
-      ]);
+      const menuRes = await getActiveMenuItems();
       setItems(Array.isArray(menuRes) ? menuRes : []);
-      setUsers(Array.isArray(usersRes) ? usersRes : []);
-
-      if (savedUser) {
-        setSelectedUser(savedUser);
-      } else {
-        const currentUser = (Array.isArray(usersRes) ? usersRes : []).find((u) => u.id === user?.id);
-        if (currentUser) setSelectedUser(currentUser);
-      }
     } finally {
       setLoading(false);
     }
@@ -152,10 +122,6 @@ function OrderingContent() {
   }, [totalItems, cartOpen]);
 
   const handlePlaceOrder = async () => {
-    if (!selectedUser) {
-      showMessage("Please select a requester", "error");
-      return;
-    }
     setSubmitting(true);
     try {
       const orderItems = Object.entries(cart).map(([itemId, quantity]) => ({
@@ -164,7 +130,6 @@ function OrderingContent() {
       }));
 
       const res = await createOrder({
-        requesterUserId: selectedUser.id,
         items: orderItems,
       });
 
@@ -199,7 +164,7 @@ function OrderingContent() {
 
       <Box sx={{ mb: 3, p: 2, bgcolor: "action.hover", borderRadius: 3, flexShrink: 0 }}>
         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>REQUESTER</Typography>
-        <Typography variant="body1" fontWeight="600">{selectedUser?.full_name || "Not selected"}</Typography>
+        <Typography variant="body1" fontWeight="600">{user?.fullName || "User"}</Typography>
       </Box>
 
       <Divider sx={{ flexShrink: 0 }} />
@@ -245,7 +210,7 @@ function OrderingContent() {
           variant="contained"
           size="large"
           onClick={handlePlaceOrder}
-          disabled={submitting || !selectedUser}
+          disabled={submitting || totalItems === 0}
           sx={{ borderRadius: 4, py: 1.5, fontWeight: "bold" }}
         >
           {submitting ? <CircularProgress size={24} color="inherit" /> : "Confirm & Place Order"}
@@ -283,7 +248,7 @@ function OrderingContent() {
             Kitchen Orders
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, opacity: 0.8 }}>
-            Browse menu items and place orders for staff members.
+            Browse menu items and place orders.
           </Typography>
         </Box>
         
@@ -292,20 +257,16 @@ function OrderingContent() {
           spacing={2} 
           sx={{ width: { xs: "100%", sm: "auto" }, alignItems: "stretch" }}
         >
-          <Autocomplete
-            options={users}
-            getOptionLabel={(option) => `${option.full_name || "Unknown"} (${option.email?.split("@")[0] || "N/A"})`}
-            value={selectedUser}
-            onChange={(_, v) => setSelectedUser(v)}
-            renderInput={(params) => (
-              <TextField 
-                {...params} 
-                label="Select Requester" 
-                size="small" 
-              />
-            )}
-            sx={{ width: { xs: "100%", sm: 260 } }}
-          />
+          <Button
+            variant="outlined"
+            color="secondary"
+            fullWidth={isMobile && totalItems === 0}
+            startIcon={<ICONS.history />}
+            onClick={() => setTrackingOpen(true)}
+            sx={{ borderRadius: 30, px: 3, whiteSpace: "nowrap", fontWeight: "bold", border: "2px solid" }}
+          >
+            Track Orders
+          </Button>
 
           {totalItems > 0 && (
             <Button
@@ -471,7 +432,7 @@ function OrderingContent() {
           open={cartOpen}
           onClose={toggleCart(false)}
           onOpen={toggleCart(true)}
-          disableScrollLock
+          
           PaperProps={{
             sx: { 
               borderRadius: "24px 24px 0 0",
@@ -494,7 +455,7 @@ function OrderingContent() {
           anchor="right"
           open={cartOpen}
           onClose={toggleCart(false)}
-          disableScrollLock
+          
           PaperProps={{
             sx: { 
               width: 400,
@@ -507,6 +468,13 @@ function OrderingContent() {
           {SummaryContent}
         </Drawer>
       )}
+
+      {/* Tracking Modal (Role-aware & Date Filtered) */}
+      <OrderTrackingModal 
+        open={trackingOpen}
+        onClose={() => setTrackingOpen(false)}
+        user={user}
+      />
     </Box>
   );
 }
