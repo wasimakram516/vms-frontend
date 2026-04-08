@@ -189,7 +189,7 @@ export default function CmsDashboardPage() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+          <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "flex-start" }}>
             <Box>
               <Typography variant="h3" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", mb: 1 }}>
                 {greeting}, {user?.name?.split(" ")[0] || "Admin"}
@@ -202,7 +202,7 @@ export default function CmsDashboardPage() {
               variant="outlined"
               startIcon={<ICONS.download />}
               onClick={() => setExportOpen(true)}
-              sx={{ borderRadius: 3, px: 3, py: 1, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0 }}
+              sx={{ borderRadius: 3, px: 3, py: 1, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0, mt: { xs: 2, sm: 0 } }}
             >
               Export Report
             </Button>
