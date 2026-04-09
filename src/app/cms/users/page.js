@@ -764,6 +764,7 @@ export default function UsersPage() {
               onChange={(e) => setForm({ ...form, full_name: e.target.value })}
               error={!!errors.full_name}
               helperText={errors.full_name}
+              autoComplete="name"
             />
             <TextField
               label="Email"
@@ -772,6 +773,7 @@ export default function UsersPage() {
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               error={!!errors.email}
               helperText={errors.email}
+              autoComplete="email"
             />
             <TextField
               label={isEditMode ? "New Password (optional)" : "Password"}
@@ -781,6 +783,7 @@ export default function UsersPage() {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               error={!!errors.password}
               helperText={errors.password}
+              autoComplete="new-password"
               sx={{ display: form.role === "visitor" ? "none" : "flex" }}
             />
             <TextField
