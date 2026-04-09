@@ -16,6 +16,7 @@ import {
   Divider,
   Switch,
   FormControlLabel,
+  Avatar,
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import ICONS from "@/utils/iconUtil";
@@ -232,6 +233,49 @@ function DepartmentsContent() {
                 <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
                   {dept.description || "No description provided."}
                 </Typography>
+
+                {dept.assignedUsers?.length > 0 && (
+                  <Box sx={{ mt: 1.5 }}>
+                    <Divider sx={{ mb: 1.5 }} />
+                    <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Departmental Admins
+                    </Typography>
+                    <Stack spacing={0.75} sx={{ mt: 1 }}>
+                      {dept.assignedUsers.map((admin) => {
+                        const initials = admin.fullName
+                          ?.split(" ")
+                          .map((n) => n[0]?.toUpperCase())
+                          .slice(0, 2)
+                          .join("") || "?";
+                        return (
+                          <Stack key={admin.id} direction="row" spacing={1} alignItems="center">
+                            <Avatar
+                              sx={{
+                                width: 28,
+                                height: 28,
+                                fontSize: "0.65rem",
+                                fontWeight: 700,
+                                bgcolor: "primary.main",
+                                color: "primary.contrastText",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {initials}
+                            </Avatar>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography variant="body2" fontWeight={600} noWrap>
+                                {admin.fullName}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" noWrap>
+                                {admin.email}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                )}
               </Box>
 
               {!readOnly && (
