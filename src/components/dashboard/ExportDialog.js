@@ -139,6 +139,12 @@ export default function ExportDialog({ open, onClose }) {
               onChange={(e) => { setFrom(e.target.value); setError(""); }}
               inputProps={{ max: today() }}
               InputLabelProps={{ shrink: true }}
+              sx={{
+                "& input[type='date']::-webkit-calendar-picker-indicator": {
+                  filter: isDark ? "invert(1) brightness(1.5)" : "none",
+                  cursor: "pointer",
+                },
+              }}
             />
             <TextField
               label="To"
@@ -149,6 +155,12 @@ export default function ExportDialog({ open, onClose }) {
               onChange={(e) => { setTo(e.target.value); setError(""); }}
               inputProps={{ min: from, max: today() }}
               InputLabelProps={{ shrink: true }}
+              sx={{
+                "& input[type='date']::-webkit-calendar-picker-indicator": {
+                  filter: isDark ? "invert(1) brightness(1.5)" : "none",
+                  cursor: "pointer",
+                },
+              }}
             />
           </Stack>
         )}

@@ -31,6 +31,11 @@ const getNavItems = (role) => {
     { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" }
   ];
 
+  // Analytics is SuperAdmin-only — insert after Dashboard
+  if (role === "superadmin") {
+    base.splice(1, 0, { label: "Analytics", icon: ICONS.insights, path: "/cms/analytics" });
+  }
+
   return base;
 };
 

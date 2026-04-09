@@ -15,6 +15,7 @@
     "@mui/material": "^7.3.9",
     "@mui/x-charts": "^8.27.5",
     "@mui/x-date-pickers": "^8.27.2",
+    "@pdf-lib/fontkit": "^1.1.1",
     "@react-pdf/renderer": "^4.3.2",
     "ambient-cbg": "^1.0.4",
     "axios": "^1.13.6",
@@ -24,11 +25,13 @@
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
     "next": "16.1.6",
+    "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-flatpickr": "^4.0.11",
+    "recharts": "^3.8.1",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
