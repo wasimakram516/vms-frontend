@@ -33,7 +33,7 @@ import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useSocket } from "@/contexts/SocketContext";
-import { verifyRegistrationByToken, updateStatus } from "@/services/registrationService";
+import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs } from "@/services/registrationService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
 
 const STATUS_CONFIG = {
@@ -59,6 +59,7 @@ export default function StaffVerifyPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [activityLogs, setActivityLogs] = useState([]);
   const scanningRef = useRef(false);
   const [badgeTemplate, setBadgeTemplate] = useState(null);
 
@@ -86,6 +87,13 @@ export default function StaffVerifyPage() {
         setError(res.message);
       } else if (res) {
         setResult(res);
+        // Fetch activity logs for check-in time ONLY if checked in
+        if (res.id && res.status === "checked_in") {
+          const logs = await getRegistrationActivityLogs(res.id);
+          setActivityLogs(logs || []);
+        } else {
+          setActivityLogs([]);
+        }
       } else {
         setError("Invalid or unknown token.");
       }
@@ -109,6 +117,8 @@ export default function StaffVerifyPage() {
       const updated = await updateStatus(result.id, { status: "checked_in" });
       if (!updated?.error) {
         setResult(prev => ({ ...prev, status: updated?.status || "checked_in" }));
+        const logs = await getRegistrationActivityLogs(result.id);
+        setActivityLogs(logs || []);
       }
     } finally {
       setActionLoading(false);
@@ -122,6 +132,8 @@ export default function StaffVerifyPage() {
       const updated = await updateStatus(result.id, { status: "checked_out" });
       if (!updated?.error) {
         setResult(prev => ({ ...prev, status: updated?.status || "checked_out" }));
+        const logs = await getRegistrationActivityLogs(result.id);
+        setActivityLogs(logs || []);
       }
     } finally {
       setActionLoading(false);
@@ -275,6 +287,10 @@ export default function StaffVerifyPage() {
           ...updatedReg
         };
         setResult(mappedReg);
+        // Fetch activity logs for check-in time ONLY if checked in
+        if (updatedReg.status === "checked_in") {
+          getRegistrationActivityLogs(updatedReg.id).then(logs => setActivityLogs(logs || []));
+        }
         showMessage("Visitor status was updated.", "info");
       }
     });
@@ -390,106 +406,262 @@ export default function StaffVerifyPage() {
             
             <Divider sx={{ mb: 2 }} />
             
-            {/* Not Approved - Show Minimal Details */}
-            {result.notApproved ? (
-              <List dense disablePadding>
-                {[
-                  { icon: ICONS.person, label: "Name", value: result.visitor?.fullName || result.full_name },
-                  { icon: ICONS.business, label: "Company", value: result.visitor?.companyName || result.visitor?.organisation || result.organisation || result.companyName || result.user?.companyName || "N/A" },
-                  { icon: ICONS.info, label: "Purpose", value: result.visitor?.purposeOfVisit || result.purpose_of_visit },
-                ].map((item) => (
-                  <ListItem key={item.label} disablePadding sx={{ py: 0.8 }}>
-                    <ListItemIcon sx={{ minWidth: 36, color: "primary.main" }}><item.icon fontSize="small" /></ListItemIcon>
-                    <ListItemText 
-                      primary={item.label} 
-                      secondary={item.value} 
-                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600 }}
-                      secondaryTypographyProps={{ variant: "body1", color: "text.primary", fontWeight: 500 }}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            ) : (
-              /* Approved - Show Full Details */
-              <List dense disablePadding>
-                {[
-                  { icon: ICONS.person, label: "Name", value: result.full_name },
-                  { icon: ICONS.business, label: "Company", value: result.organisation || result.companyName || result.visitor?.companyName || result.user?.companyName || "N/A" },
-                  { icon: ICONS.info, label: "Purpose", value: result.purpose_of_visit },
-                  { icon: ICONS.event, label: "Approved From", value: result.approved_from ? formatDate(result.approved_from) : "—" },
-                  { icon: ICONS.event, label: "Approved To", value: result.approved_to ? formatDate(result.approved_to) : "—" },
-                  { icon: ICONS.time, label: "Time", value: `${result.approved_from ? formatTime(result.approved_from) : "—"} - ${result.approved_to ? formatTime(result.approved_to) : "—"}` },
-                ].map((item) => (
-                  <ListItem key={item.label} disablePadding sx={{ py: 0.8 }}>
-                    <ListItemIcon sx={{ minWidth: 36, color: "primary.main" }}><item.icon fontSize="small" /></ListItemIcon>
-                    <ListItemText 
-                      primary={item.label} 
-                      secondary={item.value} 
-                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600 }}
-                      secondaryTypographyProps={{ variant: "body1", color: "text.primary", fontWeight: 500 }}
-                    />
-                  </ListItem>
-                ))}
-              </List>
+            {["pending", "admin_approved"].includes(result.status) && (
+              <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                Not yet approved
+              </Alert>
             )}
 
+            {/* Field Display Logic */}
+            <List dense disablePadding>
+              {(() => {
+                const status = result.status;
+                const isPending = ["pending", "admin_approved"].includes(status);
+                const isApproved = status === "approved";
+                const isCheckedIn = status === "checked_in";
+                const isCheckedOut = status === "checked_out";
+                const isEnded = status === "visit_ended";
+                const fieldValues = Array.isArray(result.fieldValues)
+                  ? result.fieldValues
+                  : Array.isArray(result.visitor?.fieldValues)
+                    ? result.visitor.fieldValues
+                    : [];
+
+                const normalizeKey = (value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const renderFieldValue = (value) => {
+                  if (value == null || value === "") return null;
+                  if (typeof value === "object") {
+                    return value.name || value.label || value.value || JSON.stringify(value);
+                  }
+                  return String(value);
+                };
+                const findCustomFieldValue = (aliases) => {
+                  const normalizedAliases = aliases.map(normalizeKey);
+                  const match = fieldValues.find((fv) => {
+                    const key = normalizeKey(fv?.customField?.fieldKey || fv?.customField?.name);
+                    const label = normalizeKey(fv?.customField?.label);
+                    return normalizedAliases.includes(key) || normalizedAliases.includes(label);
+                  });
+                  return renderFieldValue(match?.value);
+                };
+
+                // Final field extraction with fallback to visitor summary
+                const visitorName = findCustomFieldValue(["fullname", "name", "visitorname"]) || result.visitor?.fullName || result.full_name || result.user?.fullName || "N/A";
+                const company = findCustomFieldValue(["company", "organisation", "organization", "employer", "firm"]) || result.visitor?.companyName || result.visitor?.organisation || result.organisation || result.companyName || result.user?.companyName || "N/A";
+                const purpose = findCustomFieldValue(["purposeofvisit", "purpose", "visitpurpose"]) || result.visitor?.purposeOfVisit || result.purpose_of_visit || "N/A";
+                const department = findCustomFieldValue(["department", "dept", "division", "unit", "section", "team", "businessunit"]) || result.visitor?.department?.name || result.visitor?.department || result.department?.name || result.department || "N/A";
+                const accessLevel = findCustomFieldValue(["accesslevel", "access level", "access", "clearance", "securitylevel", "badgelevel", "accesstype", "zone"]) || result.visitor?.accessLevel?.name || result.visitor?.accessLevel || result.accessLevel?.name || result.accessLevel || "N/A";
+                const idTypeFromField = findCustomFieldValue(["idtype", "identificationtype", "documenttype", "doctype", "id document type"]);
+                const omanIdValue = findCustomFieldValue(["omanid", "omanidnumber", "omannationalid", "nationalid", "civilid", "idcardnumber"]);
+                const passportValue = findCustomFieldValue(["passport", "passportnumber", "passportno", "passportid"]);
+                const genericIdValue = findCustomFieldValue(["idnumber", "idno", "identificationnumber", "documentnumber"]);
+
+                const resolvedId = (() => {
+                  const normalizedType = normalizeKey(idTypeFromField);
+
+                  if (normalizedType.includes("oman") && (omanIdValue || genericIdValue)) {
+                    return { type: "Oman ID", value: omanIdValue || genericIdValue };
+                  }
+                  if (normalizedType.includes("passport") && (passportValue || genericIdValue)) {
+                    return { type: "Passport", value: passportValue || genericIdValue };
+                  }
+                  if (omanIdValue) {
+                    return { type: "Oman ID", value: omanIdValue };
+                  }
+                  if (passportValue) {
+                    return { type: "Passport", value: passportValue };
+                  }
+                  if (idTypeFromField && genericIdValue) {
+                    return { type: idTypeFromField, value: genericIdValue };
+                  }
+                  if (genericIdValue) {
+                    return { type: "ID", value: genericIdValue };
+                  }
+                  return null;
+                })();
+
+                // Get latest check-in time from logs
+                const checkInLogs = (activityLogs || []).filter((log) => log?.activityType === "checked_in");
+                const latestCheckInLog = checkInLogs.reduce((latest, current) => {
+                  if (!latest) return current;
+
+                  const latestTime = new Date(latest?.metadata?.checkedInAt || latest?.createdAt || 0).getTime();
+                  const currentTime = new Date(current?.metadata?.checkedInAt || current?.createdAt || 0).getTime();
+
+                  return currentTime > latestTime ? current : latest;
+                }, null);
+                const checkInTime = latestCheckInLog?.metadata?.checkedInAt || latestCheckInLog?.createdAt;
+                const expectedCheckout = (() => {
+                  if (!result.approved_to) return "—";
+                  const approvedTo = new Date(result.approved_to);
+                  const now = new Date();
+                  const expected = new Date(now);
+                  expected.setHours(
+                    approvedTo.getHours(),
+                    approvedTo.getMinutes(),
+                    approvedTo.getSeconds(),
+                    approvedTo.getMilliseconds()
+                  );
+                  return `${formatDate(expected)} ${formatTime(expected)}`;
+                })();
+
+                const fields = [];
+                const displayedLabels = new Set();
+                const pushField = (label, value, icon = ICONS.info) => {
+                  const rendered = renderFieldValue(value);
+                  if (rendered == null) return;
+                  fields.push({ icon, label, value: rendered });
+                  displayedLabels.add(normalizeKey(label));
+                };
+
+                // Approved: visitor name, company, purpose of visit, department, approved window (from/to), and access level.
+                if (isApproved || isCheckedOut || isEnded) {
+                  pushField("Name", visitorName, ICONS.person);
+                  pushField("Company", company, ICONS.business);
+                  pushField("Purpose", purpose, ICONS.info);
+                  pushField("Department", department, ICONS.business);
+                  pushField("ID Type", resolvedId?.type, ICONS.badge);
+                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  pushField(
+                    "Approved Date",
+                    `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                    ICONS.event
+                  );
+                  pushField(
+                    "Approved Time",
+                    `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                    ICONS.time
+                  );
+                  pushField("Access Level", accessLevel, ICONS.security);
+                }
+                // Pending/AdminApproved: visitor name, purpose of visit, department
+                else if (isPending) {
+                  pushField("Name", visitorName, ICONS.person);
+                  pushField("Purpose", purpose, ICONS.info);
+                  pushField("Department", department, ICONS.business);
+                  pushField("ID Type", resolvedId?.type, ICONS.badge);
+                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                }
+                // CheckedIn: Show check-in timestamp, expected checkout time
+                else if (isCheckedIn) {
+                  pushField("Name", visitorName, ICONS.person);
+                  pushField("Company", company, ICONS.business);
+                  pushField("Purpose", purpose, ICONS.info);
+                  pushField("Department", department, ICONS.business);
+                  pushField("ID Type", resolvedId?.type, ICONS.badge);
+                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  pushField(
+                    "Approved Date",
+                    `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                    ICONS.event
+                  );
+                  pushField(
+                    "Approved Time",
+                    `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                    ICONS.time
+                  );
+                  pushField("Access Level", accessLevel, ICONS.security);
+                  pushField("Check-in Time", checkInTime ? `${formatDate(checkInTime)} ${formatTime(checkInTime)}` : "—", ICONS.login);
+                  pushField("Expected Checkout", expectedCheckout, ICONS.logout);
+                }
+
+                return fields.map((item, idx) => (
+                  <ListItem key={`${item.label}-${idx}`} disablePadding sx={{ py: 0.8 }}>
+                    <ListItemIcon sx={{ minWidth: 36, color: "primary.main" }}>
+                      {(() => {
+                        const IconComponent = item.icon || ICONS.info;
+                        return <IconComponent fontSize="small" />;
+                      })()}
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary={item.label} 
+                      secondary={item.value} 
+                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600 }}
+                      secondaryTypographyProps={{ variant: "body1", color: "text.primary", fontWeight: 500 }}
+                    />
+                  </ListItem>
+                ));
+              })()}
+            </List>
+
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mt={4}>
-              {result.notApproved ? (
-                <Button fullWidth variant="outlined" startIcon={<ICONS.close />} onClick={reset}>Close</Button>
-              ) : (
-                <>
-                  {result.status === "visit_ended" && (
-                    <Alert severity="info" sx={{ width: "100%", borderRadius: 2 }}>
-                      Visit concluded. No further check-ins allowed.
-                      {(result.allow_multi_checkin ?? result.allowMultiCheckin) && (
-                        <Chip label="Multi Check-in Allowed" size="small" color="primary" variant="outlined" sx={{ ml: 1, height: 18, fontSize: "0.6rem" }} />
-                      )}
-                    </Alert>
-                  )}
-                  {result.status === "approved" && (
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      color="success"
-                      startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
-                      onClick={handleCheckInAction}
-                      disabled={actionLoading}
+              {(() => {
+                const status = result.status;
+                const isPending = ["pending", "admin_approved"].includes(status);
+                const isApproved = status === "approved";
+                const isCheckedIn = status === "checked_in";
+                const isCheckedOut = status === "checked_out";
+                const isEnded = status === "visit_ended";
+                const isMulti = result.allow_multi_checkin ?? result.allowMultiCheckin;
+
+                return (
+                  <>
+                    {isPending && (
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        disabled
+                        startIcon={<ICONS.time />}
+                        sx={{ 
+                          fontSize: "0.85rem",
+                          bgcolor: isDark ? "rgba(255,255,255,0.08) !important" : "rgba(0,0,0,0.06) !important",
+                          color: isDark ? "rgba(255,255,255,0.4) !important" : "rgba(0,0,0,0.4) !important",
+                          border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
+                        }}
+                      >
+                        Awaiting Approval
+                      </Button>
+                    )}
+
+                    {isApproved && (
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="success"
+                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
+                        onClick={handleCheckInAction}
+                        disabled={actionLoading}
+                      >
+                        Check In
+                      </Button>
+                    )}
+
+                    {isCheckedIn && (
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="error"
+                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
+                        onClick={handleCheckOutAction}
+                        disabled={actionLoading}
+                      >
+                        Check Out
+                      </Button>
+                    )}
+
+                    {isCheckedOut && isMulti && (
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="success"
+                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
+                        onClick={handleCheckInAction}
+                        disabled={actionLoading}
+                      >
+                        Check In Again
+                      </Button>
+                    )}
+                    <Button 
+                      fullWidth 
+                      variant="outlined" 
+                      startIcon={<ICONS.close />} 
+                      onClick={reset}
                     >
-                      Check In
+                      Close
                     </Button>
-                  )}
-                  {result.status === "checked_in" && (
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      color="error"
-                      startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
-                      onClick={handleCheckOutAction}
-                      disabled={actionLoading}
-                    >
-                      Check Out
-                    </Button>
-                  )}
-                  {result.status === "checked_out" && (result.allow_multi_checkin ?? result.allowMultiCheckin) && (
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      color="success"
-                      startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
-                      onClick={handleCheckInAction}
-                      disabled={actionLoading}
-                    >
-                      Check In Again
-                    </Button>
-                  )}
-                  {["checked_in", "checked_out"].includes(result.status) && (
-                    <Button fullWidth variant="outlined" startIcon={<ICONS.check />} onClick={reset}>Close</Button>
-                  )}
-                  {result.status === "visit_ended" && (
-                    <Button fullWidth variant="outlined" startIcon={<ICONS.close />} onClick={reset}>Close</Button>
-                  )}
-                </>
-              )}
+                  </>
+                );
+              })()}
             </Stack>
           </Paper>
         )}

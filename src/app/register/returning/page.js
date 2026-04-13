@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  Alert,
   Box,
   Button,
   Stack,
@@ -15,7 +16,7 @@ import {
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
-import { sendOtp } from "@/services/registrationService";
+import { sendOtpSilently } from "@/services/registrationService";
 import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
@@ -30,6 +31,7 @@ export default function ReturningVisitorPage() {
   const [method, setMethod] = useState("email");
   const [email, setEmail] = useState(visitorData.identity?.includes("@") ? visitorData.identity : "");
   const [emailError, setEmailError] = useState("");
+  const [otpRequestError, setOtpRequestError] = useState("");
 
   const validateEmailField = (value) => {
     const error = validateEmail(value, "Email");
@@ -46,12 +48,15 @@ export default function ReturningVisitorPage() {
     const finalIdentity = email.trim().toLowerCase();
 
     setLoading(true);
+    setOtpRequestError("");
     try {
-      const res = await sendOtp(finalIdentity, "email");
+      const res = await sendOtpSilently(finalIdentity);
       if (!res.error) {
         setVisitorData((p) => ({ ...p, identity: finalIdentity, email: finalIdentity }));
         setFlowState((prev) => ({ ...prev, isReturning: true, currentStep: "otp" }));
         router.push("/register/otp");
+      } else {
+        setOtpRequestError(res.message || "Unable to send OTP. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -122,6 +127,11 @@ export default function ReturningVisitorPage() {
 
         {method === "email" ? (
           <Stack spacing={2.5}>
+            {otpRequestError && (
+              <Alert severity="error" sx={{ borderRadius: 2 }}>
+                {otpRequestError}
+              </Alert>
+            )}
             <TextField
               fullWidth
               autoFocus

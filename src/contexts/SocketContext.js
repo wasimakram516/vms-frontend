@@ -22,6 +22,7 @@ export const SocketProvider = ({ children }) => {
     const { showMessage } = useMessage();
     const pathname = usePathname();
     const showMessageRef = useRef(showMessage);
+    const [storedToken, setStoredToken] = useState(() => getStoredToken());
 
     const API_URL = process.env.NEXT_PUBLIC_WEBSOCKET_HOST || 'http://localhost:4000';
     const SOCKET_URL = API_URL.replace(/\/api\/v1\/?$/, '');
@@ -32,16 +33,29 @@ export const SocketProvider = ({ children }) => {
     }, [showMessage]);
 
     useEffect(() => {
-        const token = getStoredToken();
+        const syncToken = () => setStoredToken(getStoredToken());
 
-        if (!token || !isRealtimeRoute) {
-            setSocket(null);
+        window.addEventListener("storage", syncToken);
+        window.addEventListener("auth-storage-changed", syncToken);
+
+        return () => {
+            window.removeEventListener("storage", syncToken);
+            window.removeEventListener("auth-storage-changed", syncToken);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!storedToken || !isRealtimeRoute) {
+            setSocket((current) => {
+                current?.close();
+                return null;
+            });
             setConnected(false);
             return undefined;
         }
         
         const newSocket = io(SOCKET_URL, {
-            auth: { token },
+            auth: { token: storedToken },
             transports: ['websocket', 'polling'],
             withCredentials: true,
             reconnectionAttempts: 5,
@@ -73,7 +87,7 @@ export const SocketProvider = ({ children }) => {
             setConnected(false);
             newSocket.close();
         };
-    }, [isRealtimeRoute]);
+    }, [isRealtimeRoute, SOCKET_URL, storedToken]);
 
     const emit = useCallback((event, data) => {
         if (socket) {

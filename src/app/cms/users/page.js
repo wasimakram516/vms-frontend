@@ -68,6 +68,8 @@ export default function UsersPage() {
   const [staffTypeFilter, setStaffTypeFilter] = useState("all");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
+  const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
+  const [userStatusTarget, setUserStatusTarget] = useState(null);
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
@@ -188,6 +190,25 @@ export default function UsersPage() {
     } finally {
       setDeleteConfirmOpen(false);
       setUserToDelete(null);
+    }
+  };
+
+  const handleStatusClick = (u) => {
+    setUserStatusTarget(u);
+    setStatusConfirmOpen(true);
+  };
+
+  const handleConfirmStatusChange = async () => {
+    if (!userStatusTarget) return;
+    const currentStatus = String(userStatusTarget.status || "active").toLowerCase();
+    const nextStatus = currentStatus === "active" ? "inactive" : "active";
+
+    try {
+      await updateUser(userStatusTarget.id, { status: nextStatus });
+      fetchUsers();
+    } finally {
+      setStatusConfirmOpen(false);
+      setUserStatusTarget(null);
     }
   };
 
@@ -499,34 +520,45 @@ export default function UsersPage() {
                         <Stack
                           direction="row"
                           alignItems="center"
+                          justifyContent="space-between"
                           sx={{ gap: 1 }}
                         >
-                          <Avatar
-                            sx={{
-                              width: 40,
-                              height: 40,
-                              bgcolor: isDark ? "#fff" : "#000",
-                              color: isDark ? "#000" : "#fff",
-                              fontSize: "1rem",
-                              fontWeight: 800,
-                            }}
-                          >
-                            {u.full_name
-                              ?.split(" ")
-                              .map((n) => n[0])
-                              .slice(0, 2)
-                              .join("") || "?"}
-                          </Avatar>
-                          <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography
-                              variant="subtitle1"
-                              fontWeight={800}
-                              noWrap
-                              sx={{ lineHeight: 1.2 }}
+                          <Stack direction="row" alignItems="center" sx={{ minWidth: 0, flex: 1, gap: 1 }}>
+                            <Avatar
+                              sx={{
+                                width: 40,
+                                height: 40,
+                                bgcolor: isDark ? "#fff" : "#000",
+                                color: isDark ? "#000" : "#fff",
+                                fontSize: "1rem",
+                                fontWeight: 800,
+                              }}
                             >
-                              {u.full_name}
-                            </Typography>
-                          </Box>
+                              {u.full_name
+                                ?.split(" ")
+                                .map((n) => n[0])
+                                .slice(0, 2)
+                                .join("") || "?"}
+                            </Avatar>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                              <Typography
+                                variant="subtitle1"
+                                fontWeight={800}
+                                noWrap
+                                sx={{ lineHeight: 1.2 }}
+                              >
+                                {u.full_name}
+                              </Typography>
+                            </Box>
+                          </Stack>
+
+                          <Chip
+                            label={String(u.status || "active").toLowerCase() === "active" ? "Active" : "Inactive"}
+                            size="small"
+                            color={String(u.status || "active").toLowerCase() === "active" ? "success" : "default"}
+                            variant={String(u.status || "active").toLowerCase() === "active" ? "filled" : "outlined"}
+                            sx={{ fontWeight: 800 }}
+                          />
                         </Stack>
                       </Stack>
                       <Stack
@@ -704,6 +736,22 @@ export default function UsersPage() {
                               <ICONS.edit fontSize="small" />
                             </IconButton>
                           </Tooltip>
+                          {u.id !== currentUser.id && (
+                            <Tooltip title={String(u.status || "active").toLowerCase() === "active" ? "Deactivate User" : "Activate User"}>
+                              <IconButton
+                                color={String(u.status || "active").toLowerCase() === "active" ? "warning" : "success"}
+                                onClick={() => handleStatusClick(u)}
+                                size="small"
+                                sx={{
+                                  bgcolor: isDark
+                                    ? "rgba(255,255,255,0.05)"
+                                    : "rgba(0,0,0,0.03)",
+                                }}
+                              >
+                                {String(u.status || "active").toLowerCase() === "active" ? <ICONS.close fontSize="small" /> : <ICONS.check fontSize="small" />}
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           {u.id !== currentUser.id && (
                             <Tooltip title="Delete User">
                               <IconButton
@@ -890,6 +938,20 @@ export default function UsersPage() {
         message={`Are you sure you want to delete ${userToDelete?.full_name}? This action cannot be undone.`}
         confirmButtonText="Delete"
         confirmButtonIcon={<ICONS.delete fontSize="small" />}
+      />
+
+      <ConfirmationDialog
+        open={statusConfirmOpen}
+        onClose={() => setStatusConfirmOpen(false)}
+        onConfirm={handleConfirmStatusChange}
+        title={String(userStatusTarget?.status || "active").toLowerCase() === "active" ? "Deactivate User" : "Activate User"}
+        message={
+          String(userStatusTarget?.status || "active").toLowerCase() === "active"
+            ? `Are you sure you want to deactivate ${userStatusTarget?.full_name}?`
+            : `Are you sure you want to activate ${userStatusTarget?.full_name}?`
+        }
+        confirmButtonText={String(userStatusTarget?.status || "active").toLowerCase() === "active" ? "Deactivate" : "Activate"}
+        confirmButtonIcon={String(userStatusTarget?.status || "active").toLowerCase() === "active" ? <ICONS.close fontSize="small" /> : <ICONS.check fontSize="small" />}
       />
     </Box>
   );

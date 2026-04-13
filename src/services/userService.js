@@ -56,6 +56,7 @@ export const updateUser = withApiHandler(
       fullName: data.full_name,
       email: data.email,
       role: data.role,
+      status: data.status,
       password: data.password || undefined,
     };
     // Only include staffType for staff roles

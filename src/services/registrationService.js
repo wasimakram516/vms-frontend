@@ -20,6 +20,21 @@ export const sendOtp = withApiHandler(async (target) => {
   return data;
 });
 
+export const sendOtpSilently = async (target) => {
+  try {
+    const { data } = await api.post("/auth/otp/send", { target });
+    return data;
+  } catch (err) {
+    const message =
+      err?.response?.data?.error ||
+      err?.response?.data?.message ||
+      err?.message ||
+      "Unable to send OTP. Please try again.";
+
+    return { error: true, message };
+  }
+};
+
 export const verifyOtp = withApiHandler(async (target, code) => {
   const { data } = await api.post("/auth/otp/verify", { target, code });
   if (data?.success) {

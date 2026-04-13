@@ -250,6 +250,7 @@ const ICONS = {
 
   // Domain-Specific / App Features
   adminPanel: AdminPanelSettingsIcon,
+  security: AdminPanelSettingsIcon,
   appRegister: AppRegistrationIcon,
   assignment: AssignmentIcon,
   business: BusinessIcon,

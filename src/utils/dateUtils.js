@@ -120,14 +120,18 @@ export const formatTime = (input, eventTimezone = null, dateString = null) => {
   if (!input) return "";
 
   let date;
-  if (input.includes("T") || input.includes("Z")) {
+  if (input instanceof Date) {
+    date = new Date(input);
+  } else if (typeof input === "string" && (input.includes("T") || input.includes("Z"))) {
     // It's an ISO string (e.g. 2026-03-30T20:30:00Z)
     date = new Date(input);
-  } else if (input.includes(":")) {
+  } else if (typeof input === "string" && input.includes(":")) {
     // It's a raw time string (e.g. 20:30)
     const [hours, minutes] = input.split(":");
     date = new Date();
     date.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+  } else if (typeof input === "number") {
+    date = new Date(input);
   } else {
     return "";
   }
@@ -135,7 +139,8 @@ export const formatTime = (input, eventTimezone = null, dateString = null) => {
   if (isNaN(date.getTime())) return "";
 
   if (eventTimezone && dateString) {
-    const eventDate = createDateInTimezone(dateString, input.includes(":") && !input.includes("T") ? input : getLocalTime(input), eventTimezone);
+    const isRawTimeString = typeof input === "string" && input.includes(":") && !input.includes("T");
+    const eventDate = createDateInTimezone(dateString, isRawTimeString ? input : getLocalTime(input), eventTimezone);
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     return new Intl.DateTimeFormat("en-GB", {
