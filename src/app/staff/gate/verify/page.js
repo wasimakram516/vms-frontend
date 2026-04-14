@@ -87,8 +87,8 @@ export default function StaffVerifyPage() {
         setError(res.message);
       } else if (res) {
         setResult(res);
-        // Fetch activity logs for check-in time ONLY if checked in
-        if (res.id && res.status === "checked_in") {
+        // Fetch activity logs for timestamps (check-in, check-out, visit-ended)
+        if (res.id && ["checked_in", "checked_out", "visit_ended"].includes(res.status)) {
           const logs = await getRegistrationActivityLogs(res.id);
           setActivityLogs(logs || []);
         } else {
@@ -110,9 +110,12 @@ export default function StaffVerifyPage() {
     setTimeout(() => { scanningRef.current = false; }, 600);
   }, [doVerify]);
 
+  const selfInitiatedRef = useRef(null);
+
   const handleCheckInAction = async () => {
     if (!result?.id) return;
     setActionLoading(true);
+    selfInitiatedRef.current = { id: result.id, status: "checked_in" };
     try {
       const updated = await updateStatus(result.id, { status: "checked_in" });
       if (!updated?.error) {
@@ -122,12 +125,14 @@ export default function StaffVerifyPage() {
       }
     } finally {
       setActionLoading(false);
+      setTimeout(() => { selfInitiatedRef.current = null; }, 5000);
     }
   };
 
   const handleCheckOutAction = async () => {
     if (!result?.id) return;
     setActionLoading(true);
+    selfInitiatedRef.current = { id: result.id, status: "checked_out" };
     try {
       const updated = await updateStatus(result.id, { status: "checked_out" });
       if (!updated?.error) {
@@ -137,6 +142,7 @@ export default function StaffVerifyPage() {
       }
     } finally {
       setActionLoading(false);
+      setTimeout(() => { selfInitiatedRef.current = null; }, 5000);
     }
   };
 
@@ -261,41 +267,61 @@ export default function StaffVerifyPage() {
   };
 
   const { on } = useSocket();
+  // Ref keeps the current registration ID always up-to-date inside the socket
+  const currentRegistrationIdRef = useRef(null);
+  const currentRegistrationStatusRef = useRef(null);
+  useEffect(() => {
+    currentRegistrationIdRef.current = result?.id ?? null;
+    currentRegistrationStatusRef.current = result?.status ?? null;
+  }, [result?.id, result?.status]);
 
   useEffect(() => {
     const unsub = on("registration:updated", (updatedReg) => {
-      if (result && result.id === updatedReg.id) {
-        const isAccessible = ["approved", "checked_in", "checked_out"].includes(updatedReg.status);
-        
-        const mappedReg = {
-          id: updatedReg.id,
-          full_name: updatedReg.user?.fullName || "N/A",
-          email: updatedReg.user?.email || "N/A",
-          phone: updatedReg.user?.phone || "N/A",
-          purpose_of_visit: updatedReg.purposeOfVisit,
-          status: updatedReg.status,
-          requested_from: updatedReg.requestedFrom,
-          requested_to: updatedReg.requestedTo,
-          approved_from: updatedReg.approvedFrom,
-          approved_to: updatedReg.approvedTo,
-          phone_iso_code: updatedReg.phoneIsoCode,
-          qr_token: updatedReg.qrToken,
-          allow_multi_checkin: updatedReg.allowMultiCheckin,
-          notApproved: !isAccessible,
-          visitor: updatedReg.visitor,
-          user: updatedReg.user,
-          ...updatedReg
-        };
-        setResult(mappedReg);
-        // Fetch activity logs for check-in time ONLY if checked in
-        if (updatedReg.status === "checked_in") {
-          getRegistrationActivityLogs(updatedReg.id).then(logs => setActivityLogs(logs || []));
-        }
-        showMessage("Visitor status was updated.", "info");
+      // Ignore events that don't belong to the registration currently on screen.
+      if (!currentRegistrationIdRef.current || currentRegistrationIdRef.current !== updatedReg.id) return;
+
+      const isAccessible = ["approved", "checked_in", "checked_out"].includes(updatedReg.status);
+
+      const mappedReg = {
+        id: updatedReg.id,
+        full_name: updatedReg.user?.fullName || "N/A",
+        email: updatedReg.user?.email || "N/A",
+        phone: updatedReg.user?.phone || "N/A",
+        purpose_of_visit: updatedReg.purposeOfVisit,
+        status: updatedReg.status,
+        requested_from: updatedReg.requestedFrom,
+        requested_to: updatedReg.requestedTo,
+        approved_from: updatedReg.approvedFrom,
+        approved_to: updatedReg.approvedTo,
+        phone_iso_code: updatedReg.phoneIsoCode,
+        qr_token: updatedReg.qrToken,
+        allow_multi_checkin: updatedReg.allowMultiCheckin,
+        notApproved: !isAccessible,
+        visitor: updatedReg.visitor,
+        user: updatedReg.user,
+        ...updatedReg,
+      };
+      setResult(mappedReg);
+
+      // Fetch activity logs for timestamps (check-in, check-out, visit-ended)
+      if (["checked_in", "checked_out", "visit_ended"].includes(updatedReg.status)) {
+        getRegistrationActivityLogs(updatedReg.id).then(logs => setActivityLogs(logs || []));
+      }
+
+      const isSelfEcho =
+        selfInitiatedRef.current?.id === updatedReg.id &&
+        selfInitiatedRef.current?.status === updatedReg.status;
+
+      const statusActuallyChanged = updatedReg.status !== currentRegistrationStatusRef.current;
+
+      if (isSelfEcho) {
+        selfInitiatedRef.current = null;
+      } else if (statusActuallyChanged) {
+        showMessage("This visitor's status has been updated by another operator.", "info");
       }
     });
     return () => unsub?.();
-  }, [result?.id, on, showMessage]);
+  }, [on, showMessage]);
 
   const sc = result ? (STATUS_CONFIG[result.status] || { label: result.status, color: "default" }) : null;
 
@@ -385,14 +411,16 @@ export default function StaffVerifyPage() {
         {result && (
           <Paper elevation={0} sx={{ p: 3, borderRadius: 4, border: `1px solid ${sc.color === "success" ? (isDark ? "rgba(46,125,50,0.5)" : "rgba(46,125,50,0.3)") : "divider"}`, bgcolor: "background.paper" }}>
             <Stack direction="row" alignItems="center" spacing={2} mb={3}>
-              <Box sx={{ bgcolor: `${sc.color}.light`, color: `${sc.color}.main`, p: 1, borderRadius: 2, display: "flex" }}>
-                {sc.color === "success" ? <ICONS.checkCircle /> : <ICONS.time />}
+              <Box sx={{ bgcolor: `${sc.color}.main`, color: sc.color === "default" ? (isDark ? "#fff" : "rgba(0,0,0,0.7)") : "#fff", p: 1, borderRadius: 2, display: "flex" }}>
+                {sc.color === "success" ? <ICONS.checkCircle /> : sc.color === "error" ? <ICONS.errorOutline /> : ["visit_ended", "cancelled", "expired"].includes(result.status) ? <ICONS.logout /> : <ICONS.time />}
               </Box>
               <Box sx={{ flex: 1 }}>
-                <Typography variant="h6" fontWeight={700}>Verification Success</Typography>
+                <Typography variant="h6" fontWeight={700}>
+                  {result.status === "visit_ended" ? "Visit Concluded" : result.status === "rejected" ? "Visit Rejected" : result.status === "cancelled" ? "Visit Cancelled" : result.status === "expired" ? "Visit Expired" : "Verification Success"}
+                </Typography>
                 <Chip label={sc.label} color={sc.color} size="small" sx={{ fontWeight: 600 }} />
               </Box>
-              {result.status !== "pending" && (
+              {["admin_approved", "approved", "checked_in", "checked_out"].includes(result.status) && (
                 <Tooltip title="Print Badge">
                   <IconButton
                     onClick={() => handlePrintBadge(result)}
@@ -403,12 +431,34 @@ export default function StaffVerifyPage() {
                 </Tooltip>
               )}
             </Stack>
-            
+
             <Divider sx={{ mb: 2 }} />
-            
+
             {["pending", "admin_approved"].includes(result.status) && (
               <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
                 Not yet approved
+              </Alert>
+            )}
+            {result.status === "visit_ended" && (
+              <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                This visit has already been concluded. No further actions available.
+              </Alert>
+            )}
+            {result.status === "rejected" && (
+              <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+                {(result.rejectionReason || result.rejection_reason)
+                  ? `This registration was rejected for the following reason: ${result.rejectionReason || result.rejection_reason}`
+                  : "This registration was rejected."}
+              </Alert>
+            )}
+            {result.status === "cancelled" && (
+              <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                This visit has been cancelled. No further actions available.
+              </Alert>
+            )}
+            {result.status === "expired" && (
+              <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                This registration has expired. No further actions available.
               </Alert>
             )}
 
@@ -421,6 +471,9 @@ export default function StaffVerifyPage() {
                 const isCheckedIn = status === "checked_in";
                 const isCheckedOut = status === "checked_out";
                 const isEnded = status === "visit_ended";
+                const isRejected = status === "rejected";
+                const isCancelled = status === "cancelled";
+                const isExpired = status === "expired";
                 const fieldValues = Array.isArray(result.fieldValues)
                   ? result.fieldValues
                   : Array.isArray(result.visitor?.fieldValues)
@@ -447,10 +500,10 @@ export default function StaffVerifyPage() {
 
                 // Final field extraction with fallback to visitor summary
                 const visitorName = findCustomFieldValue(["fullname", "name", "visitorname"]) || result.visitor?.fullName || result.full_name || result.user?.fullName || "N/A";
-                const company = findCustomFieldValue(["company", "organisation", "organization", "employer", "firm"]) || result.visitor?.companyName || result.visitor?.organisation || result.organisation || result.companyName || result.user?.companyName || "N/A";
-                const purpose = findCustomFieldValue(["purposeofvisit", "purpose", "visitpurpose"]) || result.visitor?.purposeOfVisit || result.purpose_of_visit || "N/A";
-                const department = findCustomFieldValue(["department", "dept", "division", "unit", "section", "team", "businessunit"]) || result.visitor?.department?.name || result.visitor?.department || result.department?.name || result.department || "N/A";
-                const accessLevel = findCustomFieldValue(["accesslevel", "access level", "access", "clearance", "securitylevel", "badgelevel", "accesstype", "zone"]) || result.visitor?.accessLevel?.name || result.visitor?.accessLevel || result.accessLevel?.name || result.accessLevel || "N/A";
+                const company = findCustomFieldValue(["company", "organisation", "organization", "employer", "firm"]) || result.visitor?.companyName || result.visitor?.organisation || result.organisation || result.companyName || result.user?.companyName || null;
+                const purpose = findCustomFieldValue(["purposeofvisit", "purpose", "visitpurpose"]) || result.visitor?.purposeOfVisit || result.purpose_of_visit || null;
+                const department = findCustomFieldValue(["department", "dept", "division", "unit", "section", "team", "businessunit"]) || result.visitor?.department?.name || result.visitor?.department || result.department?.name || result.department || null;
+                const accessLevel = findCustomFieldValue(["accesslevel", "access level", "access", "clearance", "securitylevel", "badgelevel", "accesstype", "zone"]) || result.visitor?.accessLevel?.name || result.visitor?.accessLevel || result.accessLevel?.name || result.accessLevel || null;
                 const idTypeFromField = findCustomFieldValue(["idtype", "identificationtype", "documenttype", "doctype", "id document type"]);
                 const omanIdValue = findCustomFieldValue(["omanid", "omanidnumber", "omannationalid", "nationalid", "civilid", "idcardnumber"]);
                 const passportValue = findCustomFieldValue(["passport", "passportnumber", "passportno", "passportid"]);
@@ -505,6 +558,18 @@ export default function StaffVerifyPage() {
                   return `${formatDate(expected)} ${formatTime(expected)}`;
                 })();
 
+                const checkOutLogs = (activityLogs || []).filter((log) => log?.activityType === "checked_out");
+                const latestCheckOutLog = checkOutLogs.reduce((latest, current) => {
+                  if (!latest) return current;
+                  const latestTime = new Date(latest?.metadata?.checkedOutAt || latest?.createdAt || 0).getTime();
+                  const currentTime = new Date(current?.metadata?.checkedOutAt || current?.createdAt || 0).getTime();
+                  return currentTime > latestTime ? current : latest;
+                }, null);
+                const checkOutTime = latestCheckOutLog?.metadata?.checkedOutAt || latestCheckOutLog?.createdAt;
+
+                const endedLog = (activityLogs || []).find((log) => log?.activityType === "visit_ended");
+                const visitEndedAt = endedLog?.metadata?.endedAt || result.visitEndedAt || result.visit_ended_at;
+
                 const fields = [];
                 const displayedLabels = new Set();
                 const pushField = (label, value, icon = ICONS.info) => {
@@ -514,8 +579,8 @@ export default function StaffVerifyPage() {
                   displayedLabels.add(normalizeKey(label));
                 };
 
-                // Approved: visitor name, company, purpose of visit, department, approved window (from/to), and access level.
-                if (isApproved || isCheckedOut || isEnded) {
+                // Visit Ended: full info + checkout time + visit end time
+                if (isEnded) {
                   pushField("Name", visitorName, ICONS.person);
                   pushField("Company", company, ICONS.business);
                   pushField("Purpose", purpose, ICONS.info);
@@ -533,6 +598,55 @@ export default function StaffVerifyPage() {
                     ICONS.time
                   );
                   pushField("Access Level", accessLevel, ICONS.security);
+                  if (checkOutTime) pushField("Checked Out At", `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`, ICONS.logout);
+                  if (visitEndedAt) pushField("Visit Ended At", `${formatDate(visitEndedAt)} ${formatTime(visitEndedAt)}`, ICONS.logout);
+                }
+                // Rejected/Cancelled/Expired: full info + rejection reason if available
+                else if (isRejected || isCancelled || isExpired) {
+                  pushField("Name", visitorName, ICONS.person);
+                  pushField("Company", company, ICONS.business);
+                  pushField("Purpose", purpose, ICONS.info);
+                  pushField("Department", department, ICONS.business);
+                  pushField("ID Type", resolvedId?.type, ICONS.badge);
+                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  if (result.approved_from || result.approved_to) {
+                    pushField(
+                      "Approved Date",
+                      `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                      ICONS.event
+                    );
+                    pushField(
+                      "Approved Time",
+                      `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                      ICONS.time
+                    );
+                  }
+                  pushField("Access Level", accessLevel, ICONS.security);
+                  if (isRejected) {
+                    const reason = result.rejectionReason || result.rejection_reason;
+                    if (reason) pushField("Rejection Reason", reason, ICONS.info);
+                  }
+                }
+                // Approved/CheckedOut: full approved details + checkout time for checked_out
+                else if (isApproved || isCheckedOut) {
+                  pushField("Name", visitorName, ICONS.person);
+                  pushField("Company", company, ICONS.business);
+                  pushField("Purpose", purpose, ICONS.info);
+                  pushField("Department", department, ICONS.business);
+                  pushField("ID Type", resolvedId?.type, ICONS.badge);
+                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  pushField(
+                    "Approved Date",
+                    `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                    ICONS.event
+                  );
+                  pushField(
+                    "Approved Time",
+                    `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                    ICONS.time
+                  );
+                  pushField("Access Level", accessLevel, ICONS.security);
+                  if (isCheckedOut && checkOutTime) pushField("Checked Out At", `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`, ICONS.logout);
                 }
                 // Pending/AdminApproved: visitor name, purpose of visit, department
                 else if (isPending) {

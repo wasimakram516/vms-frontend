@@ -2,6 +2,15 @@ import { pdf, Document } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import BadgePDF from "@/components/badges/BadgePDF";
 
+/** Shift a UTC ISO string to the client's local time and return { date, time } */
+function toLocalParts(isoString) {
+  if (!isoString) return { date: "", time: "" };
+  const tzOffset = new Date().getTimezoneOffset(); // e.g. -240 for UTC+4
+  const local = new Date(new Date(isoString).getTime() - tzOffset * 60_000);
+  const iso   = local.toISOString();
+  return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
+}
+
 /**
  * Exports all badges to a multi-page PDF in browser.
  * Each badge = one Page from BadgePDF.
@@ -77,9 +86,9 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
             "",
 
           hostName: r.host_name || "",
-          requestedDate: r.requested_from?.split('T')[0] || "",
-          requestedTimeFrom: r.requested_from?.split('T')[1]?.slice(0, 5) || "",
-          requestedTimeTo: r.requested_to?.split('T')[1]?.slice(0, 5) || "",
+          requestedDate: toLocalParts(r.requested_from).date,
+          requestedTimeFrom: toLocalParts(r.requested_from).time,
+          requestedTimeTo: toLocalParts(r.requested_to).time,
 
           badgeIdentifier: r.badge_identifier || "",
 

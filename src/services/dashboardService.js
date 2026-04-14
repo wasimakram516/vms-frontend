@@ -21,6 +21,7 @@ export async function exportVisitorReport({ period = "monthly", from, to } = {})
     params.set("from", from);
     params.set("to", to);
   }
+  params.set("tzOffset", String(new Date().getTimezoneOffset()));
 
   const res = await api.get(`/dashboard/export?${params.toString()}`, {
     responseType: "blob",
