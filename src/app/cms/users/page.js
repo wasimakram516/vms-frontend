@@ -44,8 +44,11 @@ import DialogHeader from "@/components/modals/DialogHeader";
 import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
-import { validateField } from "@/utils/validationUtils";
+import { validateField, validatePhone } from "@/utils/validationUtils";
 import RecordMetadata from "@/components/RecordMetadata";
+import CountryCodeSelector from "@/components/CountryCodeSelector";
+import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode } from "@/utils/countryCodes";
+import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
 
 const CREATABLE_ROLES = ["admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
@@ -81,10 +84,12 @@ export default function UsersPage() {
     role: "staff",
     staff_type: "gate",
     department_ids: [],
+    phone: "",
   };
 
   const [form, setForm] = useState(defaultForm);
   const [errors, setErrors] = useState({});
+  const [isoCodes, setIsoCodes] = useState({ phone: DEFAULT_ISO_CODE });
 
   useEffect(() => {
     fetchUsers();
@@ -107,6 +112,7 @@ export default function UsersPage() {
   const handleOpenCreate = () => {
     setForm(defaultForm);
     setErrors({});
+    setIsoCodes({ phone: DEFAULT_ISO_CODE });
     setIsEditMode(false);
     setSelectedUserId(null);
     setModalOpen(true);
@@ -121,6 +127,15 @@ export default function UsersPage() {
       staff_type: u.staff_type || "",
       department_ids: Array.isArray(u.departments) ? u.departments.map((d) => d.id) : [],
     });
+    
+    if (u.role === "visitor") {
+      setForm((p) => ({ ...p, phone: u.phone || "" }));
+      setIsoCodes({ phone: u.iso_code || DEFAULT_ISO_CODE });
+    } else {
+      const { isoCode, phone: digits } = getCountryAndPhoneByFullPhone(u.phone);
+      setForm((p) => ({ ...p, phone: digits }));
+      setIsoCodes({ phone: isoCode });
+    }
     setErrors({});
     setIsEditMode(true);
     setSelectedUserId(u.id);
@@ -146,22 +161,32 @@ export default function UsersPage() {
       if (staffTypeError) newErrors.staff_type = staffTypeError;
     }
 
+    const phoneError = validatePhone(form.phone, isoCodes.phone);
+    if (phoneError) newErrors.phone = phoneError;
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
   const handleSave = async () => {
     if (!validateForm()) return;
     setSubmitting(true);
     try {
+      const isVisitor = form.role === 'visitor';
+      const dialCode = getCountryCodeByIsoCode(isoCodes.phone)?.code || DEFAULT_COUNTRY_CODE;
+
+      const payload = {
+        ...form,
+        phoneIsoCode: isVisitor ? isoCodes.phone : dialCode,
+      };
+
       let res;
       if (isEditMode) {
-        res = await updateUser(selectedUserId, form);
+        res = await updateUser(selectedUserId, payload);
       } else {
         res =
           form.role === "admin"
-            ? await createAdminUser(form)
-            : await createStaffUser(form);
+            ? await createAdminUser(payload)
+            : await createStaffUser(payload);
       }
 
       if (!res?.error) {
@@ -632,6 +657,49 @@ export default function UsersPage() {
                         </Typography>
                       </Box>
 
+                      {u.phone && (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            py: 0.8,
+                            borderBottom: "1px solid",
+                            borderColor: "divider",
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 0.6,
+                              color: "text.secondary",
+                              fontWeight: 500,
+                            }}
+                          >
+                            <ICONS.phone
+                              fontSize="small"
+                              sx={{ opacity: 0.8, color: "primary.main" }}
+                            />{" "}
+                            Phone
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 700,
+                              ml: 2,
+                              flex: 1,
+                              textAlign: "right",
+                              color: "text.primary",
+                              dir: "ltr",
+                            }}
+                          >
+                            {u.phone}
+                          </Typography>
+                        </Box>
+                      )}
+
                       {u.role === "staff" && u.staff_type && (
                         <Box
                           sx={{
@@ -700,9 +768,10 @@ export default function UsersPage() {
                           ? "rgba(255,255,255,0.02)"
                           : "rgba(0,0,0,0.01)",
                         display: "flex",
+                        flexDirection: { xs: "column", sm: "row" },
                         justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 1,
+                        alignItems: { xs: "stretch", sm: "center" },
+                        gap: 1.5,
                       }}
                     >
                       <Box sx={{ flex: 1 }}>
@@ -720,6 +789,7 @@ export default function UsersPage() {
                             display: "flex",
                             justifyContent: "flex-end",
                             gap: 1,
+                            width: { xs: "100%", sm: "auto" },
                           }}
                         >
                           <Tooltip title="Edit User">
@@ -833,6 +903,32 @@ export default function UsersPage() {
               helperText={errors.password}
               autoComplete="new-password"
               sx={{ display: form.role === "visitor" ? "none" : "flex" }}
+            />
+            <TextField
+              fullWidth
+              label="Phone"
+              value={form.phone}
+              error={Boolean(errors.phone)}
+              helperText={errors.phone}
+              onChange={(e) => {
+                setForm((p) => ({ ...p, phone: filterPhoneInput(e.target.value) }));
+                if (errors.phone) setErrors((prev) => ({ ...prev, phone: null }));
+              }}
+              onKeyPress={onKeyPressPhone}
+              InputProps={{
+                startAdornment: (
+                  <CountryCodeSelector
+                    value={isoCodes.phone}
+                    onChange={(iso) => {
+                      setIsoCodes((p) => ({ ...p, phone: iso }));
+                      if (form.phone) {
+                        const err = validatePhone(form.phone, iso);
+                        setErrors((p) => ({ ...p, phone: err }));
+                      }
+                    }}
+                  />
+                ),
+              }}
             />
             <TextField
               select

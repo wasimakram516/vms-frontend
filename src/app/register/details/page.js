@@ -42,6 +42,8 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import NdaTemplateContent from "@/components/NdaTemplateContent";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE, COUNTRY_CODES } from "@/utils/countryCodes";
 import { validateField, validateRequired } from "@/utils/validationUtils";
+import { filterPhoneInput, filterNumberInput, onKeyPressNumeric, onKeyPressPhone } from "@/utils/phoneUtils";
+
 
 export default function DetailsPage() {
   const router = useRouter();
@@ -442,7 +444,8 @@ export default function DetailsPage() {
                       label={f.label}
                       type="tel"
                       value={getPhoneDisplayValue(val, isoCode)}
-                      onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
+                      onChange={(e) => handleFieldChange(fieldKey, filterPhoneInput(e.target.value))}
+                      onKeyPress={onKeyPressPhone}
                       required={isRequired}
                       error={Boolean(error)}
                       helperText={error}
@@ -529,6 +532,9 @@ export default function DetailsPage() {
                     value={val}
                     onChange={(e) => {
                       let value = e.target.value;
+                      if (textType === "number") {
+                        value = filterNumberInput(value);
+                      }
                       if (textType === "date" && value) {
                         const parts = value.split("-");
                         if (parts[0] && parts[0].length > 4) {
@@ -538,6 +544,7 @@ export default function DetailsPage() {
                       }
                       handleFieldChange(fieldKey, value);
                     }}
+                    onKeyPress={(e) => textType === "number" && onKeyPressNumeric(e)}
                     required={isRequired}
                     error={Boolean(error)}
                     helperText={error}

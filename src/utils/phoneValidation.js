@@ -1,12 +1,5 @@
 import { getCountryCodeByIsoCode, COUNTRY_CODES } from "./countryCodes";
-
-export const normalizePhone = (phone) => {
-    if (!phone) return null;
-    return String(phone)
-        .trim()
-        .replace(/\s+/g, "")
-        .replace(/[()-]/g, "");
-};
+import { normalizePhone } from "./phoneUtils";
 
 export const validatePhoneNumberByCountry = (phone, isoCode = null) => {
     if (!phone) {

@@ -12,6 +12,7 @@ import {
   Skeleton,
   ToggleButton,
   ToggleButtonGroup,
+  LinearProgress,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { useRouter } from "next/navigation";
@@ -100,6 +101,8 @@ export default function CmsDashboardPage() {
   const [greeting, setGreeting] = useState("Welcome");
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [period, setPeriod] = useState("today"); // "today" | "week" | "month" | "year" | "all"
   const socketRef = useRef(null);
@@ -111,14 +114,22 @@ export default function CmsDashboardPage() {
     else setGreeting("Good Evening");
   }, []);
 
-  const fetchStats = useCallback(async (p) => {
-    setLoading(true);
+  const fetchStats = useCallback(async (p, { silent = false } = {}) => {
+    const showInitialLoading = !hasLoadedOnce && !silent;
+    if (showInitialLoading) {
+      setLoading(true);
+    } else if (!silent) {
+      setIsRefreshing(true);
+    }
+
     const result = await getDashboardStats(p ?? period);
     if (result && !result.error) {
       setStats(result);
+      setHasLoadedOnce(true);
     }
-    setLoading(false);
-  }, [period]);
+    if (showInitialLoading) setLoading(false);
+    if (!silent) setIsRefreshing(false);
+  }, [period, hasLoadedOnce]);
 
   useEffect(() => {
     fetchStats(period);
@@ -133,7 +144,7 @@ export default function CmsDashboardPage() {
     const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
     socketRef.current = socket;
 
-    const refresh = () => fetchStats(period);
+    const refresh = () => fetchStats(period, { silent: true });
     socket.on("registration:new", refresh);
     socket.on("registration:updated", refresh);
     socket.on("dashboard:live-update", refresh);
@@ -271,6 +282,10 @@ export default function CmsDashboardPage() {
           </Typography>
         )}
       </Stack>
+
+      {isRefreshing && !loading && (
+        <LinearProgress sx={{ mb: 3, height: 4, borderRadius: 2 }} />
+      )}
 
       {/* Primary Stats Grid */}
       <Grid container spacing={3} mb={5}>

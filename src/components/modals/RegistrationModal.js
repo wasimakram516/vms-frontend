@@ -34,6 +34,8 @@ import {
   isPhoneField,
   validateForm,
 } from "@/utils/validationUtils";
+import { filterPhoneInput, filterNumberInput, onKeyPressNumeric, onKeyPressPhone } from "@/utils/phoneUtils";
+
 
 export default function RegistrationModal({
   open,
@@ -162,8 +164,8 @@ export default function RegistrationModal({
   };
 
   const handlePhoneChange = (fieldName, value) => {
-    const digitsOnly = value.replace(/\D/g, "");
-    setValues((prev) => ({ ...prev, [fieldName]: digitsOnly }));
+    const filtered = filterPhoneInput(value);
+    setValues((prev) => ({ ...prev, [fieldName]: filtered }));
     if (fieldErrors[fieldName]) {
       setFieldErrors((prev) => {
         const newErrors = { ...prev };
@@ -289,7 +291,8 @@ export default function RegistrationModal({
           key={f.inputName}
           label={f.inputName}
           value={value}
-          onChange={(e) => handleChange(f.inputName, e.target.value)}
+          onChange={(e) => handleChange(f.inputName, filterNumberInput(e.target.value))}
+          onKeyPress={onKeyPressNumeric}
           fullWidth
           size="small"
           required={required}
@@ -312,6 +315,7 @@ export default function RegistrationModal({
           label={f.inputName}
           value={phoneValue}
           onChange={(e) => handlePhoneChange(f.inputName, e.target.value)}
+          onKeyPress={onKeyPressPhone}
           fullWidth
           size="small"
           required={required}
@@ -337,7 +341,12 @@ export default function RegistrationModal({
         key={f.inputName}
         label={f.inputName}
         value={value}
-        onChange={(e) => handleChange(f.inputName, e.target.value)}
+        onChange={(e) => {
+          const isNum = f.inputType === "number";
+          const val = isNum ? filterNumberInput(e.target.value) : e.target.value;
+          handleChange(f.inputName, val);
+        }}
+        onKeyPress={(e) => f.inputType === "number" && onKeyPressNumeric(e)}
         fullWidth
         size="small"
         required={required}

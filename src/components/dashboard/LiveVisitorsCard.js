@@ -27,16 +27,21 @@ export default function LiveVisitorsCard() {
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const socketRef = useRef(null);
 
-  const fetchLive = useCallback(async () => {
+  const fetchLive = useCallback(async ({ silent = false } = {}) => {
+    const showInitialLoading = !hasLoadedOnce && !silent;
+    if (showInitialLoading) setLoading(true);
+
     const result = await getLiveVisitors();
     if (result && !result.error) {
       setData(result);
+      setHasLoadedOnce(true);
     }
-    setLoading(false);
-  }, []);
+    if (showInitialLoading) setLoading(false);
+  }, [hasLoadedOnce]);
 
   // Initial fetch
   useEffect(() => {
@@ -49,7 +54,7 @@ export default function LiveVisitorsCard() {
     socketRef.current = socket;
 
     socket.on("dashboard:live-update", () => {
-      fetchLive();
+      fetchLive({ silent: true });
     });
 
     return () => {

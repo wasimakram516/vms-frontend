@@ -7,7 +7,7 @@ const mapUserToFrontend = (user) => ({
   email: user.email,
   role: user.role,
   phone: user.phone,
-  iso_code: user.isoCode,
+  iso_code: user.phoneIsoCode || user.isoCode,
   staff_type: user.staffType,
   status: user.status,
   departments: Array.isArray(user.departments) ? user.departments : [],
@@ -28,6 +28,8 @@ export const createAdminUser = withApiHandler(
     const res = await api.post("/users/admin", {
       fullName: data.full_name,
       email: data.email,
+      phone: data.phone,
+      phoneIsoCode: data.phoneIsoCode,
       password: data.password || undefined,
     });
     const userData = res.data?.data || res.data;
@@ -41,6 +43,8 @@ export const createStaffUser = withApiHandler(
     const res = await api.post("/users/staff", {
       fullName: data.full_name,
       email: data.email,
+      phone: data.phone,
+      phoneIsoCode: data.phoneIsoCode,
       password: data.password || undefined,
       staffType: data.staff_type,
     });
@@ -55,6 +59,8 @@ export const updateUser = withApiHandler(
     const payload = {
       fullName: data.full_name,
       email: data.email,
+      phone: data.phone,
+      phoneIsoCode: data.phoneIsoCode,
       role: data.role,
       status: data.status,
       password: data.password || undefined,

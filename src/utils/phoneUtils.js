@@ -7,21 +7,18 @@ export const normalizePhone = (phone) => {
         .replace(/[()-]/g, "");
 };
 
-export const validatePhoneNumber = (phone) => {
-    const phoneStr = normalizePhone(phone);
-    if (!phoneStr) {
-        return { valid: false, error: "Phone number is required" };
-    }
-
-    if (!phoneStr.startsWith("+")) {
-        return { valid: false, error: "Phone must start with country code" };
-    }
-
-    const digits = phoneStr.replace(/\D/g, "");
-    if (digits.length < 8 || digits.length > 15) {
-        return { valid: false, error: "Invalid phone number length" };
-    }
-
-    return { valid: true, normalized: phoneStr };
+export const filterPhoneInput = (val) => {
+    if (!val) return "";
+    return String(val).replace(/\D/g, "");
 };
+
+export const filterNumberInput = filterPhoneInput;
+
+export const onKeyPressPhone = (e) => {
+    if (!/[0-9]/.test(e.key)) {
+        e.preventDefault();
+    }
+};
+
+export const onKeyPressNumeric = onKeyPressPhone;
 

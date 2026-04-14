@@ -137,6 +137,8 @@ const CountryCodeSelector = ({
                             onChange={(e) => setSearchQuery(e.target.value)}
                             onClick={(e) => e.stopPropagation()}
                             onKeyDown={(e) => e.stopPropagation()}
+                            onKeyPress={(e) => e.stopPropagation()}
+                            onKeyUp={(e) => e.stopPropagation()}
                             InputProps={{
                                 startAdornment: (
                                     <InputAdornment position="start">

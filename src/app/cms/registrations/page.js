@@ -29,6 +29,7 @@ import {
   FormControlLabel,
   useTheme,
   Collapse,
+  LinearProgress,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -38,7 +39,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { pdf } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import { exportAllBadges } from "@/utils/exportBadges";
-import { getCountryCodeByIsoCode } from "@/utils/countryCodes";
+import CountryCodeSelector from "@/components/CountryCodeSelector";
+import {
+  DEFAULT_ISO_CODE,
+  getCountryAndPhoneByFullPhone,
+  getCountryCodeByIsoCode,
+} from "@/utils/countryCodes";
 import { getDefaultBadgeTemplate } from "@/services/badgeService";
 import BadgePDF from "@/components/badges/BadgePDF";
 import ICONS from "@/utils/iconUtil";
@@ -68,6 +74,37 @@ import {
   getLocalDate,
   getLocalTime,
 } from "@/utils/dateUtils";
+import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
+import { validatePhone } from "@/utils/validationUtils";
+
+// ── Transformation helper ─────────────────────
+
+const mapRegistration = (r) => ({
+  id: r.id,
+  full_name: r.user?.fullName || r.fullName || "N/A",
+  email: r.user?.email || r.email || "N/A",
+  phone: r.user?.phone || r.phone || "N/A",
+  purpose_of_visit: r.purposeOfVisit,
+  status: r.status,
+  requested_from: r.requestedFrom,
+  requested_to: r.requestedTo,
+  approved_from: r.approvedFrom,
+  approved_to: r.approvedTo,
+  phone_iso_code: r.phoneIsoCode,
+  created_at: r.createdAt,
+  qr_token: r.qrToken,
+  rejection_reason: r.rejectionReason,
+  allow_multi_checkin: r.allowMultiCheckin,
+  department: r.department,
+  department_id: r.departmentId,
+  access_level: r.accessLevel,
+  access_level_id: r.accessLevelId,
+  admin_approved_at: r.adminApprovedAt,
+  admin_approved_by_user_id: r.adminApprovedByUserId,
+  admin_rejection_reason: r.adminRejectionReason,
+  ...r,
+});
+
 // ── Status config ─────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
@@ -182,6 +219,23 @@ const DEFAULT_FIELD_IDENTIFIERS = new Set([
   "phonenumber", "mobile", "contact", "purposeofvisit",
 ]);
 
+const PHONE_FIELD_IDENTIFIERS = new Set([
+  "phone",
+  "phonenumber",
+  "mobile",
+  "mobilephone",
+  "contactnumber",
+  "contactphone",
+]);
+
+const getFieldInputType = (customField) =>
+  String(customField?.inputType || customField?.input_type || "text").toLowerCase();
+
+const isPhoneFieldKey = (key, inputType) => {
+  if (inputType === "phone") return true;
+  return PHONE_FIELD_IDENTIFIERS.has(normalizeFieldIdentifier(key));
+};
+
 const getVisibleFieldValues = (registration) =>
   (Array.isArray(registration?.fieldValues) ? registration.fieldValues : []).filter((fieldValue) => {
     const normalizedKey = normalizeFieldIdentifier(
@@ -249,6 +303,8 @@ export default function CmsRegistrationsPage() {
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isListRefreshing, setIsListRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [requestDateFilter, setRequestDateFilter] = useState("");
@@ -263,7 +319,7 @@ export default function CmsRegistrationsPage() {
 
   const [selected, setSelected] = useState(null);
   const [selectedTab, setSelectedTab] = useState("details");
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null);
   const [fetchingProfile, setFetchingProfile] = useState(false);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
 
@@ -284,6 +340,7 @@ export default function CmsRegistrationsPage() {
   // Edit modal
   const [editModal, setEditModal] = useState(false);
   const [editForm, setEditForm] = useState({});
+  const [editFieldErrors, setEditFieldErrors] = useState({});
   const [editSubmitting, setEditSubmitting] = useState(false);
 
   // Supporting data
@@ -323,14 +380,22 @@ export default function CmsRegistrationsPage() {
     return { from: undefined, to: undefined }; // "all"
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async ({ refreshOnly = false } = {}) => {
+    const shouldShowFullLoader = !refreshOnly && !hasLoadedOnce && data.length === 0;
+    if (shouldShowFullLoader) {
+      setLoading(true);
+    } else {
+      setIsListRefreshing(true);
+    }
+
     try {
       const { from, to } = getDateRangeFromPreset(datePreset, customFrom, customTo);
       const res = await getRegistrations(statusFilter, { from, to });
       setData(res || []);
+      setHasLoadedOnce(true);
     } finally {
-      setLoading(false);
+      if (shouldShowFullLoader) setLoading(false);
+      setIsListRefreshing(false);
     }
   };
 
@@ -349,9 +414,23 @@ export default function CmsRegistrationsPage() {
   const { on } = useSocket();
 
   useEffect(() => {
-    const unsubNew = on("registration:new", () => fetchData());
+    const unsubNew = on("registration:new", (newReg) => {
+      if (!newReg?.id) return;
+      const mapped = mapRegistration(newReg);
+      setData((prev) => {
+        const exists = prev.some((row) => row.id === mapped.id);
+        if (exists) {
+          return prev.map((row) => (row.id === mapped.id ? { ...row, ...mapped } : row));
+        }
+        return [mapped, ...prev];
+      });
+    });
+
     const unsubUpdated = on("registration:updated", (updatedReg) => {
-      fetchData();
+      if (updatedReg?.id) {
+        const mapped = mapRegistration(updatedReg);
+        setData((prev) => prev.map((row) => (row.id === mapped.id ? { ...row, ...mapped } : row)));
+      }
       if (selected?.id === updatedReg.id) {
         getRegistrationById(updatedReg.id).then((fullDetail) => {
           setSelected(fullDetail);
@@ -458,14 +537,14 @@ export default function CmsRegistrationsPage() {
 
   const executeStatusChange = async (targetStatus, payload = {}) => {
     if (!selected?.id) return;
-    setActionLoading(true);
+    setActionLoading({ registrationId: selected.id, targetStatus });
     try {
       await updateStatus(selected.id, { status: targetStatus, ...payload });
       const updated = await getRegistrationById(selected.id);
       setSelected(updated);
-      await fetchData();
+      setData((prev) => prev.map((row) => (row.id === selected.id ? { ...row, ...updated } : row)));
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
   };
 
@@ -513,10 +592,34 @@ export default function CmsRegistrationsPage() {
 
   const buildEditForm = (reg) => {
     const fvMap = {};
+    const fieldMeta = {};
+    const phoneIsoCodes = {};
+    const basePhoneIsoCode = reg?.phoneIsoCode || reg?.phone_iso_code || DEFAULT_ISO_CODE;
     if (Array.isArray(reg.fieldValues)) {
       reg.fieldValues.forEach((fv) => {
-        const key = fv.customField?.fieldKey || fv.customField?.field_key;
+        const customField = fv.customField || fv.custom_field || {};
+        const key = customField.fieldKey || customField.field_key;
         if (key) fvMap[key] = fv.value;
+        if (!key) return;
+
+        const inputType = getFieldInputType(customField);
+        fieldMeta[key] = {
+          label: customField.label || key,
+          inputType,
+          required: Boolean(customField.isRequired ?? customField.is_required),
+        };
+
+        if (isPhoneFieldKey(key, inputType)) {
+          const phoneValue = String(fv.value ?? "");
+          if (phoneValue.startsWith("+")) {
+            const parsed = getCountryAndPhoneByFullPhone(phoneValue);
+            phoneIsoCodes[key] = parsed.isoCode || basePhoneIsoCode;
+            fvMap[key] = filterPhoneInput(parsed.phone);
+          } else {
+            phoneIsoCodes[key] = basePhoneIsoCode;
+            fvMap[key] = filterPhoneInput(phoneValue);
+          }
+        }
       });
     }
     const hasApproved = !!(reg.approved_from || reg.approved_to);
@@ -530,6 +633,8 @@ export default function CmsRegistrationsPage() {
       accessLevelId: hasApproved ? (reg.access_level_id || reg.accessLevelId || "") : "",
       allowMultiCheckin: hasApproved ? (reg.allow_multi_checkin ?? reg.allowMultiCheckin ?? false) : false,
       fieldValues: fvMap,
+      fieldMeta,
+      phoneIsoCodes,
     };
   };
 
@@ -538,6 +643,7 @@ export default function CmsRegistrationsPage() {
     try {
       const fullDetail = await getRegistrationById(row.id);
       setEditForm(buildEditForm(fullDetail));
+      setEditFieldErrors({});
       setEditModal(true);
     } finally {
       setFetchingProfile(false);
@@ -547,11 +653,32 @@ export default function CmsRegistrationsPage() {
   const openEditModal = (reg = selected) => {
     if (!reg) return;
     setEditForm(buildEditForm(reg));
+    setEditFieldErrors({});
     setEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setEditModal(false);
+    setEditFieldErrors({});
   };
 
   const handleEditSubmit = async () => {
     if (!editForm.id) return;
+
+    const phoneErrors = {};
+    Object.entries(editForm.fieldMeta || {}).forEach(([fieldKey, meta]) => {
+      if (!isPhoneFieldKey(fieldKey, meta?.inputType)) return;
+      const value = editForm.fieldValues?.[fieldKey] || "";
+      const isoCode = editForm.phoneIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
+      const error = validatePhone(value, isoCode);
+      if (error) phoneErrors[fieldKey] = error;
+    });
+
+    if (Object.keys(phoneErrors).length > 0) {
+      setEditFieldErrors(phoneErrors);
+      return;
+    }
+
     setEditSubmitting(true);
     try {
       const payload = {
@@ -559,6 +686,15 @@ export default function CmsRegistrationsPage() {
         departmentId: editForm.departmentId || undefined,
         fieldValues: editForm.fieldValues,
       };
+
+      const phoneField = Object.entries(editForm.fieldMeta || {}).find(([fieldKey, meta]) =>
+        isPhoneFieldKey(fieldKey, meta?.inputType),
+      );
+      if (phoneField) {
+        const [fieldKey] = phoneField;
+        payload.phoneIsoCode = editForm.phoneIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
+      }
+
       if (editForm.hasApproved) {
         if (editForm.scheduleFrom) payload.approvedFrom = editForm.scheduleFrom;
         if (editForm.scheduleTo) payload.approvedTo = editForm.scheduleTo;
@@ -574,10 +710,47 @@ export default function CmsRegistrationsPage() {
         setSelected(updated);
       }
       await fetchData();
-      setEditModal(false);
+      closeEditModal();
     } finally {
       setEditSubmitting(false);
     }
+  };
+
+  const handleEditFieldChange = (fieldKey, value) => {
+    setEditForm((prev) => ({
+      ...prev,
+      fieldValues: {
+        ...(prev.fieldValues || {}),
+        [fieldKey]: value,
+      },
+    }));
+
+    if (editFieldErrors[fieldKey]) {
+      setEditFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[fieldKey];
+        return next;
+      });
+    }
+  };
+
+  const handleEditPhoneIsoCodeChange = (fieldKey, isoCode) => {
+    setEditForm((prev) => ({
+      ...prev,
+      phoneIsoCodes: {
+        ...(prev.phoneIsoCodes || {}),
+        [fieldKey]: isoCode,
+      },
+    }));
+
+    const value = editForm.fieldValues?.[fieldKey] || "";
+    const error = value ? validatePhone(value, isoCode) : null;
+    setEditFieldErrors((prev) => {
+      const next = { ...prev };
+      if (error) next[fieldKey] = error;
+      else delete next[fieldKey];
+      return next;
+    });
   };
 
   // ── Badge printing ────────────────────────────────────────────────────────
@@ -873,6 +1046,17 @@ export default function CmsRegistrationsPage() {
           </>
         }
       />
+
+      {isListRefreshing && !loading && (
+        <LinearProgress
+          sx={{
+            mb: 2,
+            borderRadius: 2,
+            height: 4,
+            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
+          }}
+        />
+      )}
 
       {loading ? (
         <LoadingState />
@@ -1212,8 +1396,8 @@ export default function CmsRegistrationsPage() {
                         variant={targetStatus === "visit_ended" ? "contained" : "outlined"}
                         color={btnColors[targetStatus] || "primary"}
                         size="small"
-                        disabled={actionLoading}
-                        startIcon={actionLoading ? <CircularProgress size={14} color="inherit" /> : cfg.icon}
+                        disabled={Boolean(actionLoading)}
+                        startIcon={actionLoading?.registrationId === selected.id && actionLoading?.targetStatus === targetStatus ? <CircularProgress size={14} color="inherit" /> : cfg.icon}
                         onClick={() => openStatusTransition(targetStatus)}
                         sx={{ borderRadius: 30, fontWeight: 700, whiteSpace: "nowrap" }}
                       >
@@ -1318,7 +1502,7 @@ export default function CmsRegistrationsPage() {
             variant="contained"
             color={statusModal.targetStatus === "rejected" ? "error" : "primary"}
             onClick={handleStatusModalConfirm}
-            disabled={actionLoading}
+            disabled={Boolean(actionLoading)}
             startIcon={actionLoading ? <CircularProgress size={16} color="inherit" /> : null}
             sx={{ borderRadius: 30 }}
           >
@@ -1354,7 +1538,7 @@ export default function CmsRegistrationsPage() {
             variant="contained"
             color={confirmModal.isTerminal ? "error" : "primary"}
             onClick={handleConfirmModalConfirm}
-            disabled={actionLoading}
+            disabled={Boolean(actionLoading)}
             startIcon={actionLoading ? <CircularProgress size={16} color="inherit" /> : null}
             sx={{ borderRadius: 30 }}
           >
@@ -1442,8 +1626,8 @@ export default function CmsRegistrationsPage() {
       </Dialog>
 
       {/* ── Edit Registration Modal (SuperAdmin) ─────────────────────────────── */}
-      <Dialog open={editModal} onClose={() => setEditModal(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}>
-        <DialogHeader title="Edit Registration" onClose={() => setEditModal(false)} />
+      <Dialog open={editModal} onClose={closeEditModal} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}>
+        <DialogHeader title="Edit Registration" onClose={closeEditModal} />
         <Divider />
         <DialogContent sx={{ p: 3 }}>
           <Stack spacing={2.5}>
@@ -1519,20 +1703,55 @@ export default function CmsRegistrationsPage() {
             />
 
             {Object.entries(editForm.fieldValues || {}).map(([key, value]) => (
-              <TextField
-                key={key}
-                label={key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                fullWidth
-                value={value || ""}
-                onChange={(e) => setEditForm({ ...editForm, fieldValues: { ...editForm.fieldValues, [key]: e.target.value } })}
-                InputProps={{ sx: { borderRadius: 2 } }}
-              />
+              (() => {
+                const meta = editForm.fieldMeta?.[key] || {};
+                const inputType = meta.inputType || "text";
+                const isPhoneField = isPhoneFieldKey(key, inputType);
+                const error = editFieldErrors[key];
+
+                if (isPhoneField) {
+                  const isoCode = editForm.phoneIsoCodes?.[key] || DEFAULT_ISO_CODE;
+                  return (
+                    <TextField
+                      key={key}
+                      label={meta.label || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                      fullWidth
+                      type="tel"
+                      value={value || ""}
+                      onChange={(e) => handleEditFieldChange(key, filterPhoneInput(e.target.value))}
+                      onKeyPress={onKeyPressPhone}
+                      error={Boolean(error)}
+                      helperText={error}
+                      InputProps={{
+                        startAdornment: (
+                          <CountryCodeSelector
+                            value={isoCode}
+                            onChange={(iso) => handleEditPhoneIsoCodeChange(key, iso)}
+                          />
+                        ),
+                        sx: { borderRadius: 2 },
+                      }}
+                    />
+                  );
+                }
+
+                return (
+                  <TextField
+                    key={key}
+                    label={meta.label || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                    fullWidth
+                    value={value || ""}
+                    onChange={(e) => handleEditFieldChange(key, e.target.value)}
+                    InputProps={{ sx: { borderRadius: 2 } }}
+                  />
+                );
+              })()
             ))}
           </Stack>
         </DialogContent>
         <Divider />
         <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button variant="outlined" onClick={() => setEditModal(false)} disabled={editSubmitting} sx={{ borderRadius: 30 }}>Cancel</Button>
+          <Button variant="outlined" onClick={closeEditModal} disabled={editSubmitting} sx={{ borderRadius: 30 }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleEditSubmit}

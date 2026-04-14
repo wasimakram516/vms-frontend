@@ -37,7 +37,9 @@ import { getHost, createHost, updateHost, deleteHost } from "@/services/hostServ
 import { uploadMediaFiles } from "@/utils/mediaUpload";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, getCountryAndPhoneByFullPhone } from "@/utils/countryCodes";
-import { validateRequired, validateEmail, validateUrl } from "@/utils/validationUtils";
+import { validateRequired, validateEmail, validateUrl, validatePhone } from "@/utils/validationUtils";
+import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
+
 
 const emptyForm = () => ({
   name: "",
@@ -97,6 +99,7 @@ export default function HostDetailsPage() {
   const [isEdit, setIsEdit] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isoCodes, setIsoCodes] = useState(emptyIsoCodes());
+  const [errors, setErrors] = useState({});
 
   // Logo: pending file + preview (not uploaded until save)
   const [logoFile, setLogoFile] = useState(null);
@@ -128,6 +131,7 @@ export default function HostDetailsPage() {
     setLogoFile(null);
     setLogoPreview("");
     setIsEdit(false);
+    setErrors({});
     setDialogOpen(true);
   };
 
@@ -151,6 +155,7 @@ export default function HostDetailsPage() {
     setLogoFile(null);
     setLogoPreview(host.logoUrl || "");
     setIsEdit(true);
+    setErrors({});
     setDialogOpen(true);
   };
 
@@ -191,13 +196,21 @@ export default function HostDetailsPage() {
       if (cpEmailError) errors.contactPersonEmail = cpEmailError;
     }
     
+    // Add phone validation
+    const phoneError = validatePhone(form.phone, isoCodes.phone);
+    if (phoneError) errors.phone = phoneError;
+    
+    const cpPhoneError = validatePhone(form.contactPersonPhone, isoCodes.contactPersonPhone);
+    if (cpPhoneError) errors.contactPersonPhone = cpPhoneError;
+    
     return errors;
   };
 
   const handleSave = async () => {
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
-      Object.values(validationErrors).forEach(err => showMessage(err, "error"));
+      setErrors(validationErrors);
+      showMessage(Object.values(validationErrors)[0], "error");
       return;
     }
 
@@ -486,19 +499,29 @@ export default function HostDetailsPage() {
               Organization
             </Typography>
             <Stack spacing={2} sx={{ mb: 3 }}>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
                   fullWidth
                   label="Organization Name *"
                   value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  error={Boolean(errors.name)}
+                  helperText={errors.name}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, name: e.target.value }));
+                    if (errors.name) setErrors(prev => ({ ...prev, name: null }));
+                  }}
                 />
                 <TextField
                   fullWidth
                   label="Email *"
                   type="email"
                   value={form.email}
-                  onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                  error={Boolean(errors.email)}
+                  helperText={errors.email}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, email: e.target.value }));
+                    if (errors.email) setErrors(prev => ({ ...prev, email: null }));
+                  }}
                 />
               </Stack>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -506,12 +529,24 @@ export default function HostDetailsPage() {
                   fullWidth
                   label="Phone"
                   value={form.phone}
-                  onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value.replace(/\D/g, "") }))}
+                  error={Boolean(errors.phone)}
+                  helperText={errors.phone}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, phone: filterPhoneInput(e.target.value) }));
+                    if (errors.phone) setErrors(prev => ({ ...prev, phone: null }));
+                  }}
+                  onKeyPress={onKeyPressPhone}
                   InputProps={{
                     startAdornment: (
                       <CountryCodeSelector
                         value={isoCodes.phone}
-                        onChange={(iso) => setIsoCodes((p) => ({ ...p, phone: iso }))}
+                        onChange={(iso) => {
+                          setIsoCodes((p) => ({ ...p, phone: iso }));
+                          if (form.phone) {
+                            const err = validatePhone(form.phone, iso);
+                            setErrors(p => ({ ...p, phone: err }));
+                          }
+                        }}
                       />
                     ),
                   }}
@@ -521,7 +556,12 @@ export default function HostDetailsPage() {
                   label="Website"
                   placeholder="https://example.com"
                   value={form.website}
-                  onChange={(e) => setForm((p) => ({ ...p, website: e.target.value }))}
+                  error={Boolean(errors.website)}
+                  helperText={errors.website}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, website: e.target.value }));
+                    if (errors.website) setErrors(prev => ({ ...prev, website: null }));
+                  }}
                 />
               </Stack>
               <TextField
@@ -530,7 +570,12 @@ export default function HostDetailsPage() {
                 multiline
                 rows={2}
                 value={form.address}
-                onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))}
+                error={Boolean(errors.address)}
+                helperText={errors.address}
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, address: e.target.value }));
+                  if (errors.address) setErrors(prev => ({ ...prev, address: null }));
+                }}
               />
             </Stack>
 
@@ -543,7 +588,12 @@ export default function HostDetailsPage() {
                 fullWidth
                 label="Contact Person Name"
                 value={form.contactPersonName}
-                onChange={(e) => setForm((p) => ({ ...p, contactPersonName: e.target.value }))}
+                error={Boolean(errors.contactPersonName)}
+                helperText={errors.contactPersonName}
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, contactPersonName: e.target.value }));
+                  if (errors.contactPersonName) setErrors(prev => ({ ...prev, contactPersonName: null }));
+                }}
               />
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
@@ -551,18 +601,35 @@ export default function HostDetailsPage() {
                   label="Contact Email"
                   type="email"
                   value={form.contactPersonEmail}
-                  onChange={(e) => setForm((p) => ({ ...p, contactPersonEmail: e.target.value }))}
+                  error={Boolean(errors.contactPersonEmail)}
+                  helperText={errors.contactPersonEmail}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, contactPersonEmail: e.target.value }));
+                    if (errors.contactPersonEmail) setErrors(prev => ({ ...prev, contactPersonEmail: null }));
+                  }}
                 />
                 <TextField
                   fullWidth
                   label="Contact Phone"
                   value={form.contactPersonPhone}
-                  onChange={(e) => setForm((p) => ({ ...p, contactPersonPhone: e.target.value.replace(/\D/g, "") }))}
+                  error={Boolean(errors.contactPersonPhone)}
+                  helperText={errors.contactPersonPhone}
+                  onChange={(e) => {
+                    setForm((p) => ({ ...p, contactPersonPhone: filterPhoneInput(e.target.value) }));
+                    if (errors.contactPersonPhone) setErrors(prev => ({ ...prev, contactPersonPhone: null }));
+                  }}
+                  onKeyPress={onKeyPressPhone}
                   InputProps={{
                     startAdornment: (
                       <CountryCodeSelector
                         value={isoCodes.contactPersonPhone}
-                        onChange={(iso) => setIsoCodes((p) => ({ ...p, contactPersonPhone: iso }))}
+                        onChange={(iso) => {
+                          setIsoCodes((p) => ({ ...p, contactPersonPhone: iso }));
+                          if (form.contactPersonPhone) {
+                            const err = validatePhone(form.contactPersonPhone, iso);
+                            setErrors(p => ({ ...p, contactPersonPhone: err }));
+                          }
+                        }}
                       />
                     ),
                   }}

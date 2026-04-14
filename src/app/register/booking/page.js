@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
+  Chip,
   Paper,
   Stack,
   Typography,
@@ -18,6 +19,7 @@ import {
   InputLabel,
   Select,
   FormHelperText,
+  Tooltip,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
@@ -33,6 +35,7 @@ import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { formatTime, parse24To12, convert12To24, formatDate } from "@/utils/dateUtils";
 import { validateRequired } from "@/utils/validationUtils";
+import { QRCodeCanvas } from "qrcode.react";
  
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
@@ -48,6 +51,7 @@ export default function BookingPage() {
   const [success, setSuccess] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
+  const qrCanvasRef = useRef(null);
 
   const [bookingType, setBookingType] = useState("custom");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
@@ -182,9 +186,8 @@ export default function BookingPage() {
 
         if (selectedPreset === "fullDay") {
           const fromParts = bookingData.timeFrom.split(":");
-          const toParts = bookingData.timeTo.split(":");
           from = from.startOf("day").hour(parseInt(fromParts[0])).minute(parseInt(fromParts[1]));
-          to = to.add(1, "day").startOf("day").hour(parseInt(toParts[0])).minute(parseInt(toParts[1]));
+          to = to.add(1, "day").startOf("day").hour(parseInt(fromParts[0])).minute(parseInt(fromParts[1]));
         } else if (selectedPreset === "fullWeek") {
           from = from.startOf("day");
           to = to.add(6, "days").endOf("day");
@@ -224,18 +227,197 @@ export default function BookingPage() {
     }
   };
 
+  const handleDownloadQr = () => {
+    const canvas = document.getElementById("visitor-qr-canvas");
+    if (!canvas) return;
+    const url = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `visit-qr-${success?.qrToken || "code"}.png`;
+    a.click();
+  };
+
   if (success) {
+    const fullName =
+      success?.visitor?.fullName ||
+      success?.user?.fullName ||
+      visitorData?.fullName ||
+      visitorData?.dynamicFields?.full_name ||
+      "Visitor";
+    const purposeOfVisit = success?.purposeOfVisit || visitorData?.purposeOfVisit;
+    const departmentName = success?.department?.name;
+    const requestedFrom = success?.requestedFrom ? dayjs(success.requestedFrom) : null;
+    const requestedTo = success?.requestedTo ? dayjs(success.requestedTo) : null;
+    const dateRange = requestedFrom
+      ? requestedFrom.format("ddd, D MMM YYYY") +
+        (requestedTo && !requestedFrom.isSame(requestedTo, "day")
+          ? " – " + requestedTo.format("ddd, D MMM YYYY")
+          : "")
+      : null;
+    const timeRange = requestedFrom
+      ? requestedFrom.format("h:mm A") + " – " + (requestedTo?.format("h:mm A") ?? "")
+      : null;
+
+    const summaryRows = [
+      { label: "Full Name", value: fullName },
+      ...(purposeOfVisit ? [{ label: "Purpose of Visit", value: purposeOfVisit }] : []),
+      ...(departmentName ? [{ label: "Department", value: departmentName }] : []),
+      ...(dateRange ? [{ label: "Date", value: dateRange }] : []),
+      ...(timeRange ? [{ label: "Time Window", value: timeRange }] : []),
+    ];
+
     return (
-      <VisitorLayout justifyContent="center">
-        <Box sx={{ py: 4, textAlign: "center" }}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-            <Box sx={{ p: 2, borderRadius: "50%", bgcolor: (theme) => alpha(theme.palette.success.main, 0.1), color: "success.main", display: "inline-flex", mb: 3 }}>
-              <ICONS.checkCircle fontSize="large" />
-            </Box>
-            <Typography variant="h5" fontWeight={800} gutterBottom sx={{ fontFamily: "'Comfortaa', cursive" }}>Application Sent!</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-              Your registration request is pending approval. You will receive an email once it is processed.
-            </Typography>
+      <VisitorLayout justifyContent="center" maxWidth={480}>
+        <motion.div
+          initial={{ scale: 0.92, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+        >
+          <Stack spacing={3} alignItems="center" sx={{ py: 2 }}>
+            {/* Header */}
+            <Stack alignItems="center" spacing={1}>
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: "50%",
+                  bgcolor: (theme) => alpha(theme.palette.success.main, 0.12),
+                  color: "success.main",
+                  display: "inline-flex",
+                }}
+              >
+                <ICONS.checkCircle sx={{ fontSize: 36 }} />
+              </Box>
+              <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", textAlign: "center" }}>
+                Application Sent!
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", maxWidth: 340 }}>
+                Your registration is pending approval. Check your email for your QR code — you may be asked to show it on arrival.
+              </Typography>
+            </Stack>
+
+            {/* QR Code Card */}
+            {success?.qrToken && (
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  borderRadius: 4,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "background.paper",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 2,
+                  width: "100%",
+                }}
+              >
+                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 1 }}>
+                  Your QR Code
+                </Typography>
+
+                <Box
+                  sx={{
+                    p: 1.5,
+                    bgcolor: "#ffffff",
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    display: "inline-flex",
+                  }}
+                >
+                  <QRCodeCanvas
+                    id="visitor-qr-canvas"
+                    value={success.qrToken}
+                    size={240}
+                    bgColor="#ffffff"
+                    fgColor="#0d1117"
+                    level="M"
+                    includeMargin={false}
+                  />
+                </Box>
+
+                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace", letterSpacing: 2 }}>
+                  {success.qrToken}
+                </Typography>
+
+                <Tooltip title="Save the QR code as an image">
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<ICONS.download />}
+                    onClick={handleDownloadQr}
+                    sx={{ borderRadius: 30, textTransform: "none", fontWeight: 700 }}
+                  >
+                    Download QR
+                  </Button>
+                </Tooltip>
+              </Paper>
+            )}
+
+            {/* Visit Summary */}
+            <Paper
+              elevation={0}
+              sx={{
+                borderRadius: 4,
+                border: "1px solid",
+                borderColor: "divider",
+                overflow: "hidden",
+                width: "100%",
+              }}
+            >
+              <Box
+                sx={{
+                  px: 2.5,
+                  py: 1.5,
+                  bgcolor: (theme) => alpha(theme.palette.text.primary, isDark ? 0.06 : 0.03),
+                  borderBottom: "1px solid",
+                  borderColor: "divider",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 1 }}>
+                  Visit Summary
+                </Typography>
+                <Chip
+                  label="Pending Approval"
+                  size="small"
+                  sx={{
+                    bgcolor: (theme) => alpha(theme.palette.warning.main, 0.12),
+                    color: "warning.main",
+                    fontWeight: 700,
+                    fontSize: "0.68rem",
+                    height: 22,
+                  }}
+                />
+              </Box>
+              <Stack divider={<Divider />}>
+                {summaryRows.map(({ label, value }) => (
+                  <Stack
+                    key={label}
+                    direction="row"
+                    sx={{ px: 2.5, py: 1.25 }}
+                    alignItems="flex-start"
+                    spacing={1}
+                  >
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ minWidth: 110, fontWeight: 600, pt: 0.2 }}
+                    >
+                      {label}
+                    </Typography>
+                    <Typography variant="body2" fontWeight={500} sx={{ flex: 1 }}>
+                      {value}
+                    </Typography>
+                  </Stack>
+                ))}
+              </Stack>
+            </Paper>
+
+            {/* Home Button */}
             <Button
               variant="contained"
               fullWidth
@@ -244,12 +426,12 @@ export default function BookingPage() {
                 resetVisitorFlow();
                 router.push("/");
               }}
-              sx={{ py: 1.5, borderRadius: 30 }}
+              sx={{ py: 1.5, borderRadius: 30, fontWeight: 700 }}
             >
-              Home
+              Back to Home
             </Button>
-          </motion.div>
-        </Box>
+          </Stack>
+        </motion.div>
       </VisitorLayout>
     );
   }
@@ -339,7 +521,13 @@ export default function BookingPage() {
                 {/* Toggle between Custom and Preset using Tabs */}
                 <Tabs
                 value={bookingType}
-                onChange={(_, value) => setBookingType(value)}
+                onChange={(_, value) => {
+                  setBookingType(value);
+                  // Ensure timeTo is synced when switching to Full Day preset
+                  if (value === "preset" && selectedPreset === "fullDay") {
+                    setBookingData(prev => ({ ...prev, timeTo: prev.timeFrom }));
+                  }
+                }}
                 variant="fullWidth"
                 sx={{
                   minHeight: 46,

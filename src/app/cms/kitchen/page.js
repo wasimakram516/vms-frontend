@@ -31,6 +31,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  LinearProgress,
 } from "@mui/material";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import ICONS from "@/utils/iconUtil";
@@ -50,6 +51,44 @@ import { getRegistrations } from "@/services/registrationService";
 import { useRef } from "react";
 import OrderTrackingModal from "./OrderTrackingModal";
 
+const getRegistrationUserKey = (registration) => {
+  return (
+    registration?.userId
+    || registration?.user?.id
+    || registration?.id
+  );
+};
+
+const visitorOptionFallbackKeys = new WeakMap();
+let visitorOptionFallbackCounter = 0;
+
+const getVisitorOptionKey = (registration) => {
+  if (!registration) return "visitor:null";
+  if (registration.id) return `registration:${registration.id}`;
+
+  const stableIdentity = registration.userId || registration.user?.id || registration.createdAt || registration.created_at;
+  if (stableIdentity) return `identity:${stableIdentity}`;
+
+  if (!visitorOptionFallbackKeys.has(registration)) {
+    visitorOptionFallbackCounter += 1;
+    visitorOptionFallbackKeys.set(registration, `fallback:${visitorOptionFallbackCounter}`);
+  }
+
+  return visitorOptionFallbackKeys.get(registration);
+};
+
+const getLatestCheckedInVisitors = (registrations) => {
+  const latestByUser = new Map();
+
+  for (const registration of Array.isArray(registrations) ? registrations : []) {
+    const userKey = getRegistrationUserKey(registration);
+    if (!userKey || latestByUser.has(userKey)) continue;
+    latestByUser.set(userKey, registration);
+  }
+
+  return Array.from(latestByUser.values()).filter((registration) => registration?.status === "checked_in");
+};
+
 function OrderingContent() {
   const { user } = useAuth();
   const { hostSettings, loading: settingsLoading } = useSettings();
@@ -67,6 +106,8 @@ function OrderingContent() {
 
   const [resList, setResList] = useState([]);
   const [resLoading, setResLoading] = useState(false);
+  const [resHasLoadedOnce, setResHasLoadedOnce] = useState(false);
+  const [isResListRefreshing, setIsResListRefreshing] = useState(false);
   const [selectedVisitor, setSelectedVisitor] = useState(null);
 
   const [cart, setCart] = useState({});
@@ -108,7 +149,11 @@ function OrderingContent() {
     fetchCheckedInRegistrations();
 
     const unsubUpdate = on("registration:updated", (updatedReg) => {
-      fetchCheckedInRegistrations();
+      if (!updatedReg?.id) return;
+      setResList((prev) => {
+        const updated = prev.map((r) => (r.id === updatedReg.id ? { ...r, ...updatedReg } : r)).filter((r) => r?.status === "checked_in");
+        return updated.length > 0 ? updated : prev.filter((r) => r?.status === "checked_in");
+      });
       
       // Auto-clear selection if the selected visitor is no longer checked in
       setSelectedVisitor(prev => {
@@ -119,24 +164,33 @@ function OrderingContent() {
       });
     });
 
-    const unsubNew = on("registration:new", () => fetchCheckedInRegistrations());
+    const unsubNew = on("registration:new", (newReg) => {
+      if (!newReg?.id || newReg.status !== "checked_in") return;
+      setResList((prev) => {
+        const exists = prev.some((r) => r.id === newReg.id);
+        return exists ? prev.map((r) => (r.id === newReg.id ? { ...r, ...newReg } : r)) : [newReg, ...prev];
+      });
+    });
 
     return () => {
       unsubUpdate?.();
       unsubNew?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on]);
 
-  const fetchCheckedInRegistrations = async () => {
-    setResLoading(true);
+  const fetchCheckedInRegistrations = useCallback(async ({ silent = false } = {}) => {
+    const shouldShowFullLoader = !silent && !resHasLoadedOnce && resList.length === 0;
+    if (shouldShowFullLoader) setResLoading(true);
+    else if (!silent) setIsResListRefreshing(true);
     try {
-      const res = await getRegistrations("checked_in");
-      setResList(Array.isArray(res) ? res : []);
+      const res = await getRegistrations();
+      setResList(getLatestCheckedInVisitors(res));
+      setResHasLoadedOnce(true);
     } finally {
-      setResLoading(false);
+      if (shouldShowFullLoader) setResLoading(false);
+      if (!silent) setIsResListRefreshing(false);
     }
-  };
+  }, [resHasLoadedOnce, resList.length]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -247,14 +301,29 @@ function OrderingContent() {
         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, mb: 1, display: "block" }}>
           ATTACHED VISITOR (OPTIONAL)
         </Typography>
+        {isResListRefreshing && !resLoading && (
+          <LinearProgress
+            sx={{
+              mb: 1.5,
+              borderRadius: 2,
+              height: 3,
+              backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
+            }}
+          />
+        )}
         <Autocomplete
           size="small"
           options={resList}
           loading={resLoading}
+          isOptionEqualToValue={(option, value) => getVisitorOptionKey(option) === getVisitorOptionKey(value)}
           getOptionLabel={(option) => {
             const name = option.user?.fullName || option.full_name || "Visitor";
             const org = option.organisation || option.companyName || "";
             return `${name} (${org})`;
+          }}
+          renderOption={(props, option) => {
+            const { key: _muiKey, ...rest } = props;
+            return <li {...rest} key={String(getVisitorOptionKey(option))}>{`${option.user?.fullName || option.full_name || "Visitor"} (${option.organisation || option.companyName || ""})`}</li>;
           }}
           noOptionsText="No checked-in visitors found"
           value={selectedVisitor}

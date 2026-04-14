@@ -24,6 +24,7 @@ import {
   Switch,
   FormControlLabel,
   Chip,
+  LinearProgress,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -83,6 +84,8 @@ export default function CmsApprovalsPage() {
   const isSuperAdmin = user?.role === "superadmin";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isListRefreshing, setIsListRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState("");
   const [approveTarget, setApproveTarget] = useState(null);
@@ -107,8 +110,10 @@ export default function CmsApprovalsPage() {
   const [allowMultiCheckin, setAllowMultiCheckin] = useState(false);
   const [accessLevelError, setAccessLevelError] = useState("");
 
-  const fetchPending = useCallback(async () => {
-    setLoading(true);
+  const fetchPending = useCallback(async ({ refreshOnly = false } = {}) => {
+    const shouldShowFullLoader = !refreshOnly && !hasLoadedOnce && rows.length === 0;
+    if (shouldShowFullLoader) setLoading(true);
+    else setIsListRefreshing(true);
     try {
       if (isSuperAdmin) {
         const [pending, adminApproved] = await Promise.all([
@@ -123,10 +128,12 @@ export default function CmsApprovalsPage() {
         const data = await getRegistrations("pending");
         setRows(Array.isArray(data) ? data : []);
       }
+      setHasLoadedOnce(true);
     } finally {
-      setLoading(false);
+      if (shouldShowFullLoader) setLoading(false);
+      setIsListRefreshing(false);
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, hasLoadedOnce, rows.length]);
 
   useEffect(() => {
     fetchPending();
@@ -138,14 +145,34 @@ export default function CmsApprovalsPage() {
   const { on } = useSocket();
 
   useEffect(() => {
-    const unsubNew = on("registration:new", () => fetchPending());
-    const unsubUpdated = on("registration:updated", () => fetchPending());
+    const unsubNew = on("registration:new", (newReg) => {
+      if (!newReg?.id) return;
+      const isRelevant = isSuperAdmin || newReg.status === "pending";
+      if (isRelevant) {
+        setRows((prev) => {
+          const exists = prev.some((row) => row.id === newReg.id);
+          return exists ? prev.map((row) => (row.id === newReg.id ? { ...row, ...newReg } : row)) : [newReg, ...prev];
+        });
+      }
+    });
+    const unsubUpdated = on("registration:updated", (updatedReg) => {
+      if (!updatedReg?.id) return;
+      const isRelevant = isSuperAdmin || updatedReg.status === "pending" || updatedReg.status === "admin_approved";
+      setRows((prev) => {
+        const stillRelevant = isRelevant && (updatedReg.status === "pending" || updatedReg.status === "admin_approved");
+        if (!stillRelevant) {
+          return prev.filter((row) => row.id !== updatedReg.id);
+        }
+        const exists = prev.some((row) => row.id === updatedReg.id);
+        return exists ? prev.map((row) => (row.id === updatedReg.id ? { ...row, ...updatedReg } : row)) : [updatedReg, ...prev];
+      });
+    });
 
     return () => {
       unsubNew?.();
       unsubUpdated?.();
     };
-  }, [on, fetchPending]);
+  }, [isSuperAdmin, on]);
 
   const filtered = useMemo(() => {
     if (!Array.isArray(rows)) return [];
@@ -576,6 +603,17 @@ export default function CmsApprovalsPage() {
           </FormControl>
         }
       />
+
+      {isListRefreshing && !loading && (
+        <LinearProgress
+          sx={{
+            mb: 2,
+            borderRadius: 2,
+            height: 4,
+            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
+          }}
+        />
+      )}
 
       {loading ? (
         <LoadingState />

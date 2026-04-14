@@ -274,24 +274,6 @@ export const formatPhoneNumberForDisplay = (phone, isoCode) => {
     return phone;
 };
 
-export const validatePhoneNumber = (phone, isoCode) => {
-    if (!phone) return false;
-
-    const country = getCountryCodeByIsoCode(isoCode);
-    if (!country) return false;
-
-    const digits = country.digits;
-    const phoneLength = phone.replace(/\D/g, '').length;
-
-    if (typeof digits === 'number') {
-        return phoneLength === digits;
-    } else if (typeof digits === 'object' && digits.min && digits.max) {
-        return phoneLength >= digits.min && phoneLength <= digits.max;
-    }
-
-    return true;
-};
-
 export const getCountryAndPhoneByFullPhone = (fullPhone) => {
     if (!fullPhone) return { isoCode: DEFAULT_ISO_CODE, phone: "" };
 
