@@ -10,6 +10,8 @@ import {
   Chip,
   Avatar,
   Skeleton,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { useRouter } from "next/navigation";
@@ -99,6 +101,7 @@ export default function CmsDashboardPage() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exportOpen, setExportOpen] = useState(false);
+  const [period, setPeriod] = useState("today"); // "today" | "week" | "month" | "year" | "all"
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -108,30 +111,36 @@ export default function CmsDashboardPage() {
     else setGreeting("Good Evening");
   }, []);
 
-  const fetchStats = useCallback(async () => {
-    const result = await getDashboardStats();
+  const fetchStats = useCallback(async (p) => {
+    setLoading(true);
+    const result = await getDashboardStats(p ?? period);
     if (result && !result.error) {
       setStats(result);
     }
     setLoading(false);
-  }, []);
+  }, [period]);
 
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+    fetchStats(period);
+  }, [period]);
+
+  const handlePeriodChange = (_, newPeriod) => {
+    if (newPeriod !== null) setPeriod(newPeriod);
+  };
 
   // Refresh on any registration socket event
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
     socketRef.current = socket;
 
-    socket.on("registration:new", fetchStats);
-    socket.on("registration:updated", fetchStats);
-    socket.on("dashboard:live-update", fetchStats);
-    socket.on("dashboard:stats-update", fetchStats);
+    const refresh = () => fetchStats(period);
+    socket.on("registration:new", refresh);
+    socket.on("registration:updated", refresh);
+    socket.on("dashboard:live-update", refresh);
+    socket.on("dashboard:stats-update", refresh);
 
     return () => socket.disconnect();
-  }, [fetchStats]);
+  }, [fetchStats, period]);
 
   // Build stat cards from live data
   const statCards = [
@@ -177,8 +186,15 @@ export default function CmsDashboardPage() {
     .filter((s) => s.value > 0);
 
   // Build bar chart data from monthlyVolume
-  const approvedSeries = (stats?.monthlyVolume ?? Array.from({ length: 12 }, (_, i) => ({ month: i + 1, approved: 0, rejected: 0 }))).map((m) => m.approved);
-  const rejectedSeries = (stats?.monthlyVolume ?? Array.from({ length: 12 }, (_, i) => ({ month: i + 1, approved: 0, rejected: 0 }))).map((m) => m.rejected);
+  const isMonthlyView = !period || period === "year" || period === "all";
+  const volumeData = stats?.monthlyVolume ?? (isMonthlyView
+    ? Array.from({ length: 12 }, (_, i) => ({ month: i + 1, approved: 0, rejected: 0 }))
+    : []);
+  const approvedSeries = volumeData.map((m) => m.approved);
+  const rejectedSeries = volumeData.map((m) => m.rejected);
+  const volumeXLabels = isMonthlyView
+    ? MONTH_LABELS
+    : volumeData.map((m) => m.label ?? `Day ${m.month}`);
 
   return (
     <Box sx={{ maxWidth: 1400, mx: "auto" }}>
@@ -211,6 +227,50 @@ export default function CmsDashboardPage() {
       </Box>
 
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+
+      {/* Period filter toggle */}
+      <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} justifyContent="space-between" sx={{ mb: 4 }} spacing={2}>
+        <ToggleButtonGroup
+          value={period}
+          exclusive
+          onChange={handlePeriodChange}
+          size="small"
+          sx={{
+            bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)",
+            borderRadius: 3,
+            p: 0.5,
+            "& .MuiToggleButton-root": {
+              border: "none",
+              borderRadius: "10px !important",
+              px: 2,
+              py: 0.6,
+              fontWeight: 700,
+              fontSize: "0.78rem",
+              textTransform: "none",
+              "&.Mui-selected": {
+                bgcolor: isDark ? "rgba(255,255,255,0.15)" : "background.paper",
+                boxShadow: isDark ? "0 4px 12px rgba(0,0,0,0.3)" : "0 2px 8px rgba(0,0,0,0.1)",
+                color: "text.primary",
+              },
+            },
+          }}
+        >
+          {[
+            { value: "today", label: "Today" },
+            { value: "week", label: "This Week" },
+            { value: "month", label: "This Month" },
+            { value: "year", label: "This Year" },
+            { value: "all", label: "All Time" },
+          ].map(({ value, label }) => (
+            <ToggleButton key={value} value={value}>{label}</ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        {stats?.period && (
+          <Typography variant="caption" color="text.secondary" fontWeight={600}>
+            Showing: {stats.period}
+          </Typography>
+        )}
+      </Stack>
 
       {/* Primary Stats Grid */}
       <Grid container spacing={3} mb={5}>
@@ -285,6 +345,7 @@ export default function CmsDashboardPage() {
           <AppCard variant="frosted" sx={{ p: 3, minHeight: 400 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
               <Typography variant="h6" fontWeight={700}>Registration Volume</Typography>
+              {stats?.period && <Typography variant="caption" color="text.secondary" fontWeight={600}>{stats.period}</Typography>}
             </Stack>
             {loading ? (
               <Skeleton variant="rounded" width="100%" height={300} />
@@ -303,7 +364,7 @@ export default function CmsDashboardPage() {
                       color: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)",
                     },
                   ]}
-                  xAxis={[{ data: MONTH_LABELS, scaleType: "band" }]}
+                  xAxis={[{ data: volumeXLabels, scaleType: "band" }]}
                   height={300}
                   slotProps={{
                     legend: {

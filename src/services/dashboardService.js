@@ -6,8 +6,9 @@ export const getLiveVisitors = withApiHandler(async () => {
   return res.data?.data ?? res.data;
 });
 
-export const getDashboardStats = withApiHandler(async () => {
-  const res = await api.get("/dashboard/stats");
+export const getDashboardStats = withApiHandler(async (period = "today") => {
+  const params = period && period !== "all" ? { period } : {};
+  const res = await api.get("/dashboard/stats", { params });
   return res.data?.data ?? res.data;
 });
 

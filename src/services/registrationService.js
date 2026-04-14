@@ -80,8 +80,11 @@ const mapRegistration = (r) => ({
   ...r,
 });
 
-export const getRegistrations = withApiHandler(async (status = null) => {
-  const params = status && status !== "all" ? { status } : {};
+export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}) => {
+  const params = {};
+  if (status && status !== "all") params.status = status;
+  if (from) params.from = from;
+  if (to) params.to = to;
   const res = await api.get("/registrations", { params });
   const registrations = res.data?.data || res.data || [];
 

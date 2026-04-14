@@ -34,10 +34,10 @@ function RecordMetadata({
     normalizeName(createdByName) || (createdByDisplayName && String(createdByDisplayName).trim()) || "N/A";
   const rawUpdatedByName =
     normalizeName(updatedByName) || (updatedByDisplayName && String(updatedByDisplayName).trim()) || "N/A";
-  const dateStr = (d) => (d ? formatDateTimeWithLocale(d, locale) : "N/A");
+  const dateStr = (d) => (d ? formatDateTimeWithLocale(d, locale) : "—");
   const updatedAtDisplay = updatedAt ?? updatedAtFallback;
   const eitherUpdatedNA = !updatedAtDisplay || rawUpdatedByName === "N/A";
-  const updatedByNameDisplay = eitherUpdatedNA ? "N/A" : rawUpdatedByName;
+  const updatedByNameDisplay = eitherUpdatedNA ? "Never updated" : rawUpdatedByName;
   const updatedAtForDisplay = eitherUpdatedNA ? undefined : updatedAtDisplay;
 
   const createdByLabel = "Created";
@@ -101,24 +101,28 @@ function RecordMetadata({
             >
               {updatedByNameDisplay}
             </Typography>
-            <Box
-              component="span"
-              sx={{
-                width: 3,
-                height: 3,
-                borderRadius: "50%",
-                bgcolor: "text.disabled",
-                opacity: 0.7,
-              }}
-            />
-            {TimeIcon && <TimeIcon sx={{ ...iconSx, color: "info.main" }} />}
-            <Typography
-              variant="caption"
-              sx={{ fontSize: "0.65rem", color: "text.secondary" }}
-              noWrap
-            >
-              {dateStr(updatedAtForDisplay)}
-            </Typography>
+            {!eitherUpdatedNA && (
+              <>
+                <Box
+                  component="span"
+                  sx={{
+                    width: 3,
+                    height: 3,
+                    borderRadius: "50%",
+                    bgcolor: "text.disabled",
+                    opacity: 0.7,
+                  }}
+                />
+                {TimeIcon && <TimeIcon sx={{ ...iconSx, color: "info.main" }} />}
+                <Typography
+                  variant="caption"
+                  sx={{ fontSize: "0.65rem", color: "text.secondary" }}
+                  noWrap
+                >
+                  {dateStr(updatedAtForDisplay)}
+                </Typography>
+              </>
+            )}
           </Box>
         </Tooltip>
       </Stack>

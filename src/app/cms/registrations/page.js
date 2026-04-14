@@ -252,6 +252,11 @@ export default function CmsRegistrationsPage() {
   const [approvedDateFilter, setApprovedDateFilter] = useState("");
   const [approvedTimeFilter, setApprovedTimeFilter] = useState({ hour12: "", minute: "00", ampm: "AM", enabled: false });
 
+  // Preset date range filter (sent to backend as createdAt range)
+  const [datePreset, setDatePreset] = useState("all"); // "all" | "today" | "week" | "month" | "year" | "custom"
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
   const [selected, setSelected] = useState(null);
   const [selectedTab, setSelectedTab] = useState("details");
   const [actionLoading, setActionLoading] = useState(false);
@@ -288,10 +293,34 @@ export default function CmsRegistrationsPage() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
 
+  // Compute from/to (YYYY-MM-DD Oman time) from the selected preset
+  const getDateRangeFromPreset = (preset, cFrom, cTo) => {
+    const omanNow = new Date(Date.now() + 4 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    const fmt = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    const today = fmt(omanNow);
+    if (preset === "today") return { from: today, to: today };
+    if (preset === "week") {
+      const weekAgo = new Date(omanNow); weekAgo.setUTCDate(weekAgo.getUTCDate() - 6);
+      return { from: fmt(weekAgo), to: today };
+    }
+    if (preset === "month") {
+      const monthAgo = new Date(omanNow); monthAgo.setUTCMonth(monthAgo.getUTCMonth() - 1);
+      return { from: fmt(monthAgo), to: today };
+    }
+    if (preset === "year") {
+      const yearStart = `${omanNow.getUTCFullYear()}-01-01`;
+      return { from: yearStart, to: today };
+    }
+    if (preset === "custom") return { from: cFrom || undefined, to: cTo || undefined };
+    return { from: undefined, to: undefined }; // "all"
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await getRegistrations(statusFilter);
+      const { from, to } = getDateRangeFromPreset(datePreset, customFrom, customTo);
+      const res = await getRegistrations(statusFilter, { from, to });
       setData(res || []);
     } finally {
       setLoading(false);
@@ -303,7 +332,7 @@ export default function CmsRegistrationsPage() {
     fetchDefaultBadgeTemplate();
     getAccessLevels().then((res) => setAccessLevels(Array.isArray(res) ? res : []));
     getDepartments().then((res) => setDepartments(Array.isArray(res) ? res : []));
-  }, [statusFilter]);
+  }, [statusFilter, datePreset, customFrom, customTo]);
 
   const fetchDefaultBadgeTemplate = async () => {
     const template = await getDefaultBadgeTemplate();
@@ -623,13 +652,22 @@ export default function CmsRegistrationsPage() {
 
   const pagedRows = useMemo(() => filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage), [filtered, page, rowsPerPage]);
 
-  const previousVisits = useMemo(
-    () =>
-      Array.isArray(selected?.history)
-        ? selected.history.filter((v) => v?.id && v.id !== selected.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        : [],
-    [selected],
-  );
+  const previousVisits = useMemo(() => {
+    if (!Array.isArray(selected?.history)) return [];
+    const { from, to } = getDateRangeFromPreset(datePreset, customFrom, customTo);
+    return selected.history
+      .filter((v) => {
+        if (!v?.id || v.id === selected.id) return false;
+        if (from || to) {
+          const createdAt = v.created_at ? new Date(v.created_at) : null;
+          if (!createdAt) return true;
+          if (from && createdAt < new Date(`${from}T00:00:00.000+04:00`)) return false;
+          if (to   && createdAt > new Date(`${to}T23:59:59.999+04:00`))   return false;
+        }
+        return true;
+      })
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }, [selected, datePreset, customFrom, customTo]);
 
   const additionalFieldValues = useMemo(() => getVisibleFieldValues(selected), [selected]);
 
@@ -640,6 +678,7 @@ export default function CmsRegistrationsPage() {
 
   const activeFiltersCount =
     (statusFilter !== "all" ? 1 : 0) +
+    (datePreset !== "all" ? 1 : 0) +
     (requestDateFilter ? 1 : 0) +
     (requestTimeFilter.enabled ? 1 : 0) +
     (approvedDateFilter ? 1 : 0) +
@@ -676,6 +715,53 @@ export default function CmsRegistrationsPage() {
       </Box>
 
       <Divider sx={{ mb: 3 }} />
+
+      {/* ── Preset date range filter bar ────────────────────────────────────── */}
+      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 2, gap: 1 }}>
+        {[
+          { key: "all", label: "All Time" },
+          { key: "today", label: "Today" },
+          { key: "week", label: "This Week" },
+          { key: "month", label: "This Month" },
+          { key: "year", label: "This Year" },
+          { key: "custom", label: "Custom" },
+        ].map(({ key, label }) => (
+          <Chip
+            key={key}
+            label={label}
+            size="small"
+            clickable
+            color={datePreset === key ? "primary" : "default"}
+            variant={datePreset === key ? "filled" : "outlined"}
+            onClick={() => { setDatePreset(key); setPage(0); }}
+            sx={{ fontWeight: 700, borderRadius: 2 }}
+          />
+        ))}
+        {datePreset === "custom" && (
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", gap: 1 }}>
+            <TextField
+              type="date"
+              size="small"
+              label="From"
+              InputLabelProps={{ shrink: true }}
+              value={customFrom}
+              onChange={(e) => { setCustomFrom(e.target.value); setPage(0); }}
+              sx={{ width: 160 }}
+              inputProps={{ max: customTo || undefined }}
+            />
+            <TextField
+              type="date"
+              size="small"
+              label="To"
+              InputLabelProps={{ shrink: true }}
+              value={customTo}
+              onChange={(e) => { setCustomTo(e.target.value); setPage(0); }}
+              sx={{ width: 160 }}
+              inputProps={{ min: customFrom || undefined }}
+            />
+          </Stack>
+        )}
+      </Stack>
 
       <ListToolbar
         selectedCount={0}
@@ -725,7 +811,9 @@ export default function CmsRegistrationsPage() {
                   color="secondary"
                   startIcon={<ICONS.close />}
                   onClick={() => {
-                    setSearch(""); setStatusFilter("all"); setRequestDateFilter("");
+                    setSearch(""); setStatusFilter("all"); setDatePreset("all");
+                    setCustomFrom(""); setCustomTo("");
+                    setRequestDateFilter("");
                     setRequestTimeFilter({ ...requestTimeFilter, enabled: false });
                     setApprovedDateFilter(""); setApprovedTimeFilter({ ...approvedTimeFilter, enabled: false });
                     setPage(0);
@@ -914,7 +1002,7 @@ export default function CmsRegistrationsPage() {
             </Stack>
           </Box>
           <Button variant="contained" fullWidth startIcon={<ICONS.filter />} onClick={() => setFilterModalOpen(false)} sx={{ mt: 2, height: 48, borderRadius: 3, fontWeight: 800 }}>Apply</Button>
-          <Button variant="text" fullWidth color="inherit" startIcon={<ICONS.clear />} onClick={() => { setStatusFilter("all"); setRequestDateFilter(""); setRequestTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false }); setApprovedDateFilter(""); setApprovedTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false }); setFilterModalOpen(false); setPage(0); }} sx={{ fontWeight: 700, opacity: 0.6 }}>Clear</Button>
+          <Button variant="text" fullWidth color="inherit" startIcon={<ICONS.clear />} onClick={() => { setStatusFilter("all"); setDatePreset("all"); setCustomFrom(""); setCustomTo(""); setRequestDateFilter(""); setRequestTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false }); setApprovedDateFilter(""); setApprovedTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false }); setFilterModalOpen(false); setPage(0); }} sx={{ fontWeight: 700, opacity: 0.6 }}>Clear</Button>
         </Stack>
       </FilterModal>
 
@@ -1238,10 +1326,15 @@ export default function CmsRegistrationsPage() {
           ) : (
             <Box sx={{ "& .MuiTimelineItem-root:before": { flex: 0, padding: 0 } }}>
               {timelineLogs.map((log, index) => {
-                const actorLabel = log.actorUser
-                  ? log.actorUser.fullName
-                  : log.activityType === "submitted"
+                // Priority: loaded relation → stored actorName (survives user deletion) → fallbacks
+                const actorLabel = log.activityType === "submitted"
                   ? null
+                  : log.actorUser
+                  ? log.actorUser.fullName
+                  : log.actorName
+                  ? log.actorName
+                  : log.actorUserId
+                  ? "[Unknown User]"
                   : "System";
                 const actorIsVisitor = !log.actorUser && log.activityType === "submitted";
                 const visitorName = timelineModal.visitorName || "Visitor";
