@@ -7,6 +7,7 @@ import { GlobalStyles } from "@mui/material";
 import RoleGuard from "@/components/auth/RoleGuard";
 import BreadcrumbsNav from "@/components/nav/BreadcrumbsNav";
 import { useAuth } from "@/contexts/AuthContext";
+import { KitchenNotificationProvider } from "@/contexts/KitchenNotificationContext";
 
 export default function CmsLayout({ children }) {
   const { user } = useAuth();
@@ -38,24 +39,26 @@ export default function CmsLayout({ children }) {
 
   return (
     <RoleGuard allowedRoles={["admin", "superadmin", "dev"]}>
-      <Box sx={{ display: "flex", height: "calc(100vh - 64px)" }}>
-        {flatpickrStyles}
-        {!isDev && <Sidebar />}
-        <Box
-          component="main"
-          sx={{
-            flexGrow: 1,
-            height: "100%",
-            overflowY: "auto",
-            p: { xs: 2, sm: 3, md: 4 },
-            pt: { xs: "8px", sm: "16px", md: "24px" },
-            minWidth: 0,
-          }}
-        >
-          <BreadcrumbsNav />
-          {children}
+      <KitchenNotificationProvider>
+        <Box sx={{ display: "flex", height: "calc(100vh - 64px)" }}>
+          {flatpickrStyles}
+          {!isDev && <Sidebar />}
+          <Box
+            component="main"
+            sx={{
+              flexGrow: 1,
+              height: "100%",
+              overflowY: "auto",
+              p: { xs: 2, sm: 3, md: 4 },
+              pt: { xs: "8px", sm: "16px", md: "24px" },
+              minWidth: 0,
+            }}
+          >
+            <BreadcrumbsNav />
+            {children}
+          </Box>
         </Box>
-      </Box>
+      </KitchenNotificationProvider>
     </RoleGuard>
   );
 }

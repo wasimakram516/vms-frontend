@@ -3,6 +3,7 @@
 import { Box, Typography, Divider, Button } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import AppCard from "@/components/cards/AppCard";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ICONS from "@/utils/iconUtil";
@@ -62,13 +63,20 @@ const SHARED_CARDS = [
 export default function SettingsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { hostSettings } = useSettings();
   const isSuperAdmin = user?.role === "superadmin";
   const isDev = user?.role === "dev";
+
+  const isKitchenEnabled = hostSettings?.isKitchenModuleEnabled ?? true;
 
   const visibleCards = [
     ...(isDev ? DEV_CARDS : []),
     ...(!isDev ? SUPERADMIN_CARDS : []),
-    ...(!isDev ? SHARED_CARDS : []),
+    ...(!isDev
+      ? SHARED_CARDS.filter(
+          (card) => isKitchenEnabled || card.path !== "/cms/settings/kitchen-menu"
+        )
+      : []),
   ];
 
   return (

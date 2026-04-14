@@ -19,9 +19,12 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import { useMessage } from "@/contexts/MessageContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
@@ -33,7 +36,7 @@ import RecordMetadata from "@/components/RecordMetadata";
 import { getHost, createHost, updateHost, deleteHost } from "@/services/hostService";
 import { uploadMediaFiles } from "@/utils/mediaUpload";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
-import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode } from "@/utils/countryCodes";
+import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, getCountryAndPhoneByFullPhone } from "@/utils/countryCodes";
 import { validateRequired, validateEmail, validateUrl } from "@/utils/validationUtils";
 
 const emptyForm = () => ({
@@ -46,6 +49,7 @@ const emptyForm = () => ({
   contactPersonName: "",
   contactPersonEmail: "",
   contactPersonPhone: "",
+  isKitchenModuleEnabled: true,
 });
 
 const emptyIsoCodes = () => ({
@@ -104,6 +108,7 @@ export default function HostDetailsPage() {
 
   const fileInputRef = useRef(null);
   const { showMessage } = useMessage();
+  const { refreshSettings } = useSettings();
 
   const fetchData = async () => {
     setLoading(true);
@@ -127,28 +132,21 @@ export default function HostDetailsPage() {
   };
 
   const openEdit = () => {
-    // Strip country code prefix from stored phone for display in field
-    const stripCode = (fullPhone, isoCode) => {
-      if (!fullPhone) return "";
-      const country = getCountryCodeByIsoCode(isoCode);
-      const code = country?.code || "";
-      return fullPhone.startsWith(code) ? fullPhone.slice(code.length) : fullPhone.replace(/^\+\d{1,4}/, "");
-    };
-
-    const phoneIso = DEFAULT_ISO_CODE;
-    const cpPhoneIso = DEFAULT_ISO_CODE;
+    const { isoCode: phoneIso, phone: phoneNo } = getCountryAndPhoneByFullPhone(host.phone);
+    const { isoCode: cpPhoneIso, phone: cpPhoneNo } = getCountryAndPhoneByFullPhone(host.contactPersonPhone);
 
     setIsoCodes({ phone: phoneIso, contactPersonPhone: cpPhoneIso });
     setForm({
       name: host.name || "",
       email: host.email || "",
-      phone: stripCode(host.phone, phoneIso),
+      phone: phoneNo,
       address: host.address || "",
       website: host.website || "",
       logoUrl: host.logoUrl || "",
       contactPersonName: host.contactPersonName || "",
       contactPersonEmail: host.contactPersonEmail || "",
-      contactPersonPhone: stripCode(host.contactPersonPhone, cpPhoneIso),
+      contactPersonPhone: cpPhoneNo,
+      isKitchenModuleEnabled: host.isKitchenModuleEnabled ?? true,
     });
     setLogoFile(null);
     setLogoPreview(host.logoUrl || "");
@@ -253,6 +251,7 @@ export default function HostDetailsPage() {
         contactPersonName: form.contactPersonName.trim() || undefined,
         contactPersonEmail: form.contactPersonEmail.trim() || undefined,
         contactPersonPhone: buildPhone(form.contactPersonPhone, "contactPersonPhone"),
+        isKitchenModuleEnabled: form.isKitchenModuleEnabled,
       };
 
       if (isEdit) {
@@ -261,6 +260,7 @@ export default function HostDetailsPage() {
         await createHost(payload);
       }
 
+      await refreshSettings();
       await fetchData();
       setDialogOpen(false);
     } finally {
@@ -385,6 +385,17 @@ export default function HostDetailsPage() {
               <DetailItem icon={ICONS.person} primary="Name" secondary={host.contactPersonName} />
               <DetailItem icon={ICONS.email} primary="Email" secondary={host.contactPersonEmail} />
               <DetailItem icon={ICONS.phone} primary="Phone" secondary={host.contactPersonPhone} />
+            </List>
+
+            {/* System Modules */}
+            <Divider sx={{ mt: 1 }} />
+            <SectionLabel>System Modules</SectionLabel>
+            <List dense disablePadding>
+              <DetailItem 
+                icon={ICONS.diningTable} 
+                primary="Kitchen Module" 
+                secondary={host.isKitchenModuleEnabled ? "Enabled" : "Disabled"} 
+              />
             </List>
 
             {/* Logs */}
@@ -558,6 +569,28 @@ export default function HostDetailsPage() {
                 />
               </Stack>
             </Stack>
+ 
+            {/* System Modules */}
+            <Divider sx={{ mt: 3, mb: 2 }} />
+            <Typography variant="caption" fontWeight={700} color="primary.main" sx={{ textTransform: "uppercase", letterSpacing: 0.5, display: "block", mb: 1.5 }}>
+              System Modules
+            </Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.isKitchenModuleEnabled}
+                  onChange={(e) => setForm((p) => ({ ...p, isKitchenModuleEnabled: e.target.checked }))}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>Kitchen Module</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Enable or disable the kitchen orders module system-wide.
+                  </Typography>
+                </Box>
+              }
+            />
           </DialogContent>
 
           <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>

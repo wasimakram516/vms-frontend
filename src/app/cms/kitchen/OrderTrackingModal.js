@@ -25,11 +25,14 @@ import {
   FormControl,
   InputLabel,
 } from "@mui/material";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import dayjs from "dayjs";
+import { useKitchenNotifications } from "@/contexts/KitchenNotificationContext";
 import ICONS from "@/utils/iconUtil";
 import AppCard from "@/components/cards/AppCard";
-import { getMyOrders, getAllOrders } from "@/services/kitchenService";
-import dayjs from "dayjs";
+import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
+import { getMyOrders, getAllOrders, cancelOrder, markOrdersAsSeen } from "@/services/kitchenService";
+import { useMessage } from "@/contexts/MessageContext";
 import isBetween from "dayjs/plugin/isBetween";
 import useSocket from "@/utils/useSocket";
 
@@ -44,18 +47,28 @@ export default function OrderTrackingModal({ open, onClose, user }) {
   const [selectedDate, setSelectedDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [cancellingId, setCancellingId] = useState(null);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [idToCancel, setIdToCancel] = useState(null);
   const [expandedOrders, setExpandedOrders] = useState(new Set());
+  const { showMessage } = useMessage();
   const [sortOrder, setSortOrder] = useState("desc");
   const [requesterFilter, setRequesterFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const [sessionUnseenIds, setSessionUnseenIds] = useState(new Set());
+  const hasCapturedInitialRef = useRef(false);
+
+  const { markAllAsSeen } = useKitchenNotifications();
 
   const STATUS_OPTIONS = [
     { value: "all", label: "All Statuses" },
+    { value: "initiated", label: "Initiated" },
     { value: "received", label: "Received" },
-    { value: "in_preparation", label: "In Preparation" },
+    { value: "in_preparation", label: "Preparing" },
     { value: "ready", label: "Ready" },
     { value: "delivered", label: "Delivered" },
+    { value: "cancelled", label: "Cancelled" },
   ];
 
   const toggleOrderExpand = (orderId) => {
@@ -73,14 +86,35 @@ export default function OrderTrackingModal({ open, onClose, user }) {
       const res = viewType === "all" && isSuperAdmin
         ? await getAllOrders(selectedDate)
         : await getMyOrders(selectedDate);
-      setOrders(Array.isArray(res) ? res : []);
+      const all = Array.isArray(res) ? res : [];
+      setOrders(all);
+
+      // Session capture: Identify orders that are unseen when we first open the modal
+      if (!hasCapturedInitialRef.current && all.length > 0) {
+        const userIdStr = String(user?.id || "");
+        const unseen = all
+          .filter(o => 
+            !o.is_seen_by_requester && 
+            (String(o.requester_id || o.requesterUserId || "") === userIdStr)
+          )
+          .map(o => o.id);
+        
+        if (unseen.length > 0) {
+          setSessionUnseenIds(new Set(unseen));
+          markOrdersAsSeen(); // Commit to DB immediately
+          markAllAsSeen(); // Clear global badge instantly
+        }
+        hasCapturedInitialRef.current = true;
+      }
     } finally {
       if (!background) setLoading(false);
     }
-  }, [viewType, selectedDate, isSuperAdmin]);
+  }, [viewType, selectedDate, isSuperAdmin, user?.id]);
 
   useEffect(() => {
     if (open) {
+      hasCapturedInitialRef.current = false;
+      setSessionUnseenIds(new Set());
       fetchOrders();
     }
   }, [open, fetchOrders]);
@@ -128,6 +162,26 @@ export default function OrderTrackingModal({ open, onClose, user }) {
     setRequesterFilter("all");
     setStatusFilter("all");
     setSortOrder("desc");
+  };
+
+  const handleCancelOpen = (orderId) => {
+    setIdToCancel(orderId);
+    setCancelConfirmOpen(true);
+  };
+
+  const handleCancelConfirm = async () => {
+    if (!idToCancel) return;
+    
+    setCancellingId(idToCancel);
+    const res = await cancelOrder(idToCancel, "Cancelled by user via tracking modal");
+    setCancellingId(null);
+    setCancelConfirmOpen(false);
+    setIdToCancel(null);
+    
+    if (!res?.error) {
+      showMessage("Order cancelled successfully", "success");
+      fetchOrders(true);
+    }
   };
 
   const hasActiveFilters = useMemo(() => {
@@ -427,26 +481,87 @@ export default function OrderTrackingModal({ open, onClose, user }) {
 
               return (
                 <AppCard key={order.id} sx={{ p: 2, bgcolor: "action.hover", border: "1px solid", borderColor: "divider" }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Chip
-                        label={order.status.replace("_", " ")}
-                        color={
-                          order.status === "received" ? "info" :
-                          order.status === "in_preparation" ? "warning" :
-                          order.status === "ready" ? "success" : "default"
-                        }
-                        size="small"
-                        sx={{ fontWeight: "900", textTransform: "uppercase", fontSize: "0.65rem" }}
-                      />
-                      <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: "text.secondary" }}>
-                        • {order.requester}
-                      </Typography>
+                  <Box sx={{ mb: 1.5 }}>
+                    <Stack 
+                      direction="row" 
+                      justifyContent="space-between" 
+                      alignItems="center" 
+                      sx={{ mb: isMobile ? 1 : 0 }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                        <Chip
+                          label={order.status.replace("_", " ")}
+                          color={
+                            order.status === "initiated" ? "secondary" :
+                            order.status === "received" ? "warning" :
+                            order.status === "in_preparation" ? "info" :
+                            order.status === "ready" ? "success" : 
+                            order.status === "cancelled" ? "error" : "default"
+                          }
+                          size="small"
+                          sx={{ fontWeight: "900", textTransform: "uppercase", fontSize: "0.6rem", height: 20 }}
+                        />
+                        <Typography 
+                          sx={{ 
+                            fontSize: "0.7rem", 
+                            fontWeight: 700, 
+                            color: "text.secondary",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: isMobile ? 120 : "none"
+                          }}
+                        >
+                          • {order.requester}
+                        </Typography>
+                      </Stack>
+                      
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ fontSize: "0.65rem" }}>
+                          {dayjs(order.created_at).format("h:mm A")}
+                        </Typography>
+                        {sessionUnseenIds.has(order.id) && (
+                          <Box 
+                            sx={{ 
+                              width: 6, 
+                              height: 6, 
+                              borderRadius: "50%", 
+                              bgcolor: "#22c55e", 
+                              boxShadow: "0 0 8px rgba(34, 197, 94, 0.4)"
+                            }} 
+                          />
+                        )}
+                      </Stack>
                     </Stack>
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                      {dayjs(order.created_at).format("h:mm A")}
-                    </Typography>
-                  </Stack>
+
+                    {order.visitor_name && (
+                      <Box sx={{ mt: isMobile ? 0.5 : 0.25 }}>
+                        <Chip 
+                          label={`For: ${order.visitor_name}${order.visitor_organisation ? ` (${order.visitor_organisation})` : ""}`} 
+                          size="small" 
+                          variant="outlined" 
+                          sx={{ 
+                            height: 18, 
+                            fontSize: "0.6rem", 
+                            fontWeight: 800, 
+                            borderStyle: "dashed", 
+                            bgcolor: alpha(theme.palette.primary.main, 0.05),
+                            maxWidth: "100%",
+                            "& .MuiChip-label": { px: 1 }
+                          }} 
+                        />
+                      </Box>
+                    )}
+                  </Box>
+                  <style>
+                    {`
+                      @keyframes pulseDot {
+                        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+                        70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+                        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+                      }
+                    `}
+                  </style>
 
                   <Box sx={{ mb: 2, pl: 0.5 }}>
                     {order.items?.map((item, idx) => (
@@ -518,12 +633,43 @@ export default function OrderTrackingModal({ open, onClose, user }) {
                       </Collapse>
                     </Box>
                   )}
+
+                  {/* Cancel Action for Requester/SuperAdmin */}
+                  {(order.status === "initiated" || order.status === "received") && 
+                   (isSuperAdmin || user?.id === order.requester_id) && (
+                    <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
+                      <Button
+                        fullWidth
+                        size="small"
+                        color="error"
+                        variant="outlined"
+                        disabled={cancellingId === order.id}
+                        startIcon={cancellingId === order.id ? <CircularProgress size={14} /> : <ICONS.close />}
+                        onClick={() => handleCancelOpen(order.id)}
+                        sx={{ borderRadius: 2, fontWeight: 700, textTransform: "none", fontSize: "0.78rem" }}
+                      >
+                        {cancellingId === order.id ? "Cancelling..." : "Cancel Order"}
+                      </Button>
+                    </Box>
+                  )}
                 </AppCard>
               );
             })}
           </Stack>
         )}
       </Box>
+
+      {/* Global Confirmation Dialog */}
+      <ConfirmationDialog
+        open={cancelConfirmOpen}
+        onClose={() => { setCancelConfirmOpen(false); setIdToCancel(null); }}
+        onConfirm={handleCancelConfirm}
+        title="Cancel Kitchen Order"
+        message="Are you sure you want to cancel this order? This action cannot be undone once confirmed."
+        confirmButtonText="Confirm"
+        confirmButtonIcon={<ICONS.close />}
+        confirmButtonColor="error"
+      />
     </Box>
   );
 

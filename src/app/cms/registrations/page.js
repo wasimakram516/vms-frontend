@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import dayjs from "dayjs";
 import {
   Box,
   Typography,
@@ -26,6 +27,8 @@ import {
   Tab,
   Switch,
   FormControlLabel,
+  useTheme,
+  Collapse,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -57,6 +60,7 @@ import {
 } from "@/services/registrationService";
 import { getAccessLevels } from "@/services/accessLevelService";
 import { getDepartments } from "@/services/departmentService";
+import { getAllOrders as getKitchenOrders } from "@/services/kitchenService";
 import {
   formatDate,
   formatTime,
@@ -289,6 +293,9 @@ export default function CmsRegistrationsPage() {
   const [exportingBadges, setExportingBadges] = useState(false);
   const [badgeTemplate, setBadgeTemplate] = useState(null);
 
+  const [kitchenOrders, setKitchenOrders] = useState([]);
+  const [kitchenOrdersLoading, setKitchenOrdersLoading] = useState(false);
+
   const { showMessage } = useMessage();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
@@ -346,15 +353,49 @@ export default function CmsRegistrationsPage() {
     const unsubUpdated = on("registration:updated", (updatedReg) => {
       fetchData();
       if (selected?.id === updatedReg.id) {
-        getRegistrationById(updatedReg.id).then((fullDetail) => setSelected(fullDetail));
+        getRegistrationById(updatedReg.id).then((fullDetail) => {
+          setSelected(fullDetail);
+          fetchKitchenOrders(updatedReg.id);
+        });
       }
     });
-    return () => { unsubNew?.(); unsubUpdated?.(); };
+    
+    const unsubKitchenStatus = on("kitchen-order:updated", (updatedOrder) => {
+      if (selected && (updatedOrder.registrationId === selected.id || updatedOrder.registration_id === selected.id)) {
+        fetchKitchenOrders(selected.id);
+      }
+    });
+
+    const unsubKitchenNew = on("kitchen-order:new", (newOrder) => {
+      if (selected && (newOrder.registrationId === selected.id || newOrder.registration_id === selected.id)) {
+        fetchKitchenOrders(selected.id);
+      }
+    });
+
+    return () => { 
+      unsubNew?.(); 
+      unsubUpdated?.(); 
+      unsubKitchenStatus?.();
+      unsubKitchenNew?.();
+    };
   }, [selected?.id, on]);
 
   useEffect(() => {
-    if (selected) setSelectedTab("details");
+    if (selected) {
+      setSelectedTab("details");
+      fetchKitchenOrders(selected.id);
+    }
   }, [selected?.id]);
+
+  const fetchKitchenOrders = async (regId) => {
+    setKitchenOrdersLoading(true);
+    try {
+      const res = await getKitchenOrders({ registrationId: regId });
+      setKitchenOrders(Array.isArray(res) ? res : []);
+    } finally {
+      setKitchenOrdersLoading(false);
+    }
+  };
 
   const closeProfileDialog = () => setSelected(null);
 
@@ -1027,7 +1068,7 @@ export default function CmsRegistrationsPage() {
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography variant="h6" fontWeight={800}>{selected.full_name}</Typography>
                       <Stack direction="row" spacing={2} sx={{ mt: 0.4, flexWrap: "wrap", gap: 1 }}>
-                        <Typography variant="body2" color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.5, wordBreak: "break-all" }}>
                           <ICONS.emailOutline fontSize="inherit" /> {selected.email || "No email"}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -1116,6 +1157,14 @@ export default function CmsRegistrationsPage() {
                       >
                         View Timeline
                       </Button>
+                    </Box>
+
+                    <Divider sx={{ my: 1 }} />
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 700, color: "text.secondary", textTransform: "uppercase", fontSize: "0.7rem", display: "flex", alignItems: "center", gap: 1 }}>
+                        <ICONS.restaurant sx={{ fontSize: "1rem" }} /> Kitchen Orders
+                      </Typography>
+                      <KitchenOrderList orders={kitchenOrders} loading={kitchenOrdersLoading} isDark={isDark} />
                     </Box>
                   </Stack>
                 ) : previousVisits.length ? (
@@ -1521,12 +1570,110 @@ function InfoItem({ label, value, icon, sx = {} }) {
   );
 }
 
+function KitchenOrderList({ orders, loading, isDark }) {
+  const [expandedIds, setExpandedIds] = useState(new Set());
+  const theme = useTheme();
+
+  const toggleExpand = (id) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  if (loading) return <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress size={30} /></Box>;
+  if (!orders?.length) return <NoDataAvailable title="No orders found" description="No kitchen orders have been placed for this visit yet." compact minHeight={150} />;
+
+  return (
+    <Stack spacing={2}>
+      {orders.map((order) => {
+        const sortedHistory = [...(order.status_history || [])].sort((a,b) => new Date(a.changed_at) - new Date(b.changed_at));
+        return (
+          <Box key={order.id} sx={{ p: 2, borderRadius: 3, border: "1px solid", borderColor: "divider", bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)" }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.5 }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary" fontWeight={800} sx={{ textTransform: "uppercase" }}>Order Date</Typography>
+                <Typography variant="body2" fontWeight={700}>{dayjs(order.created_at).format("MMM D, YYYY - h:mm A")}</Typography>
+              </Box>
+              <Chip 
+                label={order.status.replace("_", " ")} 
+                size="small" 
+                color={
+                  order.status === "delivered" ? "success" :
+                  order.status === "cancelled" ? "error" : "primary"
+                }
+                sx={{ fontWeight: 800, textTransform: "uppercase", fontSize: "0.6rem" }}
+              />
+            </Stack>
+            <Stack spacing={0.5} sx={{ mb: 1.5 }}>
+              {order.items?.map((item, idx) => (
+                <Typography key={idx} variant="body2" fontWeight={600} sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>{item.name}</span>
+                  <span style={{ opacity: 0.6 }}>×{item.quantity}</span>
+                </Typography>
+              ))}
+            </Stack>
+
+            <Box sx={{ pt: 1, borderTop: "1px dashed", borderColor: "divider" }}>
+              <Button
+                size="small"
+                onClick={() => toggleExpand(order.id)}
+                endIcon={<ICONS.down sx={{ transform: expandedIds.has(order.id) ? "rotate(180deg)" : "none", transition: "0.2s" }} />}
+                sx={{ textTransform: "none", p: 0, color: "text.secondary", fontSize: "0.7rem", fontWeight: 700, minHeight: 0 }}
+              >
+                View Timeline
+              </Button>
+              <Collapse in={expandedIds.has(order.id)}>
+                <Box sx={{ pl: 0.5, pt: 2 }}>
+                  {sortedHistory.map((h, i) => (
+                    <Box key={h.id} sx={{ display: "flex", gap: 1.5, mb: i < sortedHistory.length - 1 ? 1.5 : 0 }}>
+                      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", mt: 0.5 }}>
+                        <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: i === sortedHistory.length - 1 ? "primary.main" : "text.disabled" }} />
+                        {i < sortedHistory.length - 1 && <Box sx={{ width: 1, flex: 1, bgcolor: "divider", mt: 0.5, minHeight: 8 }} />}
+                      </Box>
+                      <Box>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography variant="caption" fontWeight="700" sx={{ textTransform: "capitalize" }}>{h.status.replace("_", " ")}</Typography>
+                          <Typography variant="caption" sx={{ fontSize: "0.55rem", opacity: 0.5 }}>{dayjs(h.changed_at).format("MMM D, h:mm A")}</Typography>
+                          {h.changed_by && (
+                             <Chip label={h.changed_by} size="small" variant="outlined" sx={{ height: 14, fontSize: "0.5rem", fontWeight: 700, borderStyle: "dashed", bgcolor: alpha(theme.palette.primary.main, 0.05) }} />
+                          )}
+                        </Stack>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              </Collapse>
+            </Box>
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
+
 function PreviousVisitCard({ visit, onViewTimeline }) {
   const visitFieldValues = getVisibleFieldValues(visit);
   const statusConfig = STATUS_CONFIG[visit.status] || { label: toTitleCase(visit.status), color: "default", icon: <ICONS.history fontSize="small" /> };
   const departmentName = visit.department?.name || visit.departmentName || visit.department_name || "";
   const accessLevelName = visit.access_level?.name || visit.accessLevel?.name || visit.accessLevelName || visit.access_level_name || "";
   const allowMultiCheckin = visit.allow_multi_checkin ?? visit.allowMultiCheckin ?? false;
+  const isDark = useColorMode?.()?.mode === "dark" || false;
+
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showOrders, setShowOrders] = useState(false);
+
+  useEffect(() => {
+    if (showOrders && orders.length === 0) {
+      setLoading(true);
+      getKitchenOrders({ registrationId: visit.id })
+        .then(res => setOrders(Array.isArray(res) ? res : []))
+        .finally(() => setLoading(false));
+    }
+  }, [showOrders, visit.id, orders.length]);
 
   return (
     <Box sx={{ p: 2.25, borderRadius: 3, border: "1px solid", borderColor: "divider", bgcolor: (theme) => theme.palette.mode === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.015)" }}>
@@ -1570,17 +1717,33 @@ function PreviousVisitCard({ visit, onViewTimeline }) {
         </>
       )}
 
-      <Box sx={{ mt: 2 }}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2.5 }}>
         <Button
           variant="outlined"
           size="small"
           startIcon={<ICONS.list fontSize="small" />}
           onClick={onViewTimeline}
-          sx={{ borderRadius: 30 }}
+          sx={{ borderRadius: 30, textTransform: "none", fontWeight: 700 }}
         >
-          View Timeline
+          Activity Timeline
         </Button>
-      </Box>
+        <Button
+          variant="outlined"
+          size="small"
+          color="secondary"
+          startIcon={<ICONS.restaurant fontSize="small" />}
+          onClick={() => setShowOrders(!showOrders)}
+          sx={{ borderRadius: 30, textTransform: "none", fontWeight: 700 }}
+        >
+          {showOrders ? "Hide Orders" : "View Kitchen Orders"}
+        </Button>
+      </Stack>
+
+      <Collapse in={showOrders}>
+        <Box sx={{ mt: 2, pt: 2, borderTop: "1px dashed", borderColor: "divider" }}>
+          <KitchenOrderList orders={orders} loading={loading} isDark={isDark} />
+        </Box>
+      </Collapse>
     </Box>
   );
 }

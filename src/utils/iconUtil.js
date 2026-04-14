@@ -91,6 +91,7 @@ import {
   Wallpaper as WallpaperIcon,
   VolumeUp as VolumeUpIcon,
   VolumeOff as VolumeOffIcon,
+  VolumeMute as VolumeMuteIcon,
 } from "@mui/icons-material";
 
 // Time & Location
@@ -241,6 +242,7 @@ const ICONS = {
   wallpaper: WallpaperIcon,
   volumeUp: VolumeUpIcon,
   volumeOff: VolumeOffIcon,
+  volumeMute: VolumeMuteIcon,
 
   // Time & Location
   diningTable: TableRestaurantIcon,

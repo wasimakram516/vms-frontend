@@ -291,3 +291,25 @@ export const validatePhoneNumber = (phone, isoCode) => {
 
     return true;
 };
+
+export const getCountryAndPhoneByFullPhone = (fullPhone) => {
+    if (!fullPhone) return { isoCode: DEFAULT_ISO_CODE, phone: "" };
+
+    // Sort by code length descending to match longest prefix first
+    const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+
+    for (const country of sortedCodes) {
+        if (fullPhone.startsWith(country.code)) {
+            return {
+                isoCode: country.isoCode,
+                phone: fullPhone.slice(country.code.length),
+            };
+        }
+    }
+
+    // Fallback if no match
+    return {
+        isoCode: DEFAULT_ISO_CODE,
+        phone: fullPhone.replace(/^\+\d{1,4}/, ""),
+    };
+};

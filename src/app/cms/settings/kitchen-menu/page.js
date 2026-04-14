@@ -39,9 +39,12 @@ import {
   updateMenuItem,
   deleteMenuItem,
 } from "@/services/kitchenService";
+import { useSettings } from "@/contexts/SettingsContext";
 
 function KitchenMenuContent() {
   const { readOnly } = usePermission();
+  const { hostSettings, loading: settingsLoading } = useSettings();
+  const isKitchenEnabled = hostSettings?.isKitchenModuleEnabled ?? true;
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -168,6 +171,37 @@ function KitchenMenuContent() {
       console.error("Deactivation failed:", error);
     }
   };
+
+  if (settingsLoading) return null;
+
+  if (!isKitchenEnabled) {
+    return (
+      <Box sx={{ py: 10, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <Box
+          sx={{
+            width: 80,
+            height: 80,
+            borderRadius: "50%",
+            bgcolor: "error.main",
+            color: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            mb: 3,
+            boxShadow: "0 8px 16px rgba(211, 47, 47, 0.2)"
+          }}
+        >
+          <ICONS.diningTable sx={{ fontSize: 40 }} />
+        </Box>
+        <Typography variant="h5" fontWeight="black" gutterBottom sx={{ letterSpacing: -0.5 }}>
+          Kitchen module is disabled
+        </Typography>
+        <Typography variant="body1" color="text.secondary" align="center" sx={{ maxWidth: 450, opacity: 0.8, fontWeight: 500 }}>
+          The kitchen module has been turned off in Host Details. Enable it to manage the kitchen menu.
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box>

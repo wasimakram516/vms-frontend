@@ -9,6 +9,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useEffect } from "react";
 import { VisitorProvider } from "@/contexts/VisitorContext";
+import { SettingsProvider } from "@/contexts/SettingsContext";
 
 export default function ClientRoot({ children }) {
   useEffect(() => {
@@ -133,9 +134,11 @@ export default function ClientRoot({ children }) {
           <ThemeRegistry>
             <LocalizationProvider dateAdapter={AdapterDayjs}>
               <AuthProvider>
-                <VisitorProvider>
-                  <ClientLayout>{children}</ClientLayout>
-                </VisitorProvider>
+                <SettingsProvider>
+                  <VisitorProvider>
+                    <ClientLayout>{children}</ClientLayout>
+                  </VisitorProvider>
+                </SettingsProvider>
               </AuthProvider>
             </LocalizationProvider>
           </ThemeRegistry>

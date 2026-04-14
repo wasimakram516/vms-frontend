@@ -16,10 +16,11 @@ import { useColorMode } from "@/contexts/ThemeContext";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { useState } from "react";
 import ICONS from "@/utils/iconUtil";
 
-const getNavItems = (role) => {
+const getNavItems = (role, isKitchenModuleEnabled = true) => {
   const base = [
     { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard" },
     { label: "Registrations", icon: ICONS.appRegister, path: "/cms/registrations" },
@@ -28,8 +29,11 @@ const getNavItems = (role) => {
     { label: "NDA Forms", icon: ICONS.description, path: "/cms/nda-forms" },
     { label: "Users", icon: ICONS.people, path: "/cms/users" },
     { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
-    { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" }
   ];
+
+  if (isKitchenModuleEnabled) {
+    base.push({ label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" });
+  }
 
   // Analytics is SuperAdmin-only — insert after Dashboard
   if (role === "superadmin") {
@@ -42,12 +46,13 @@ const getNavItems = (role) => {
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { hostSettings } = useSettings();
   const theme = useTheme();
   const { mode } = useColorMode();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const navItems = getNavItems(user?.role);
+  const navItems = getNavItems(user?.role, hostSettings?.isKitchenModuleEnabled);
 
   const isActive = (path) =>
     path === "/cms" ? pathname === "/cms" : pathname.startsWith(path);

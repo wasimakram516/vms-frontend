@@ -24,8 +24,15 @@ import {
   FormControl,
   InputLabel,
   Pagination,
+  Tooltip,
+  Autocomplete,
+  alpha,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import AppCard from "@/components/cards/AppCard";
@@ -34,15 +41,23 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import PermissionGuard from "@/components/auth/PermissionGuard";
 import { useAuth } from "@/contexts/AuthContext";
-import { getActiveMenuItems, createOrder } from "@/services/kitchenService";
+import { useSettings } from "@/contexts/SettingsContext";
+import { useSocket } from "@/contexts/SocketContext";
+import { useMessage } from "@/contexts/MessageContext";
+import { useKitchenNotifications } from "@/contexts/KitchenNotificationContext";
+import { getActiveMenuItems, createOrder, getMyOrders, markOrdersAsSeen } from "@/services/kitchenService";
+import { getRegistrations } from "@/services/registrationService";
+import { useRef } from "react";
 import OrderTrackingModal from "./OrderTrackingModal";
 
 function OrderingContent() {
   const { user } = useAuth();
+  const { hostSettings, loading: settingsLoading } = useSettings();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isModuleDisabled, setIsModuleDisabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
@@ -50,8 +65,37 @@ function OrderingContent() {
   const [rowsPerPage, setRowsPerPage] = useState(12);
   const [page, setPage] = useState(0);
 
+  const [resList, setResList] = useState([]);
+  const [resLoading, setResLoading] = useState(false);
+  const [selectedVisitor, setSelectedVisitor] = useState(null);
+
   const [cart, setCart] = useState({});
   const [isReady, setIsReady] = useState(false);
+  const [duplicateDialog, setDuplicateDialog] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState(null);
+  
+  const { on } = useSocket();
+  const { 
+    unseenCount, 
+    isMuted, 
+    isAudioPrimed, 
+    toggleMute 
+  } = useKitchenNotifications();
+  
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const menuRes = await getActiveMenuItems();
+      if (menuRes?.error === "Kitchen module is disabled" || menuRes?.message === "Kitchen module is disabled") {
+        setIsModuleDisabled(true);
+      } else {
+        setIsModuleDisabled(false);
+        setItems(Array.isArray(menuRes) ? menuRes : []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const savedCart = localStorage.getItem("kitchen_cart");
@@ -59,25 +103,45 @@ function OrderingContent() {
     if (savedCart) {
       try { setCart(JSON.parse(savedCart)); } catch (e) { console.error(e); }
     }
-    
+
     fetchData().finally(() => setIsReady(true));
+    fetchCheckedInRegistrations();
+
+    const unsubUpdate = on("registration:updated", (updatedReg) => {
+      fetchCheckedInRegistrations();
+      
+      // Auto-clear selection if the selected visitor is no longer checked in
+      setSelectedVisitor(prev => {
+        if (prev?.id === updatedReg.id && updatedReg.status !== "checked_in") {
+          return null;
+        }
+        return prev;
+      });
+    });
+
+    const unsubNew = on("registration:new", () => fetchCheckedInRegistrations());
+
+    return () => {
+      unsubUpdate?.();
+      unsubNew?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [on]);
+
+  const fetchCheckedInRegistrations = async () => {
+    setResLoading(true);
+    try {
+      const res = await getRegistrations("checked_in");
+      setResList(Array.isArray(res) ? res : []);
+    } finally {
+      setResLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isReady) return;
     localStorage.setItem("kitchen_cart", JSON.stringify(cart));
   }, [cart, isReady]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const menuRes = await getActiveMenuItems();
-      setItems(Array.isArray(menuRes) ? menuRes : []);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const filteredItems = useMemo(() => {
     return items.filter((item) =>
@@ -121,7 +185,7 @@ function OrderingContent() {
     }
   }, [totalItems, cartOpen]);
 
-  const handlePlaceOrder = async () => {
+  const handlePlaceOrder = async (force = false) => {
     setSubmitting(true);
     try {
       const orderItems = Object.entries(cart).map(([itemId, quantity]) => ({
@@ -129,18 +193,35 @@ function OrderingContent() {
         quantity,
       }));
 
-      const res = await createOrder({
+      const payload = {
         items: orderItems,
-      });
+        registrationId: selectedVisitor?.id || undefined,
+        visitorId: selectedVisitor?.userId || undefined,
+      };
+
+      const res = await createOrder(payload, force);
+
+      if (res && res.status === 409) {
+        setPendingOrder(payload);
+        setDuplicateDialog(true);
+        return;
+      }
 
       if (res && !res.error) {
         setCart({});
+        setSelectedVisitor(null);
         setCartOpen(false);
+        setDuplicateDialog(false);
+        setPendingOrder(null);
         localStorage.removeItem("kitchen_cart");
       }
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleConfirmDuplicate = () => {
+    handlePlaceOrder(true);
   };
 
   if (loading) return <LoadingState />;
@@ -151,7 +232,7 @@ function OrderingContent() {
 
   const SummaryContent = (
     <Box sx={{ 
-      p: isMobile ? "0 24px 24px 24px" : 3, 
+      p: isMobile ? "24px 24px 48px 24px" : 3, 
       display: "flex", 
       flexDirection: "column", 
       height: "100%",
@@ -161,6 +242,45 @@ function OrderingContent() {
         <Typography variant="h6" fontWeight="900">Order Details</Typography>
         <IconButton onClick={toggleCart(false)}><ICONS.close /></IconButton>
       </Stack>
+
+      <Box sx={{ mb: 3, p: 2, bgcolor: "action.hover", borderRadius: 3, border: "1px solid", borderColor: "divider", flexShrink: 0 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800, mb: 1, display: "block" }}>
+          ATTACHED VISITOR (OPTIONAL)
+        </Typography>
+        <Autocomplete
+          size="small"
+          options={resList}
+          loading={resLoading}
+          getOptionLabel={(option) => {
+            const name = option.user?.fullName || option.full_name || "Visitor";
+            const org = option.organisation || option.companyName || "";
+            return `${name} (${org})`;
+          }}
+          noOptionsText="No checked-in visitors found"
+          value={selectedVisitor}
+          onChange={(_, newValue) => setSelectedVisitor(newValue)}
+          renderInput={(params) => (
+            <TextField 
+              {...params} 
+              variant="outlined" 
+              label="Select Visitor"
+              placeholder="Search active visitors..." 
+              sx={{ 
+                "& .MuiOutlinedInput-root": { borderRadius: 2, bgcolor: "background.paper" }
+              }}
+              InputProps={{
+                ...params.InputProps,
+                endAdornment: (
+                  <>
+                    {resLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                    {params.InputProps.endAdornment}
+                  </>
+                ),
+              }}
+            />
+          )}
+        />
+      </Box>
 
       <Box sx={{ mb: 3, p: 2, bgcolor: "action.hover", borderRadius: 3, flexShrink: 0 }}>
         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 800 }}>REQUESTER</Typography>
@@ -209,7 +329,7 @@ function OrderingContent() {
           fullWidth
           variant="contained"
           size="large"
-          onClick={handlePlaceOrder}
+          onClick={() => handlePlaceOrder()}
           disabled={submitting || totalItems === 0}
           sx={{ borderRadius: 4, py: 1.5, fontWeight: "bold" }}
         >
@@ -229,6 +349,47 @@ function OrderingContent() {
     </Box>
   );
 
+  if (settingsLoading) return <LoadingState />;
+
+  const isModuleOff = isModuleDisabled || (hostSettings && !hostSettings.isKitchenModuleEnabled);
+
+  if (isModuleOff) {
+    return (
+      <Box sx={{ py: 10, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <Box
+          sx={{
+            width: 80,
+            height: 80,
+            borderRadius: "50%",
+            bgcolor: "error.main",
+            color: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            mb: 3,
+            boxShadow: "0 8px 16px rgba(211, 47, 47, 0.2)"
+          }}
+        >
+          <ICONS.diningTable sx={{ fontSize: 40 }} />
+        </Box>
+        <Typography variant="h5" fontWeight="bold" gutterBottom>
+          Kitchen Module Disabled
+        </Typography>
+        <Typography variant="body1" color="text.secondary" align="center" sx={{ maxWidth: 450, opacity: 0.8 }}>
+          The kitchen and food service module has been disabled system-wide by the administrator. 
+          Please contact support if you believe this is an error.
+        </Typography>
+        <Button 
+          variant="contained" 
+          onClick={() => window.location.href = "/cms/dashboard"}
+          sx={{ mt: 4, borderRadius: 30, px: 4 }}
+        >
+          Return to Dashboard
+        </Button>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ position: "relative" }}>
       <Box
@@ -236,53 +397,110 @@ function OrderingContent() {
           display: "flex",
           flexDirection: { xs: "column", sm: "row" },
           justifyContent: "space-between",
-          alignItems: { xs: "stretch", sm: "center" },
+          alignItems: { xs: "flex-start", sm: "center" },
           mt: 2,
           mb: 1,
           gap: 2,
-          flexWrap: "wrap",
         }}
       >
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" fontWeight="bold">
-            Kitchen Orders
-          </Typography>
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="h5" fontWeight="900" sx={{ letterSpacing: "-0.01em" }}>Food & Beverages</Typography>
+            
+            <Tooltip title={!isAudioPrimed ? "Audio is locked by browser. Click to unlock." : isMuted ? "Unmute Notifications" : "Mute Notifications"}>
+              <IconButton 
+                onClick={toggleMute}
+                color={!isAudioPrimed ? "error" : isMuted ? "default" : "primary"}
+                sx={{ 
+                  borderRadius: "50%",
+                  bgcolor: (theme) => !isAudioPrimed ? alpha(theme.palette.error.main, 0.1) : "transparent",
+                  animation: !isAudioPrimed ? "lockedPulse 2s infinite" : "none",
+                  "@keyframes lockedPulse": {
+                    "0%, 100%": { opacity: 1 },
+                    "50%": { opacity: 0.5 }
+                  }
+                }}
+              >
+                {!isAudioPrimed ? <ICONS.volumeOff /> : isMuted ? <ICONS.volumeMute /> : <ICONS.volumeUp />}
+              </IconButton>
+            </Tooltip>
+          </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, opacity: 0.8 }}>
             Browse menu items and place orders.
           </Typography>
         </Box>
         
         <Stack 
-          direction={{ xs: "column", sm: "row" }} 
-          spacing={2} 
-          sx={{ width: { xs: "100%", sm: "auto" }, alignItems: "stretch" }}
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5} 
+          sx={{ 
+            width: { xs: "100%", sm: "auto" }, 
+            alignItems: "center",
+          }}
         >
-          <Button
-            variant="outlined"
-            color="secondary"
-            fullWidth={isMobile && totalItems === 0}
-            startIcon={<ICONS.history />}
-            onClick={() => setTrackingOpen(true)}
-            sx={{ borderRadius: 30, px: 3, whiteSpace: "nowrap", fontWeight: "bold", border: "2px solid" }}
-          >
-            Track Orders
-          </Button>
+          <Box sx={{ width: { xs: "100%", sm: "auto" } }}>
+            <Badge 
+              badgeContent={unseenCount} 
+              color="error" 
+              overlap="circular"
+              anchorOrigin={{ vertical: "top", horizontal: "right" }}
+              sx={{ 
+                width: "100%",
+                "& .MuiBadge-badge": { 
+                  top: 2, 
+                  right: 2,
+                  fontWeight: 800,
+                  fontSize: "0.65rem",
+                  minWidth: 18,
+                  height: 18,
+                  border: "2px solid",
+                  borderColor: "background.paper"
+                }
+              }}
+            >
+              <Button
+                variant="outlined"
+                color="secondary"
+                fullWidth
+                startIcon={<ICONS.history />}
+                onClick={() => setTrackingOpen(true)}
+                sx={{ 
+                  borderRadius: 30, 
+                  px: 3, 
+                  whiteSpace: "nowrap", 
+                  fontWeight: "bold", 
+                  border: "2px solid",
+                  height: 44
+                }}
+              >
+                Track Orders
+              </Button>
+            </Badge>
+          </Box>
 
           {totalItems > 0 && (
-            <Button
-              variant="contained"
-              color="primary"
-              fullWidth={isMobile}
-              startIcon={
-                <Badge badgeContent={totalItems} color="error" sx={{ mr: 1 }}>
-                  <ICONS.list />
-                </Badge>
-              }
-              onClick={toggleCart(true)}
-              sx={{ borderRadius: 30, px: 3, whiteSpace: "nowrap" }}
-            >
-              Review Order
-            </Button>
+            <Box sx={{ width: { xs: "100%", sm: "auto" } }}>
+              <Button
+                variant="contained"
+                color="primary"
+                fullWidth
+                startIcon={
+                  <Badge badgeContent={totalItems} color="error" sx={{ mr: 1 }}>
+                    <ICONS.list />
+                  </Badge>
+                }
+                onClick={toggleCart(true)}
+                sx={{ 
+                  borderRadius: 30, 
+                  px: 3, 
+                  fontWeight: "bold",
+                  height: 44,
+                  boxShadow: (theme) => `0 4px 14px ${alpha(theme.palette.primary.main, 0.4)}`
+                }}
+              >
+                Review Order
+              </Button>
+            </Box>
           )}
         </Stack>
       </Box>
@@ -475,6 +693,40 @@ function OrderingContent() {
         onClose={() => setTrackingOpen(false)}
         user={user}
       />
+
+      {/* Duplicate Order Confirmation */}
+      <Dialog 
+        open={duplicateDialog} 
+        onClose={() => setDuplicateDialog(false)}
+        PaperProps={{ sx: { borderRadius: 4, width: "100%", maxWidth: 400, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, display: "flex", alignItems: "center", gap: 1.5, color: "warning.main" }}>
+          <ICONS.warning sx={{ fontSize: 28 }} /> Duplicate Order Detected
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mt: 1, fontWeight: 500, lineHeight: 1.6 }}>
+            An identical active order already exists for this visitor. Are you sure you want to place another one?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button 
+            variant="outlined" 
+            onClick={() => setDuplicateDialog(false)}
+            sx={{ borderRadius: 30, textTransform: "none", fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            color="warning"
+            onClick={handleConfirmDuplicate}
+            disabled={submitting}
+            sx={{ borderRadius: 30, textTransform: "none", fontWeight: 700 }}
+          >
+            {submitting ? <CircularProgress size={16} color="inherit" /> : "Confirm & Place Anyway"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -20,6 +20,7 @@ const mapOrderToFrontend = (order) => ({
   requester: order.requesterUser?.fullName || "Unknown",
   requester_id: order.requesterUserId,
   is_new: order.isNew,
+  is_seen_by_requester: order.isSeenByRequester,
   items: order.items?.map((item) => ({
     id: item.id,
     name: item.itemNameSnapshot || item.menuItem?.name || "Deleted Item",
@@ -32,6 +33,19 @@ const mapOrderToFrontend = (order) => ({
     changed_at: h.changedAt || h.createdAt,
     changed_by: h.changedByUser?.fullName || "System",
   })) || [],
+  updated_by_user: order.updatedBy?.fullName || null,
+  visitor_name: order.visitor?.fullName || order.registration?.user?.fullName || null,
+  visitor_organisation: (
+    order.registration?.organisation || 
+    order.registration?.companyName || 
+    order.visitor?.companyName || 
+    order.registration?.fieldValues?.find(fv => {
+      const k = (fv.customField?.fieldKey || fv.custom_field?.field_key || "").toLowerCase();
+      return k === "organisation" || k === "organization" || k === "company" || k === "companyname";
+    })?.value ||
+    null
+  ),
+  registration_id: order.registrationId || null,
   created_at: order.createdAt,
   updated_at: order.updatedAt,
 });
@@ -74,8 +88,17 @@ export const deleteMenuItem = withApiHandler(
 );
 
 // Orders
-export const getAllOrders = withApiHandler(async (date) => {
-  const url = date ? `/kitchen/orders?date=${date}` : "/kitchen/orders";
+export const getAllOrders = withApiHandler(async (params = {}) => {
+  const { date, registrationId } = params;
+  let url = "/kitchen/orders";
+  const queryParts = [];
+  if (date) queryParts.push(`date=${date}`);
+  if (registrationId) queryParts.push(`registrationId=${registrationId}`);
+  
+  if (queryParts.length > 0) {
+    url += `?${queryParts.join("&")}`;
+  }
+
   const res = await api.get(url);
   const orders = res.data?.data || res.data || [];
   return Array.isArray(orders) ? orders.map(mapOrderToFrontend) : [];
@@ -112,14 +135,14 @@ export const getOrderHistory = withApiHandler(async (id) => {
 });
 
 export const createOrder = withApiHandler(
-  async (data) => {
-    const res = await api.post("/kitchen/orders", data);
+  async (data, force = false) => {
+    const res = await api.post(`/kitchen/orders${force ? "?force=true" : ""}`, data);
     return {
       data: mapOrderToFrontend(res.data?.data || res.data),
       message: res.data?.message || "Order placed successfully",
     };
   },
-  { showSuccess: true }
+  { showSuccess: true, suppressErrorStatus: [409] }
 );
 
 export const updateOrderStatus = withApiHandler(
@@ -132,3 +155,19 @@ export const updateOrderStatus = withApiHandler(
   },
   { showSuccess: true }
 );
+
+export const cancelOrder = withApiHandler(
+  async (id, notes) => {
+    const res = await api.post(`/kitchen/orders/${id}/cancel`, { notes });
+    return {
+      data: mapOrderToFrontend(res.data?.data || res.data),
+      message: res.data?.message || "Order cancelled",
+    };
+  },
+  { showSuccess: true }
+);
+
+export const markOrdersAsSeen = withApiHandler(async () => {
+  const res = await api.patch("/kitchen/orders/mark-seen");
+  return res.data;
+});
