@@ -7,6 +7,9 @@ import {
   Divider,
   Button,
   Stack,
+  Tooltip,
+  IconButton,
+  CircularProgress,
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 import AppCard from "@/components/cards/AppCard";
@@ -14,24 +17,49 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import RoleGuard from "@/components/auth/RoleGuard";
-import { getNdaForms } from "@/services/ndaAcceptanceService";
+import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
+import { useMessage } from "@/contexts/MessageContext";
+import { getNdaForms, deleteNdaAcceptance, resendNdaToHost, resendNdaToVisitor } from "@/services/ndaAcceptanceService";
 import { formatDateTimeWithLocale } from "@/utils/dateUtils";
 
 export default function NdaFormsPage() {
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [actionLoading, setActionLoading] = useState({});
+  const { showMessage } = useMessage();
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await getNdaForms();
-        setForms(Array.isArray(data) ? data : []);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const fetchForms = async () => {
+    setLoading(true);
+    try {
+      const data = await getNdaForms();
+      setForms(Array.isArray(data) ? data : []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchForms(); }, []);
+
+  const handleAction = async (id, action, label) => {
+    setActionLoading((p) => ({ ...p, [`${id}-${action}`]: true }));
+    try {
+      if (action === "resend-host") await resendNdaToHost(id);
+      else if (action === "resend-visitor") await resendNdaToVisitor(id);
+      showMessage(`${label} successful`, "success");
+    } catch {
+      showMessage(`${label} failed`, "error");
+    } finally {
+      setActionLoading((p) => ({ ...p, [`${id}-${action}`]: false }));
+    }
+  };
+
+  const handleDelete = async () => {
+    await deleteNdaAcceptance(deleteTarget.id);
+    showMessage("NDA record deleted", "success");
+    setDeleteTarget(null);
+    await fetchForms();
+  };
 
   return (
     <RoleGuard allowedRoles={["superadmin"]}>
@@ -121,24 +149,78 @@ export default function NdaFormsPage() {
                     bgcolor: "action.hover",
                     display: "flex",
                     gap: 1,
+                    flexWrap: "wrap",
+                    alignItems: "center",
                   }}
                 >
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={<ICONS.download fontSize="small" />}
-                    href={form.ndaFormUrl}
-                    download
-                    sx={{ borderRadius: 30, fontSize: "0.72rem", flex: 1 }}
-                  >
-                    Download
-                  </Button>
+                  {form.ndaFormUrl && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<ICONS.download fontSize="small" />}
+                      href={form.ndaFormUrl}
+                      download
+                      sx={{ borderRadius: 30, fontSize: "0.72rem" }}
+                    >
+                      Download
+                    </Button>
+                  )}
+                  <Tooltip title="Resend to Host">
+                    <span>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        disabled={!!actionLoading[`${form.id}-resend-host`]}
+                        onClick={() => handleAction(form.id, "resend-host", "Resend to host")}
+                        sx={{ bgcolor: "action.hover" }}
+                      >
+                        {actionLoading[`${form.id}-resend-host`]
+                          ? <CircularProgress size={16} />
+                          : <ICONS.email fontSize="small" />}
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Resend to Visitor">
+                    <span>
+                      <IconButton
+                        size="small"
+                        color="secondary"
+                        disabled={!!actionLoading[`${form.id}-resend-visitor`]}
+                        onClick={() => handleAction(form.id, "resend-visitor", "Resend to visitor")}
+                        sx={{ bgcolor: "action.hover" }}
+                      >
+                        {actionLoading[`${form.id}-resend-visitor`]
+                          ? <CircularProgress size={16} />
+                          : <ICONS.send fontSize="small" />}
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Delete NDA Record">
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => setDeleteTarget(form)}
+                      sx={{ bgcolor: "action.hover", ml: "auto" }}
+                    >
+                      <ICONS.delete fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 </Box>
               </AppCard>
             ))}
           </ResponsiveCardGrid>
         )}
       </Box>
+
+      <ConfirmationDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete NDA Record"
+        message={`Delete the NDA record for "${deleteTarget?.user?.fullName ?? 'this visitor'}"? This cannot be undone.`}
+        confirmButtonText="Delete"
+        confirmButtonIcon={<ICONS.delete fontSize="small" />}
+      />
     </RoleGuard>
   );
 }
