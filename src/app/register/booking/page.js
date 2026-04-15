@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Button,
-  Chip,
   Paper,
   Stack,
   Typography,
@@ -19,7 +18,13 @@ import {
   InputLabel,
   Select,
   FormHelperText,
-  Tooltip,
+  Checkbox,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
@@ -27,6 +32,9 @@ import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { createRegistration } from "@/services/registrationService";
 import { getDepartments } from "@/services/departmentService";
+import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
+import NdaTemplateContent from "@/components/NdaTemplateContent";
+import { COUNTRY_CODES } from "@/utils/countryCodes";
 import { motion } from "framer-motion";
 import dayjs from "dayjs";
 import ICONS from "@/utils/iconUtil";
@@ -35,7 +43,6 @@ import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { formatTime, parse24To12, convert12To24, formatDate } from "@/utils/dateUtils";
 import { validateRequired } from "@/utils/validationUtils";
-import { QRCodeCanvas } from "qrcode.react";
  
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
@@ -43,15 +50,19 @@ const PERIODS = ["AM", "PM"];
 
 export default function BookingPage() {
   const router = useRouter();
-  const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState } = useVisitor();
+  const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState, setFlowState } = useVisitor();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const isReturning = flowState?.isReturning === true;
+  const ndaRequired = isReturning && flowState?.ndaAccepted === false;
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
-  const qrCanvasRef = useRef(null);
+  const [ndaOpen, setNdaOpen] = useState(false);
+  const [ndaAccepted, setNdaAccepted] = useState(false);
+  const [ndaTemplate, setNdaTemplate] = useState(null);
+  const [ndaLoading, setNdaLoading] = useState(false);
 
   const [bookingType, setBookingType] = useState("custom");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
@@ -63,6 +74,16 @@ export default function BookingPage() {
       });
     }
   }, [isReturning]);
+
+  useEffect(() => {
+    if (ndaRequired) {
+      setNdaLoading(true);
+      getPublicActiveNdaTemplate()
+        .then((res) => setNdaTemplate(res))
+        .catch(() => setNdaTemplate(null))
+        .finally(() => setNdaLoading(false));
+    }
+  }, [ndaRequired]);
 
   const handleDateChange = (newDate) => {
     setBookingData((prev) => ({ ...prev, date: newDate }));
@@ -173,6 +194,7 @@ export default function BookingPage() {
       if (!visitorData.departmentId) errs.departmentId = "Department is required";
       const purposeErr = validateRequired(visitorData.purposeOfVisit, "Purpose of Visit");
       if (purposeErr) errs.purposeOfVisit = purposeErr;
+      if (ndaRequired && !ndaAccepted) errs.nda = "You must accept the NDA before submitting";
       if (Object.keys(errs).length) { setFieldErrors(errs); return; }
     }
 
@@ -186,8 +208,9 @@ export default function BookingPage() {
 
         if (selectedPreset === "fullDay") {
           const fromParts = bookingData.timeFrom.split(":");
+          const toParts = bookingData.timeTo.split(":");
           from = from.startOf("day").hour(parseInt(fromParts[0])).minute(parseInt(fromParts[1]));
-          to = to.add(1, "day").startOf("day").hour(parseInt(fromParts[0])).minute(parseInt(fromParts[1]));
+          to = to.add(1, "day").startOf("day").hour(parseInt(toParts[0])).minute(parseInt(toParts[1]));
         } else if (selectedPreset === "fullWeek") {
           from = from.startOf("day");
           to = to.add(6, "days").endOf("day");
@@ -205,7 +228,7 @@ export default function BookingPage() {
       
       const payload = {
         userId: visitorData.userId,
-        ndaAccepted: flowState?.ndaAccepted === true,
+        ndaAccepted: flowState?.ndaAccepted === true || ndaAccepted,
         requestedFrom: dayjs(`${fromDate}T${bookingData.timeFrom}`).toISOString(),
         requestedTo: dayjs(`${toDate}T${bookingData.timeTo}`).toISOString(),
         phoneIsoCode: visitorData.phoneIsoCode,
@@ -227,209 +250,160 @@ export default function BookingPage() {
     }
   };
 
-  const handleDownloadQr = () => {
-    const canvas = document.getElementById("visitor-qr-canvas");
-    if (!canvas) return;
-    const url = canvas.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `visit-qr-${success?.qrToken || "code"}.png`;
-    a.click();
-  };
-
   if (success) {
-    const fullName =
-      success?.visitor?.fullName ||
-      success?.user?.fullName ||
-      visitorData?.fullName ||
-      visitorData?.dynamicFields?.full_name ||
-      "Visitor";
-    const purposeOfVisit = success?.purposeOfVisit || visitorData?.purposeOfVisit;
-    const departmentName = success?.department?.name;
-    const requestedFrom = success?.requestedFrom ? dayjs(success.requestedFrom) : null;
-    const requestedTo = success?.requestedTo ? dayjs(success.requestedTo) : null;
-    const dateRange = requestedFrom
-      ? requestedFrom.format("ddd, D MMM YYYY") +
-        (requestedTo && !requestedFrom.isSame(requestedTo, "day")
-          ? " – " + requestedTo.format("ddd, D MMM YYYY")
-          : "")
-      : null;
-    const timeRange = requestedFrom
-      ? requestedFrom.format("h:mm A") + " – " + (requestedTo?.format("h:mm A") ?? "")
-      : null;
+    const visitorName = success.user?.fullName || visitorData.fullName || "Visitor";
+    const visitorEmail = success.user?.email || visitorData.email;
+    const rawPhone = success.user?.phone || visitorData.phone;
+    const isoCode = (visitorData.phoneIsoCode || visitorData.iso_code || "").toLowerCase();
+    const dialCode = COUNTRY_CODES.find((c) => c.isoCode === isoCode)?.code ?? "";
+    const visitorPhone = rawPhone ? `${dialCode} ${rawPhone}`.trim() : null;
 
-    const summaryRows = [
-      { label: "Full Name", value: fullName },
-      ...(purposeOfVisit ? [{ label: "Purpose of Visit", value: purposeOfVisit }] : []),
-      ...(departmentName ? [{ label: "Department", value: departmentName }] : []),
-      ...(dateRange ? [{ label: "Date", value: dateRange }] : []),
-      ...(timeRange ? [{ label: "Time Window", value: timeRange }] : []),
-    ];
+    const deptName = success.department?.name || departments.find((d) => d.id === visitorData.departmentId)?.name;
+    const purposeText = success.purposeOfVisit || visitorData.purposeOfVisit;
+
+    const fromDate = success.requestedFrom ? new Date(success.requestedFrom) : null;
+    const toDate = success.requestedTo ? new Date(success.requestedTo) : null;
+
+    const fmtDate = (d) =>
+      d ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(d) : "—";
+    const fmtTime = (d) =>
+      d ? new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).format(d) : "—";
+
+    const sameDay = fromDate && toDate && fmtDate(fromDate) === fmtDate(toDate);
+
+    const DetailRow = ({ icon, label, value }) => (
+      <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ py: 1.5, px: 2.5 }}>
+        <Box sx={{ color: "text.disabled", mt: 0.1, flexShrink: 0 }}>{icon}</Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6 }}>
+            {label}
+          </Typography>
+          <Typography variant="body2" fontWeight={600} color="text.primary" sx={{ mt: 0.25 }}>
+            {value}
+          </Typography>
+        </Box>
+      </Stack>
+    );
 
     return (
-      <VisitorLayout justifyContent="center" maxWidth={480}>
-        <motion.div
-          initial={{ scale: 0.92, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-        >
-          <Stack spacing={3} alignItems="center" sx={{ py: 2 }}>
-            {/* Header */}
+      <VisitorLayout justifyContent="center">
+        <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }}>
+          <Stack spacing={2.5}>
+
+            {/* Icon + title */}
             <Stack alignItems="center" spacing={1}>
               <Box
                 sx={{
-                  p: 1.5,
-                  borderRadius: "50%",
-                  bgcolor: (theme) => alpha(theme.palette.success.main, 0.12),
+                  width: 60, height: 60, borderRadius: "50%",
+                  bgcolor: (theme) => alpha(theme.palette.success.main, 0.1),
                   color: "success.main",
-                  display: "inline-flex",
+                  display: "flex", alignItems: "center", justifyContent: "center",
                 }}
               >
-                <ICONS.checkCircle sx={{ fontSize: 36 }} />
+                <ICONS.checkCircle sx={{ fontSize: 32 }} />
               </Box>
-              <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", textAlign: "center" }}>
+              <Typography variant="h6" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
                 Application Sent!
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", maxWidth: 340 }}>
-                Your registration is pending approval. Check your email for your QR code — you may be asked to show it on arrival.
+              <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 320 }}>
+                Pending approval — you'll receive a confirmation email once reviewed.
               </Typography>
             </Stack>
 
-            {/* QR Code Card */}
-            {success?.qrToken && (
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 4,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  bgcolor: "background.paper",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 2,
-                  width: "100%",
-                }}
-              >
-                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 1 }}>
-                  Your QR Code
-                </Typography>
+            {/* Card */}
+            <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 3, overflow: "hidden" }}>
 
+              {/* Visitor */}
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ px: 2.5, py: 2, bgcolor: (theme) => alpha(theme.palette.text.primary, 0.03) }}>
                 <Box
                   sx={{
-                    p: 1.5,
-                    bgcolor: "#ffffff",
-                    borderRadius: 2,
-                    border: "1px solid",
-                    borderColor: "divider",
-                    display: "inline-flex",
+                    width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
+                    color: "primary.main",
+                    display: "flex", alignItems: "center", justifyContent: "center",
                   }}
                 >
-                  <QRCodeCanvas
-                    id="visitor-qr-canvas"
-                    value={success.qrToken}
-                    size={240}
-                    bgColor="#ffffff"
-                    fgColor="#0d1117"
-                    level="M"
-                    includeMargin={false}
-                  />
+                  <ICONS.person sx={{ fontSize: 20 }} />
                 </Box>
-
-                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace", letterSpacing: 2 }}>
-                  {success.qrToken}
-                </Typography>
-
-                <Tooltip title="Save the QR code as an image">
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<ICONS.download />}
-                    onClick={handleDownloadQr}
-                    sx={{ borderRadius: 30, textTransform: "none", fontWeight: 700 }}
-                  >
-                    Download QR
-                  </Button>
-                </Tooltip>
-              </Paper>
-            )}
-
-            {/* Visit Summary */}
-            <Paper
-              elevation={0}
-              sx={{
-                borderRadius: 4,
-                border: "1px solid",
-                borderColor: "divider",
-                overflow: "hidden",
-                width: "100%",
-              }}
-            >
-              <Box
-                sx={{
-                  px: 2.5,
-                  py: 1.5,
-                  bgcolor: (theme) => alpha(theme.palette.text.primary, isDark ? 0.06 : 0.03),
-                  borderBottom: "1px solid",
-                  borderColor: "divider",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 1 }}>
-                  Visit Summary
-                </Typography>
-                <Chip
-                  label="Pending Approval"
-                  size="small"
-                  sx={{
-                    bgcolor: (theme) => alpha(theme.palette.warning.main, 0.12),
-                    color: "warning.main",
-                    fontWeight: 700,
-                    fontSize: "0.68rem",
-                    height: 22,
-                  }}
-                />
-              </Box>
-              <Stack divider={<Divider />}>
-                {summaryRows.map(({ label, value }) => (
-                  <Stack
-                    key={label}
-                    direction="row"
-                    sx={{ px: 2.5, py: 1.25 }}
-                    alignItems="flex-start"
-                    spacing={1}
-                  >
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ minWidth: 110, fontWeight: 600, pt: 0.2 }}
-                    >
-                      {label}
-                    </Typography>
-                    <Typography variant="body2" fontWeight={500} sx={{ flex: 1 }}>
-                      {value}
-                    </Typography>
-                  </Stack>
-                ))}
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography fontWeight={700} noWrap>{visitorName}</Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    {[visitorEmail, visitorPhone].filter(Boolean).join("  ·  ")}
+                  </Typography>
+                </Box>
               </Stack>
-            </Paper>
 
-            {/* Home Button */}
+              <Divider />
+
+              {/* Date */}
+              {sameDay ? (
+                <DetailRow
+                  icon={<ICONS.event sx={{ fontSize: 18 }} />}
+                  label="Visit Date"
+                  value={`${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)} – ${fmtTime(toDate)}`}
+                />
+              ) : (
+                <>
+                  <DetailRow
+                    icon={<ICONS.event sx={{ fontSize: 18 }} />}
+                    label="From"
+                    value={`${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)}`}
+                  />
+                  <Divider sx={{ mx: 2.5 }} />
+                  <DetailRow
+                    icon={<ICONS.event sx={{ fontSize: 18 }} />}
+                    label="To"
+                    value={`${fmtDate(toDate)}  ·  ${fmtTime(toDate)}`}
+                  />
+                </>
+              )}
+
+              {deptName && (
+                <>
+                  <Divider sx={{ mx: 2.5 }} />
+                  <DetailRow
+                    icon={<ICONS.business sx={{ fontSize: 18 }} />}
+                    label="Department"
+                    value={deptName}
+                  />
+                </>
+              )}
+
+              {purposeText && (
+                <>
+                  <Divider sx={{ mx: 2.5 }} />
+                  <DetailRow
+                    icon={<ICONS.info sx={{ fontSize: 18 }} />}
+                    label="Purpose of Visit"
+                    value={purposeText}
+                  />
+                </>
+              )}
+
+              <Divider />
+
+              {/* Status */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, py: 1.5 }}>
+                <Typography variant="caption" color="text.secondary" fontWeight={500}>Status</Typography>
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "warning.main" }} />
+                  <Typography variant="caption" fontWeight={700} color="warning.dark" sx={{ textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.65rem" }}>
+                    Pending Review
+                  </Typography>
+                </Stack>
+              </Stack>
+            </Box>
+
             <Button
               variant="contained"
               fullWidth
               startIcon={<ICONS.home />}
-              onClick={() => {
-                resetVisitorFlow();
-                router.push("/");
-              }}
+              onClick={() => { resetVisitorFlow(); router.push("/"); }}
               sx={{ py: 1.5, borderRadius: 30, fontWeight: 700 }}
             >
               Back to Home
             </Button>
+
           </Stack>
         </motion.div>
       </VisitorLayout>
@@ -437,8 +411,9 @@ export default function BookingPage() {
   }
 
   return (
-    <VisitorLayout 
-      title="Appointment Booking" 
+    <>
+    <VisitorLayout
+      title="Appointment Booking"
       subtitle="Select your preferred visit date and arrival time."
       maxWidth={900}
     >
@@ -486,6 +461,36 @@ export default function BookingPage() {
               rounded
             />
 
+            {ndaRequired && (
+              <Stack spacing={0.75}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={ndaAccepted}
+                      onChange={() => {
+                        if (!ndaAccepted) setNdaOpen(true);
+                        else setNdaAccepted(false);
+                      }}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Typography component="span" variant="body2" fontWeight={600}>
+                      I have read and agree to the Non-Disclosure Agreement
+                    </Typography>
+                  }
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ pl: 4 }}>
+                  Your previous NDA has expired. Please review and accept the NDA before submitting.
+                </Typography>
+                {fieldErrors.nda && (
+                  <Typography variant="caption" color="error.main" sx={{ pl: 4 }}>
+                    {fieldErrors.nda}
+                  </Typography>
+                )}
+              </Stack>
+            )}
+
             <Divider />
           </Stack>
         )}
@@ -523,9 +528,13 @@ export default function BookingPage() {
                 value={bookingType}
                 onChange={(_, value) => {
                   setBookingType(value);
-                  // Ensure timeTo is synced when switching to Full Day preset
-                  if (value === "preset" && selectedPreset === "fullDay") {
-                    setBookingData(prev => ({ ...prev, timeTo: prev.timeFrom }));
+                  // When switching to preset, ensure timeTo is synced for the active preset
+                  if (value === "preset") {
+                    if (selectedPreset === "fullDay") {
+                      setBookingData((prev) => ({ ...prev, timeTo: prev.timeFrom }));
+                    } else {
+                      setBookingData((prev) => ({ ...prev, timeFrom: "00:00", timeTo: "23:59" }));
+                    }
                   }
                 }}
                 variant="fullWidth"
@@ -716,5 +725,47 @@ export default function BookingPage() {
         </Stack>
       </Stack>
     </VisitorLayout>
+
+    {/* NDA Modal — must re-sign expired NDA */}
+    <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Typography variant="h6" fontWeight={800} component="span" sx={{ fontFamily: "'Comfortaa', cursive" }}>
+          {ndaTemplate?.name || "Non-Disclosure Agreement"}
+        </Typography>
+        <IconButton onClick={() => setNdaOpen(false)}>
+          <ICONS.close />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers sx={{ borderColor: "rgba(0,0,0,0.05)" }}>
+        {ndaLoading ? (
+          <Stack spacing={2} alignItems="center" sx={{ py: 4 }}>
+            <CircularProgress size={28} />
+            <Typography variant="body2" color="text.secondary">Loading NDA...</Typography>
+          </Stack>
+        ) : (
+          <NdaTemplateContent template={ndaTemplate} />
+        )}
+      </DialogContent>
+      <DialogActions sx={{ p: 2, gap: 1 }}>
+        <Button variant="outlined" onClick={() => setNdaOpen(false)} sx={{ borderRadius: 30 }}>
+          Close
+        </Button>
+        <Button
+          variant="contained"
+          color="success"
+          startIcon={<ICONS.check />}
+          onClick={() => {
+            setNdaAccepted(true);
+            setFlowState((prev) => ({ ...prev, ndaAccepted: true }));
+            setNdaOpen(false);
+            if (fieldErrors.nda) setFieldErrors((p) => { const n = { ...p }; delete n.nda; return n; });
+          }}
+          sx={{ borderRadius: 30 }}
+        >
+          I Agree
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }
