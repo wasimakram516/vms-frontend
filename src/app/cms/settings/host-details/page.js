@@ -32,14 +32,12 @@ import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
 import MediaUploadProgress from "@/components/MediaUploadProgress";
 import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
-import RecordMetadata from "@/components/RecordMetadata";
 import { getHost, createHost, updateHost, deleteHost } from "@/services/hostService";
 import { uploadMediaFiles } from "@/utils/mediaUpload";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, getCountryAndPhoneByFullPhone } from "@/utils/countryCodes";
-import { validateRequired, validateEmail, validateUrl, validatePhone } from "@/utils/validationUtils";
-import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
-
+import { validateRequired, validateEmail, validateUrl } from "@/utils/validationUtils";
+import { formatDateTimeWithLocale } from "@/utils/dateUtils";
 
 const emptyForm = () => ({
   name: "",
@@ -52,6 +50,7 @@ const emptyForm = () => ({
   contactPersonEmail: "",
   contactPersonPhone: "",
   isKitchenModuleEnabled: true,
+  ndaNotificationEmail: "",
 });
 
 const emptyIsoCodes = () => ({
@@ -99,7 +98,6 @@ export default function HostDetailsPage() {
   const [isEdit, setIsEdit] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isoCodes, setIsoCodes] = useState(emptyIsoCodes());
-  const [errors, setErrors] = useState({});
 
   // Logo: pending file + preview (not uploaded until save)
   const [logoFile, setLogoFile] = useState(null);
@@ -131,7 +129,6 @@ export default function HostDetailsPage() {
     setLogoFile(null);
     setLogoPreview("");
     setIsEdit(false);
-    setErrors({});
     setDialogOpen(true);
   };
 
@@ -151,11 +148,11 @@ export default function HostDetailsPage() {
       contactPersonEmail: host.contactPersonEmail || "",
       contactPersonPhone: cpPhoneNo,
       isKitchenModuleEnabled: host.isKitchenModuleEnabled ?? true,
+      ndaNotificationEmail: host.ndaNotificationEmail || "",
     });
     setLogoFile(null);
     setLogoPreview(host.logoUrl || "");
     setIsEdit(true);
-    setErrors({});
     setDialogOpen(true);
   };
 
@@ -196,21 +193,13 @@ export default function HostDetailsPage() {
       if (cpEmailError) errors.contactPersonEmail = cpEmailError;
     }
     
-    // Add phone validation
-    const phoneError = validatePhone(form.phone, isoCodes.phone);
-    if (phoneError) errors.phone = phoneError;
-    
-    const cpPhoneError = validatePhone(form.contactPersonPhone, isoCodes.contactPersonPhone);
-    if (cpPhoneError) errors.contactPersonPhone = cpPhoneError;
-    
     return errors;
   };
 
   const handleSave = async () => {
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      showMessage(Object.values(validationErrors)[0], "error");
+      Object.values(validationErrors).forEach(err => showMessage(err, "error"));
       return;
     }
 
@@ -265,6 +254,7 @@ export default function HostDetailsPage() {
         contactPersonEmail: form.contactPersonEmail.trim() || undefined,
         contactPersonPhone: buildPhone(form.contactPersonPhone, "contactPersonPhone"),
         isKitchenModuleEnabled: form.isKitchenModuleEnabled,
+        ndaNotificationEmail: form.ndaNotificationEmail.trim() || undefined,
       };
 
       if (isEdit) {
@@ -305,7 +295,7 @@ export default function HostDetailsPage() {
         >
           <Box sx={{ flex: 1 }}>
             <Typography variant="h5" fontWeight="bold">
-              Host Details
+              Organization Details
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, opacity: 0.8 }}>
               Organization profile displayed on visitor-facing communications and documents.
@@ -341,13 +331,13 @@ export default function HostDetailsPage() {
         ) : !host ? (
           <Box>
             <NoDataAvailable
-              title="No host profile yet"
+              title="No organization profile yet"
               description="Set up your organization profile to display it on visitor communications and documents."
             />
             {!readOnly && (
               <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
                 <Button variant="contained" startIcon={<ICONS.add />} onClick={openCreate}>
-                  Create Host Profile
+                  Create Organization Profile
                 </Button>
               </Box>
             )}
@@ -391,6 +381,13 @@ export default function HostDetailsPage() {
               <DetailItem icon={ICONS.Language} primary="Website" secondary={host.website} />
             </List>
 
+            {/* NDA Notification */}
+            <Divider sx={{ mt: 1 }} />
+            <SectionLabel>NDA Notifications</SectionLabel>
+            <List dense disablePadding>
+              <DetailItem icon={ICONS.email} primary="NDA Notification Email" secondary={host.ndaNotificationEmail} />
+            </List>
+
             {/* Contact person */}
             <Divider sx={{ mt: 1 }} />
             <SectionLabel>Contact Person</SectionLabel>
@@ -412,17 +409,12 @@ export default function HostDetailsPage() {
             </List>
 
             {/* Logs */}
-            <Divider sx={{ mt: 2 }} />
+            <Divider sx={{ mt: 1 }} />
             <SectionLabel>Logs</SectionLabel>
-            <Box sx={{ mt: 1 }}>
-              <RecordMetadata
-                createdByName={host.created_by}
-                updatedByName={host.updated_by}
-                createdAt={host.created_at}
-                updatedAt={host.updated_at}
-                locale="en-GB"
-              />
-            </Box>
+            <List dense disablePadding>
+              <DetailItem icon={ICONS.person} primary="Created" secondary={`${host.created_by || "N/A"} · ${host.created_at ? formatDateTimeWithLocale(host.created_at, "en-GB") : "N/A"}`} />
+              <DetailItem icon={ICONS.sync} primary="Updated" secondary={`${host.updated_by || "N/A"} · ${host.updated_at ? formatDateTimeWithLocale(host.updated_at, "en-GB") : "N/A"}`} />
+            </List>
           </Box>
         )}
 
@@ -435,7 +427,7 @@ export default function HostDetailsPage() {
           PaperProps={{ sx: { borderRadius: 4 } }}
         >
           <DialogHeader
-            title={isEdit ? "Edit Host Profile" : "Create Host Profile"}
+            title={isEdit ? "Edit Organization Profile" : "Create Organization Profile"}
             onClose={() => setDialogOpen(false)}
           />
           <Divider />
@@ -499,29 +491,19 @@ export default function HostDetailsPage() {
               Organization
             </Typography>
             <Stack spacing={2} sx={{ mb: 3 }}>
-               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
                   fullWidth
                   label="Organization Name *"
                   value={form.name}
-                  error={Boolean(errors.name)}
-                  helperText={errors.name}
-                  onChange={(e) => {
-                    setForm((p) => ({ ...p, name: e.target.value }));
-                    if (errors.name) setErrors(prev => ({ ...prev, name: null }));
-                  }}
+                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
                 />
                 <TextField
                   fullWidth
                   label="Email *"
                   type="email"
                   value={form.email}
-                  error={Boolean(errors.email)}
-                  helperText={errors.email}
-                  onChange={(e) => {
-                    setForm((p) => ({ ...p, email: e.target.value }));
-                    if (errors.email) setErrors(prev => ({ ...prev, email: null }));
-                  }}
+                  onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
                 />
               </Stack>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -529,24 +511,12 @@ export default function HostDetailsPage() {
                   fullWidth
                   label="Phone"
                   value={form.phone}
-                  error={Boolean(errors.phone)}
-                  helperText={errors.phone}
-                  onChange={(e) => {
-                    setForm((p) => ({ ...p, phone: filterPhoneInput(e.target.value) }));
-                    if (errors.phone) setErrors(prev => ({ ...prev, phone: null }));
-                  }}
-                  onKeyPress={onKeyPressPhone}
+                  onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value.replace(/\D/g, "") }))}
                   InputProps={{
                     startAdornment: (
                       <CountryCodeSelector
                         value={isoCodes.phone}
-                        onChange={(iso) => {
-                          setIsoCodes((p) => ({ ...p, phone: iso }));
-                          if (form.phone) {
-                            const err = validatePhone(form.phone, iso);
-                            setErrors(p => ({ ...p, phone: err }));
-                          }
-                        }}
+                        onChange={(iso) => setIsoCodes((p) => ({ ...p, phone: iso }))}
                       />
                     ),
                   }}
@@ -556,12 +526,7 @@ export default function HostDetailsPage() {
                   label="Website"
                   placeholder="https://example.com"
                   value={form.website}
-                  error={Boolean(errors.website)}
-                  helperText={errors.website}
-                  onChange={(e) => {
-                    setForm((p) => ({ ...p, website: e.target.value }));
-                    if (errors.website) setErrors(prev => ({ ...prev, website: null }));
-                  }}
+                  onChange={(e) => setForm((p) => ({ ...p, website: e.target.value }))}
                 />
               </Stack>
               <TextField
@@ -570,14 +535,24 @@ export default function HostDetailsPage() {
                 multiline
                 rows={2}
                 value={form.address}
-                error={Boolean(errors.address)}
-                helperText={errors.address}
-                onChange={(e) => {
-                  setForm((p) => ({ ...p, address: e.target.value }));
-                  if (errors.address) setErrors(prev => ({ ...prev, address: null }));
-                }}
+                onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))}
               />
             </Stack>
+
+            {/* NDA Notifications */}
+            <Typography variant="caption" fontWeight={700} color="primary.main" sx={{ textTransform: "uppercase", letterSpacing: 0.5, display: "block", mb: 1.5 }}>
+              NDA Notifications
+            </Typography>
+            <TextField
+              fullWidth
+              label="NDA Notification Email"
+              type="email"
+              placeholder="e.g. nda@sinan.om"
+              value={form.ndaNotificationEmail}
+              onChange={(e) => setForm((p) => ({ ...p, ndaNotificationEmail: e.target.value }))}
+              helperText="A copy of every signed NDA will be sent to this address. Leave blank to disable."
+              sx={{ mb: 3 }}
+            />
 
             {/* Contact person fields */}
             <Typography variant="caption" fontWeight={700} color="primary.main" sx={{ textTransform: "uppercase", letterSpacing: 0.5, display: "block", mb: 1.5 }}>
@@ -588,12 +563,7 @@ export default function HostDetailsPage() {
                 fullWidth
                 label="Contact Person Name"
                 value={form.contactPersonName}
-                error={Boolean(errors.contactPersonName)}
-                helperText={errors.contactPersonName}
-                onChange={(e) => {
-                  setForm((p) => ({ ...p, contactPersonName: e.target.value }));
-                  if (errors.contactPersonName) setErrors(prev => ({ ...prev, contactPersonName: null }));
-                }}
+                onChange={(e) => setForm((p) => ({ ...p, contactPersonName: e.target.value }))}
               />
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                 <TextField
@@ -601,35 +571,18 @@ export default function HostDetailsPage() {
                   label="Contact Email"
                   type="email"
                   value={form.contactPersonEmail}
-                  error={Boolean(errors.contactPersonEmail)}
-                  helperText={errors.contactPersonEmail}
-                  onChange={(e) => {
-                    setForm((p) => ({ ...p, contactPersonEmail: e.target.value }));
-                    if (errors.contactPersonEmail) setErrors(prev => ({ ...prev, contactPersonEmail: null }));
-                  }}
+                  onChange={(e) => setForm((p) => ({ ...p, contactPersonEmail: e.target.value }))}
                 />
                 <TextField
                   fullWidth
                   label="Contact Phone"
                   value={form.contactPersonPhone}
-                  error={Boolean(errors.contactPersonPhone)}
-                  helperText={errors.contactPersonPhone}
-                  onChange={(e) => {
-                    setForm((p) => ({ ...p, contactPersonPhone: filterPhoneInput(e.target.value) }));
-                    if (errors.contactPersonPhone) setErrors(prev => ({ ...prev, contactPersonPhone: null }));
-                  }}
-                  onKeyPress={onKeyPressPhone}
+                  onChange={(e) => setForm((p) => ({ ...p, contactPersonPhone: e.target.value.replace(/\D/g, "") }))}
                   InputProps={{
                     startAdornment: (
                       <CountryCodeSelector
                         value={isoCodes.contactPersonPhone}
-                        onChange={(iso) => {
-                          setIsoCodes((p) => ({ ...p, contactPersonPhone: iso }));
-                          if (form.contactPersonPhone) {
-                            const err = validatePhone(form.contactPersonPhone, iso);
-                            setErrors(p => ({ ...p, contactPersonPhone: err }));
-                          }
-                        }}
+                        onChange={(iso) => setIsoCodes((p) => ({ ...p, contactPersonPhone: iso }))}
                       />
                     ),
                   }}
@@ -647,6 +600,7 @@ export default function HostDetailsPage() {
                 <Switch
                   checked={form.isKitchenModuleEnabled}
                   onChange={(e) => setForm((p) => ({ ...p, isKitchenModuleEnabled: e.target.checked }))}
+                  color="success"
                 />
               }
               label={
@@ -693,8 +647,8 @@ export default function HostDetailsPage() {
           open={deleteOpen}
           onClose={() => setDeleteOpen(false)}
           onConfirm={handleDelete}
-          title="Delete Host Profile"
-          message="Are you sure you want to delete the host profile? This action cannot be undone."
+          title="Delete Organization Profile"
+          message="Are you sure you want to delete the organization profile? This action cannot be undone."
           confirmButtonText="Delete"
           confirmButtonIcon={<ICONS.delete fontSize="small" />}
         />
