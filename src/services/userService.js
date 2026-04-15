@@ -7,7 +7,7 @@ const mapUserToFrontend = (user) => ({
   email: user.email,
   role: user.role,
   phone: user.phone,
-  iso_code: user.phoneIsoCode || user.isoCode,
+  iso_code: user.iso_code || user.phoneIsoCode || user.isoCode,
   staff_type: user.staffType,
   status: user.status,
   departments: Array.isArray(user.departments) ? user.departments : [],
