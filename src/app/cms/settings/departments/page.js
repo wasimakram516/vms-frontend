@@ -28,6 +28,7 @@ import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
+import RecordMetadata from "@/components/RecordMetadata";
 import {
   getDepartments,
   createDepartment,
@@ -278,33 +279,44 @@ function DepartmentsContent() {
                 )}
               </Box>
 
-              {!readOnly && (
-                <Box
-                  sx={{
-                    p: 1.5,
-                    borderTop: "1px solid",
-                    borderColor: "divider",
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 1,
-                  }}
-                >
-                  <Tooltip title="Edit">
-                    <IconButton size="small" onClick={() => openEdit(dept)} sx={{ color: "primary.main" }}>
-                      <ICONS.edit fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton
-                      size="small"
-                      onClick={() => { setItemToDelete(dept); setDeleteConfirmOpen(true); }}
-                      sx={{ color: "error.main" }}
-                    >
-                      <ICONS.delete fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              )}
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderTop: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "action.hover",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                }}
+              >
+                <RecordMetadata
+                  createdByName={dept.createdBy?.fullName || dept.createdById}
+                  updatedByName={dept.updatedBy?.fullName || dept.updatedById}
+                  createdAt={dept.createdAt}
+                  updatedAt={dept.updatedAt}
+                  locale="en-GB"
+                />
+                {!readOnly && (
+                  <Stack direction="row" spacing={0.5}>
+                    <Tooltip title="Edit">
+                      <IconButton size="small" onClick={() => openEdit(dept)} sx={{ color: "primary.main" }}>
+                        <ICONS.edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton
+                        size="small"
+                        onClick={() => { setItemToDelete(dept); setDeleteConfirmOpen(true); }}
+                        sx={{ color: "error.main" }}
+                      >
+                        <ICONS.delete fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                )}
+              </Box>
             </AppCard>
           ))}
         </ResponsiveCardGrid>

@@ -27,6 +27,7 @@ import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
+import RecordMetadata from "@/components/RecordMetadata";
 import {
   getAccessLevels,
   createAccessLevel,
@@ -239,33 +240,44 @@ function AccessLevelsContent() {
                 </Typography>
               </Box>
 
-              {!readOnly && (
-                <Box
-                  sx={{
-                    p: 1.5,
-                    borderTop: "1px solid",
-                    borderColor: "divider",
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 1,
-                  }}
-                >
-                  <Tooltip title="Edit">
-                    <IconButton size="small" onClick={() => openEdit(al)} sx={{ color: "primary.main" }}>
-                      <ICONS.edit fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton
-                      size="small"
-                      onClick={() => { setItemToDelete(al); setDeleteConfirmOpen(true); }}
-                      sx={{ color: "error.main" }}
-                    >
-                      <ICONS.delete fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              )}
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderTop: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "action.hover",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                }}
+              >
+                <RecordMetadata
+                  createdByName={al.createdBy?.fullName || al.createdById}
+                  updatedByName={al.updatedBy?.fullName || al.updatedById}
+                  createdAt={al.createdAt}
+                  updatedAt={al.updatedAt}
+                  locale="en-GB"
+                />
+                {!readOnly && (
+                  <Stack direction="row" spacing={0.5}>
+                    <Tooltip title="Edit">
+                      <IconButton size="small" onClick={() => openEdit(al)} sx={{ color: "primary.main" }}>
+                        <ICONS.edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton
+                        size="small"
+                        onClick={() => { setItemToDelete(al); setDeleteConfirmOpen(true); }}
+                        sx={{ color: "error.main" }}
+                      >
+                        <ICONS.delete fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                )}
+              </Box>
             </AppCard>
           ))}
         </ResponsiveCardGrid>
