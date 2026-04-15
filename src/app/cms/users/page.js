@@ -47,7 +47,7 @@ import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import { validateField, validatePhone } from "@/utils/validationUtils";
 import RecordMetadata from "@/components/RecordMetadata";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
-import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode } from "@/utils/countryCodes";
+import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay } from "@/utils/countryCodes";
 import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
 
 const CREATABLE_ROLES = ["admin", "staff"];
@@ -171,12 +171,9 @@ export default function UsersPage() {
     if (!validateForm()) return;
     setSubmitting(true);
     try {
-      const isVisitor = form.role === 'visitor';
-      const dialCode = getCountryCodeByIsoCode(isoCodes.phone)?.code || DEFAULT_COUNTRY_CODE;
-
       const payload = {
         ...form,
-        phoneIsoCode: isVisitor ? isoCodes.phone : dialCode,
+        phoneIsoCode: isoCodes.phone,
       };
 
       let res;
@@ -240,6 +237,7 @@ export default function UsersPage() {
   const filteredUsers = useMemo(() => {
     if (!Array.isArray(users)) return [];
     const filtered = users.filter((u) => {
+      if (u.role === "dev") return false;
       const matchSearch =
         u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         u.email.toLowerCase().includes(searchQuery.toLowerCase());
@@ -695,7 +693,7 @@ export default function UsersPage() {
                               dir: "ltr",
                             }}
                           >
-                            {u.phone}
+                            {formatPhoneNumberForDisplay(u.phone, u.iso_code)}
                           </Typography>
                         </Box>
                       )}
