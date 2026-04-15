@@ -11,7 +11,7 @@ import {
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
-import { sendOtp, verifyOtp } from "@/services/registrationService";
+import { sendOtp, verifyOtp, checkNdaValidity } from "@/services/registrationService";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 
@@ -118,17 +118,25 @@ export default function RegisterOtpPage() {
     try {
       const res = await verifyOtp(visitorData.identity, code);
       if (!res.error && res.success) {
+        // Check if returning visitor's NDA has expired and needs re-acceptance
+        const visitorEmail = res.user?.email || visitorData.identity;
+        let ndaStillValid = true;
+        if (visitorEmail) {
+          const validityRes = await checkNdaValidity(visitorEmail).catch(() => null);
+          if (validityRes?.ndaRequired) ndaStillValid = false;
+        }
+
         setFlowState((prev) => ({
           ...prev,
           otpVerified: true,
-          ndaAccepted: true,
+          ndaAccepted: ndaStillValid,
           isReturning: true,
-          currentStep: "booking"
+          currentStep: ndaStillValid ? "booking" : "nda"
         }));
 
         setVisitorData((prev) => {
           const newData = { ...prev };
-          
+
           if (res.user) {
             newData.userId = res.user.id;
             newData.fullName = res.user.fullName || prev.fullName;
@@ -141,13 +149,13 @@ export default function RegisterOtpPage() {
               ...prev.dynamicFields,
               ...res.lastFieldValues
             };
-            
+
             // Extract phoneIsoCode from returning visitor's last registration
             const isoCode = res.phoneIsoCode || res.phone_iso_code || res.isoCode || res.iso_code;
             if (isoCode) {
               newData.phoneIsoCode = isoCode;
             }
-            
+
             if (res.user?.fullName && !newData.dynamicFields.full_name) {
               newData.dynamicFields.full_name = res.user.fullName;
             }
