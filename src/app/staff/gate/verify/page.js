@@ -33,7 +33,7 @@ import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useSocket } from "@/contexts/SocketContext";
-import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs } from "@/services/registrationService";
+import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration } from "@/services/registrationService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
 
 const STATUS_CONFIG = {
@@ -86,7 +86,8 @@ export default function StaffVerifyPage() {
       if (res?.error) {
         setError(res.message);
       } else if (res) {
-        setResult(res);
+        const mapped = mapRegistration(res);
+        setResult(mapped);
         // Fetch activity logs for timestamps (check-in, check-out, visit-ended)
         if (res.id && ["checked_in", "checked_out", "visit_ended"].includes(res.status)) {
           const logs = await getRegistrationActivityLogs(res.id);
@@ -281,25 +282,9 @@ export default function StaffVerifyPage() {
       if (!currentRegistrationIdRef.current || currentRegistrationIdRef.current !== updatedReg.id) return;
 
       const isAccessible = ["approved", "checked_in", "checked_out"].includes(updatedReg.status);
-
       const mappedReg = {
-        id: updatedReg.id,
-        full_name: updatedReg.user?.fullName || "N/A",
-        email: updatedReg.user?.email || "N/A",
-        phone: updatedReg.user?.phone || "N/A",
-        purpose_of_visit: updatedReg.purposeOfVisit,
-        status: updatedReg.status,
-        requested_from: updatedReg.requestedFrom,
-        requested_to: updatedReg.requestedTo,
-        approved_from: updatedReg.approvedFrom,
-        approved_to: updatedReg.approvedTo,
-        phone_iso_code: updatedReg.phoneIsoCode,
-        qr_token: updatedReg.qrToken,
-        allow_multi_checkin: updatedReg.allowMultiCheckin,
+        ...mapRegistration(updatedReg),
         notApproved: !isAccessible,
-        visitor: updatedReg.visitor,
-        user: updatedReg.user,
-        ...updatedReg,
       };
       setResult(mappedReg);
 
@@ -418,7 +403,12 @@ export default function StaffVerifyPage() {
                 <Typography variant="h6" fontWeight={700}>
                   {result.status === "visit_ended" ? "Visit Concluded" : result.status === "rejected" ? "Visit Rejected" : result.status === "cancelled" ? "Visit Cancelled" : result.status === "expired" ? "Visit Expired" : "Verification Success"}
                 </Typography>
-                <Chip label={sc.label} color={sc.color} size="small" sx={{ fontWeight: 600 }} />
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip label={sc.label} color={sc.color} size="small" sx={{ fontWeight: 600 }} />
+                  {result.overstay && (
+                    <Chip label="Overstay Detected" color="error" size="small" sx={{ fontWeight: 800 }} />
+                  )}
+                </Stack>
               </Box>
               {["admin_approved", "approved", "checked_in", "checked_out"].includes(result.status) && (
                 <Tooltip title="Print Badge">

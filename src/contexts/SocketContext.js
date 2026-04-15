@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { usePathname } from 'next/navigation';
-import { getStoredToken } from '@/utils/authStorage';
+import * as AuthStorage from '@/utils/authStorage';
 import { useMessage } from './MessageContext';
 
 const SocketContext = createContext();
@@ -22,7 +22,7 @@ export const SocketProvider = ({ children }) => {
     const { showMessage } = useMessage();
     const pathname = usePathname();
     const showMessageRef = useRef(showMessage);
-    const [storedToken, setStoredToken] = useState(() => getStoredToken());
+    const [storedToken, setStoredToken] = useState(() => AuthStorage.getStoredToken());
 
     const API_URL = process.env.NEXT_PUBLIC_WEBSOCKET_HOST || 'http://localhost:4000';
     const SOCKET_URL = API_URL.replace(/\/api\/v1\/?$/, '');
@@ -33,7 +33,7 @@ export const SocketProvider = ({ children }) => {
     }, [showMessage]);
 
     useEffect(() => {
-        const syncToken = () => setStoredToken(getStoredToken());
+        const syncToken = () => setStoredToken(AuthStorage.getStoredToken());
 
         window.addEventListener("storage", syncToken);
         window.addEventListener("auth-storage-changed", syncToken);
@@ -77,7 +77,12 @@ export const SocketProvider = ({ children }) => {
         });
 
         newSocket.on('registration:new', (registration) => {
-            showMessageRef.current?.(`New registration: ${registration.user?.fullName || 'Visitor'}`, 'success');
+            const user = AuthStorage.getStoredUser();
+            const isAuthorized = user?.role === 'admin' || user?.role === 'superadmin';
+            
+            if (isAuthorized) {
+                showMessageRef.current?.(`New registration: ${registration.user?.fullName || 'Visitor'}`, 'success');
+            }
         });
 
         setSocket(newSocket);

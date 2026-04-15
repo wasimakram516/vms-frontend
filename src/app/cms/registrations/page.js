@@ -21,6 +21,7 @@ import {
   Select,
   InputLabel,
   CircularProgress,
+  LinearProgress,
   Alert,
   FormControl,
   Tabs,
@@ -67,6 +68,7 @@ import {
   getRegistrationById,
   updateRegistration,
   getRegistrationActivityLogs,
+  mapRegistration,
 } from "@/services/registrationService";
 import { getAccessLevels } from "@/services/accessLevelService";
 import { getDepartments } from "@/services/departmentService";
@@ -259,6 +261,8 @@ export default function CmsRegistrationsPage() {
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isListRefreshing, setIsListRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [requestDateFilter, setRequestDateFilter] = useState("");
@@ -336,16 +340,32 @@ export default function CmsRegistrationsPage() {
     return { from: undefined, to: undefined }; // "all"
   };
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async ({ silent = false } = {}) => {
+    const shouldShowFullLoader = !silent && !hasLoadedOnce && data.length === 0;
+    if (shouldShowFullLoader) setLoading(true);
+    else if (!silent) setIsListRefreshing(true);
+
     try {
       const { from, to } = getDateRangeFromPreset(datePreset, customFrom, customTo);
       const res = await getRegistrations(statusFilter, { from, to });
       setData(res || []);
+      setHasLoadedOnce(true);
     } finally {
-      setLoading(false);
+      if (shouldShowFullLoader) setLoading(false);
+      setIsListRefreshing(false);
     }
   };
+
+  const fetchTimelineLogs = useCallback(async (regId) => {
+    if (!regId) return;
+    setTimelineLoading(true);
+    try {
+      const logs = await getRegistrationActivityLogs(regId);
+      setTimelineLogs(Array.isArray(logs) ? logs : []);
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -363,25 +383,44 @@ export default function CmsRegistrationsPage() {
   const { on } = useSocket();
 
   useEffect(() => {
-    const unsubNew = on("registration:new", () => fetchData());
+    const unsubNew = on("registration:new", () => fetchData({ silent: true }));
     const unsubUpdated = on("registration:updated", (updatedReg) => {
-      // Replace the item in the list in-place — avoids full refetch and flash
+      if (!updatedReg?.id) return;
+      const mappedReg = mapRegistration(updatedReg);
+
+      // Update list
       setData((prev) => {
         const idx = prev.findIndex((r) => r.id === updatedReg.id);
         if (idx >= 0) {
           const next = [...prev];
-          next[idx] = updatedReg;
+          next[idx] = mappedReg;
           return next;
         }
-        // Not in the list (e.g. filtered out) — just re-fetch
-        fetchData();
+        fetchData({ silent: true });
         return prev;
       });
+
+      // Update detail view if selected
       if (selected?.id === updatedReg.id) {
-        getRegistrationById(updatedReg.id).then((fullDetail) => {
-          setSelected(fullDetail);
-          fetchKitchenOrders(updatedReg.id);
-        });
+        setSelected(mappedReg);
+        fetchKitchenOrders(updatedReg.id);
+      }
+
+      // Update timeline if open for this registration
+      if (timelineRegistrationId === updatedReg.id) {
+        fetchTimelineLogs(updatedReg.id);
+      }
+
+      // Update edit modal if open for this registration
+      if (editModal && editForm?.id === updatedReg.id) {
+        setEditForm(buildEditForm(mappedReg));
+        setEditCountryIsoCodes(buildEditCountryIsoCodes(mappedReg, activeCustomFields));
+      }
+
+      // Auto-close status/confirm modals if status was changed by someone else
+      if (selected?.id === updatedReg.id && updatedReg.status !== selected.status) {
+        setStatusModal({ open: false, targetStatus: null });
+        setConfirmModal({ open: false, targetStatus: null, message: "" });
       }
     });
     
@@ -403,7 +442,7 @@ export default function CmsRegistrationsPage() {
       unsubKitchenStatus?.();
       unsubKitchenNew?.();
     };
-  }, [selected?.id, on]);
+  }, [selected?.id, selected?.status, timelineRegistrationId, editModal, editForm?.id, activeCustomFields, on, fetchTimelineLogs]);
 
   useEffect(() => {
     if (selected) {
@@ -526,13 +565,7 @@ export default function CmsRegistrationsPage() {
     setTimelineRegistrationId(registrationId);
     setTimelineLogs([]);
     setTimelineModal({ open: true, visitorName });
-    setTimelineLoading(true);
-    try {
-      const logs = await getRegistrationActivityLogs(registrationId);
-      setTimelineLogs(Array.isArray(logs) ? logs : []);
-    } finally {
-      setTimelineLoading(false);
-    }
+    await fetchTimelineLogs(registrationId);
   };
 
   // ── Edit registration ─────────────────────────────────────────────────────
@@ -928,6 +961,17 @@ export default function CmsRegistrationsPage() {
         }
       />
 
+      {isListRefreshing && !loading && (
+        <LinearProgress
+          sx={{
+            mb: 2,
+            borderRadius: 2,
+            height: 4,
+            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
+          }}
+        />
+      )}
+
       {loading ? (
         <LoadingState />
       ) : (
@@ -1139,6 +1183,9 @@ export default function CmsRegistrationsPage() {
                         )}
                         {!selected.adminApprovedByUserId && selected.status === "pending" && userRole !== "superadmin" && (
                           <Chip label="Awaiting Dept. Approval" color="warning" size="small" variant="outlined" sx={{ fontWeight: 600, height: 22, fontSize: "0.65rem" }} />
+                        )}
+                        {selected.overstay && (
+                          <Chip label="Overstay Detected" color="error" size="small" sx={{ fontWeight: 800, height: 22, fontSize: "0.65rem" }} />
                         )}
                       </Stack>
                     </Box>
@@ -1846,7 +1893,12 @@ function PreviousVisitCard({ visit, onViewTimeline }) {
             Submitted {formatDateTimeWithLocale(visit.created_at)}
           </Typography>
         </Box>
-        <Chip label={statusConfig.label} color={statusConfig.color} size="small" icon={statusConfig.icon} sx={{ fontWeight: 700, borderRadius: 2, height: 26 }} />
+        <Stack direction="row" spacing={1}>
+          <Chip label={statusConfig.label} color={statusConfig.color} size="small" icon={statusConfig.icon} sx={{ fontWeight: 700, borderRadius: 2, height: 26 }} />
+          {visit.overstay && (
+            <Chip label="Overstay Detected" color="error" size="small" sx={{ fontWeight: 800, borderRadius: 2, height: 26 }} />
+          )}
+        </Stack>
       </Stack>
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: { xs: 1.75, md: "16px 32px" } }}>

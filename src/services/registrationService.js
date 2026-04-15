@@ -54,31 +54,40 @@ export const createRegistration = withApiHandler(
   { showSuccess: true }
 );
 
-const mapRegistration = (r) => ({
-  id: r.id,
-  full_name: r.user?.fullName || "N/A",
-  email: r.user?.email || "N/A",
-  phone: r.user?.phone || "N/A",
-  purpose_of_visit: r.purposeOfVisit,
-  status: r.status,
-  requested_from: r.requestedFrom,
-  requested_to: r.requestedTo,
-  approved_from: r.approvedFrom,
-  approved_to: r.approvedTo,
-  phone_iso_code: r.phoneIsoCode,
-  created_at: r.createdAt,
-  qr_token: r.qrToken,
-  rejection_reason: r.rejectionReason,
-  allow_multi_checkin: r.allowMultiCheckin,
-  department: r.department,
-  department_id: r.departmentId,
-  access_level: r.accessLevel,
-  access_level_id: r.accessLevelId,
-  admin_approved_at: r.adminApprovedAt,
-  admin_approved_by_user_id: r.adminApprovedByUserId,
-  admin_rejection_reason: r.adminRejectionReason,
-  ...r,
-});
+export const mapRegistration = (r) => {
+  if (!r) return r;
+  const mapped = {
+    id: r.id,
+    full_name: r.user?.fullName || "N/A",
+    email: r.user?.email || "N/A",
+    phone: r.user?.phone || "N/A",
+    purpose_of_visit: r.purposeOfVisit,
+    status: r.status,
+    requested_from: r.requestedFrom,
+    requested_to: r.requestedTo,
+    approved_from: r.approvedFrom,
+    approved_to: r.approvedTo,
+    phone_iso_code: r.phoneIsoCode,
+    created_at: r.createdAt,
+    qr_token: r.qrToken,
+    rejection_reason: r.rejectionReason,
+    allow_multi_checkin: r.allowMultiCheckin,
+    department: r.department,
+    department_id: r.departmentId,
+    access_level: r.accessLevel,
+    access_level_id: r.accessLevelId,
+    admin_approved_at: r.adminApprovedAt,
+    admin_approved_by_user_id: r.adminApprovedByUserId,
+    admin_rejection_reason: r.adminRejectionReason,
+    ...r,
+  };
+
+  if (Array.isArray(r.history)) {
+    mapped.history = r.history.map(mapRegistration);
+  }
+
+  return mapped;
+};
 
 export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}) => {
   const params = {};

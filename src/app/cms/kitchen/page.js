@@ -47,7 +47,7 @@ import { useSocket } from "@/contexts/SocketContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { useKitchenNotifications } from "@/contexts/KitchenNotificationContext";
 import { getActiveMenuItems, createOrder, getMyOrders, markOrdersAsSeen } from "@/services/kitchenService";
-import { getRegistrations } from "@/services/registrationService";
+import { getRegistrations, mapRegistration } from "@/services/registrationService";
 import { useRef } from "react";
 import OrderTrackingModal from "./OrderTrackingModal";
 
@@ -150,8 +150,9 @@ function OrderingContent() {
 
     const unsubUpdate = on("registration:updated", (updatedReg) => {
       if (!updatedReg?.id) return;
+      const mappedReg = mapRegistration(updatedReg);
       setResList((prev) => {
-        const updated = prev.map((r) => (r.id === updatedReg.id ? { ...r, ...updatedReg } : r)).filter((r) => r?.status === "checked_in");
+        const updated = prev.map((r) => (r.id === mappedReg.id ? mappedReg : r)).filter((r) => r?.status === "checked_in");
         return updated.length > 0 ? updated : prev.filter((r) => r?.status === "checked_in");
       });
       

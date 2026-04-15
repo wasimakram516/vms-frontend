@@ -39,6 +39,7 @@ import {
   getRegistrations,
   updateStatus,
   getRegistrationById,
+  mapRegistration,
 } from "@/services/registrationService";
 import { getAccessLevels } from "@/services/accessLevelService";
 import {
@@ -157,22 +158,36 @@ export default function CmsApprovalsPage() {
     });
     const unsubUpdated = on("registration:updated", (updatedReg) => {
       if (!updatedReg?.id) return;
-      const isRelevant = isSuperAdmin || updatedReg.status === "pending" || updatedReg.status === "admin_approved";
+      const mappedReg = mapRegistration(updatedReg);
+      const isRelevant = isSuperAdmin || mappedReg.status === "pending" || mappedReg.status === "admin_approved";
       setRows((prev) => {
-        const stillRelevant = isRelevant && (updatedReg.status === "pending" || updatedReg.status === "admin_approved");
+        const stillRelevant = isRelevant && (mappedReg.status === "pending" || mappedReg.status === "admin_approved");
         if (!stillRelevant) {
-          return prev.filter((row) => row.id !== updatedReg.id);
+          return prev.filter((row) => row.id !== mappedReg.id);
         }
-        const exists = prev.some((row) => row.id === updatedReg.id);
-        return exists ? prev.map((row) => (row.id === updatedReg.id ? { ...row, ...updatedReg } : row)) : [updatedReg, ...prev];
+        const exists = prev.some((row) => row.id === mappedReg.id);
+        return exists ? prev.map((row) => (row.id === mappedReg.id ? mappedReg : row)) : [mappedReg, ...prev];
       });
+
+      // Auto-close modals if registration was processed by someone else
+      if (approveTarget?.id === updatedReg.id || rejectTarget?.id === updatedReg.id) {
+        const stillRelevantForModal = isSuperAdmin 
+          ? (updatedReg.status === "pending" || updatedReg.status === "admin_approved")
+          : (updatedReg.status === "pending");
+
+        if (!stillRelevantForModal) {
+          setApproveTarget(null);
+          setRejectTarget(null);
+          setRejectReason("");
+        }
+      }
     });
 
     return () => {
       unsubNew?.();
       unsubUpdated?.();
     };
-  }, [isSuperAdmin, on]);
+  }, [isSuperAdmin, on, approveTarget?.id, rejectTarget?.id]);
 
   const filtered = useMemo(() => {
     if (!Array.isArray(rows)) return [];
