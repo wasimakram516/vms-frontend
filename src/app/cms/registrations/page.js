@@ -27,9 +27,10 @@ import {
   Tab,
   Switch,
   FormControlLabel,
+  RadioGroup,
+  Radio,
   useTheme,
   Collapse,
-  LinearProgress,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -39,13 +40,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { pdf } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import { exportAllBadges } from "@/utils/exportBadges";
-import CountryCodeSelector from "@/components/CountryCodeSelector";
 import {
-  DEFAULT_ISO_CODE,
-  getCountryAndPhoneByFullPhone,
   getCountryCodeByIsoCode,
+  formatPhoneNumberForDisplay,
+  DEFAULT_ISO_CODE,
+  DEFAULT_COUNTRY_CODE,
 } from "@/utils/countryCodes";
+import CountryCodeSelector from "@/components/CountryCodeSelector";
+import { isPhoneField } from "@/utils/validationUtils";
 import { getDefaultBadgeTemplate } from "@/services/badgeService";
+import { getCustomFields } from "@/services/customFieldService";
 import BadgePDF from "@/components/badges/BadgePDF";
 import ICONS from "@/utils/iconUtil";
 import DateTimeFieldFlatpickr from "@/components/forms/DateTimeFieldFlatpickr";
@@ -74,37 +78,6 @@ import {
   getLocalDate,
   getLocalTime,
 } from "@/utils/dateUtils";
-import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
-import { validatePhone } from "@/utils/validationUtils";
-
-// ── Transformation helper ─────────────────────
-
-const mapRegistration = (r) => ({
-  id: r.id,
-  full_name: r.user?.fullName || r.fullName || "N/A",
-  email: r.user?.email || r.email || "N/A",
-  phone: r.user?.phone || r.phone || "N/A",
-  purpose_of_visit: r.purposeOfVisit,
-  status: r.status,
-  requested_from: r.requestedFrom,
-  requested_to: r.requestedTo,
-  approved_from: r.approvedFrom,
-  approved_to: r.approvedTo,
-  phone_iso_code: r.phoneIsoCode,
-  created_at: r.createdAt,
-  qr_token: r.qrToken,
-  rejection_reason: r.rejectionReason,
-  allow_multi_checkin: r.allowMultiCheckin,
-  department: r.department,
-  department_id: r.departmentId,
-  access_level: r.accessLevel,
-  access_level_id: r.accessLevelId,
-  admin_approved_at: r.adminApprovedAt,
-  admin_approved_by_user_id: r.adminApprovedByUserId,
-  admin_rejection_reason: r.adminRejectionReason,
-  ...r,
-});
-
 // ── Status config ─────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
@@ -219,23 +192,6 @@ const DEFAULT_FIELD_IDENTIFIERS = new Set([
   "phonenumber", "mobile", "contact", "purposeofvisit",
 ]);
 
-const PHONE_FIELD_IDENTIFIERS = new Set([
-  "phone",
-  "phonenumber",
-  "mobile",
-  "mobilephone",
-  "contactnumber",
-  "contactphone",
-]);
-
-const getFieldInputType = (customField) =>
-  String(customField?.inputType || customField?.input_type || "text").toLowerCase();
-
-const isPhoneFieldKey = (key, inputType) => {
-  if (inputType === "phone") return true;
-  return PHONE_FIELD_IDENTIFIERS.has(normalizeFieldIdentifier(key));
-};
-
 const getVisibleFieldValues = (registration) =>
   (Array.isArray(registration?.fieldValues) ? registration.fieldValues : []).filter((fieldValue) => {
     const normalizedKey = normalizeFieldIdentifier(
@@ -303,8 +259,6 @@ export default function CmsRegistrationsPage() {
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [isListRefreshing, setIsListRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [requestDateFilter, setRequestDateFilter] = useState("");
@@ -319,7 +273,7 @@ export default function CmsRegistrationsPage() {
 
   const [selected, setSelected] = useState(null);
   const [selectedTab, setSelectedTab] = useState("details");
-  const [actionLoading, setActionLoading] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(false);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
 
@@ -340,12 +294,14 @@ export default function CmsRegistrationsPage() {
   // Edit modal
   const [editModal, setEditModal] = useState(false);
   const [editForm, setEditForm] = useState({});
-  const [editFieldErrors, setEditFieldErrors] = useState({});
+  const [editCountryIsoCodes, setEditCountryIsoCodes] = useState({});
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editTab, setEditTab] = useState(0);
 
   // Supporting data
   const [accessLevels, setAccessLevels] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [activeCustomFields, setActiveCustomFields] = useState([]);
 
   const [exportingBadges, setExportingBadges] = useState(false);
   const [badgeTemplate, setBadgeTemplate] = useState(null);
@@ -380,22 +336,14 @@ export default function CmsRegistrationsPage() {
     return { from: undefined, to: undefined }; // "all"
   };
 
-  const fetchData = async ({ refreshOnly = false } = {}) => {
-    const shouldShowFullLoader = !refreshOnly && !hasLoadedOnce && data.length === 0;
-    if (shouldShowFullLoader) {
-      setLoading(true);
-    } else {
-      setIsListRefreshing(true);
-    }
-
+  const fetchData = async () => {
+    setLoading(true);
     try {
       const { from, to } = getDateRangeFromPreset(datePreset, customFrom, customTo);
       const res = await getRegistrations(statusFilter, { from, to });
       setData(res || []);
-      setHasLoadedOnce(true);
     } finally {
-      if (shouldShowFullLoader) setLoading(false);
-      setIsListRefreshing(false);
+      setLoading(false);
     }
   };
 
@@ -404,6 +352,7 @@ export default function CmsRegistrationsPage() {
     fetchDefaultBadgeTemplate();
     getAccessLevels().then((res) => setAccessLevels(Array.isArray(res) ? res : []));
     getDepartments().then((res) => setDepartments(Array.isArray(res) ? res : []));
+    getCustomFields().then((fields) => setActiveCustomFields(Array.isArray(fields) ? fields.filter((f) => f.isActive) : []));
   }, [statusFilter, datePreset, customFrom, customTo]);
 
   const fetchDefaultBadgeTemplate = async () => {
@@ -414,23 +363,20 @@ export default function CmsRegistrationsPage() {
   const { on } = useSocket();
 
   useEffect(() => {
-    const unsubNew = on("registration:new", (newReg) => {
-      if (!newReg?.id) return;
-      const mapped = mapRegistration(newReg);
-      setData((prev) => {
-        const exists = prev.some((row) => row.id === mapped.id);
-        if (exists) {
-          return prev.map((row) => (row.id === mapped.id ? { ...row, ...mapped } : row));
-        }
-        return [mapped, ...prev];
-      });
-    });
-
+    const unsubNew = on("registration:new", () => fetchData());
     const unsubUpdated = on("registration:updated", (updatedReg) => {
-      if (updatedReg?.id) {
-        const mapped = mapRegistration(updatedReg);
-        setData((prev) => prev.map((row) => (row.id === mapped.id ? { ...row, ...mapped } : row)));
-      }
+      // Replace the item in the list in-place — avoids full refetch and flash
+      setData((prev) => {
+        const idx = prev.findIndex((r) => r.id === updatedReg.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = updatedReg;
+          return next;
+        }
+        // Not in the list (e.g. filtered out) — just re-fetch
+        fetchData();
+        return prev;
+      });
       if (selected?.id === updatedReg.id) {
         getRegistrationById(updatedReg.id).then((fullDetail) => {
           setSelected(fullDetail);
@@ -537,14 +483,14 @@ export default function CmsRegistrationsPage() {
 
   const executeStatusChange = async (targetStatus, payload = {}) => {
     if (!selected?.id) return;
-    setActionLoading({ registrationId: selected.id, targetStatus });
+    setActionLoading(true);
     try {
       await updateStatus(selected.id, { status: targetStatus, ...payload });
       const updated = await getRegistrationById(selected.id);
       setSelected(updated);
-      setData((prev) => prev.map((row) => (row.id === selected.id ? { ...row, ...updated } : row)));
+      await fetchData();
     } finally {
-      setActionLoading(null);
+      setActionLoading(false);
     }
   };
 
@@ -592,34 +538,10 @@ export default function CmsRegistrationsPage() {
 
   const buildEditForm = (reg) => {
     const fvMap = {};
-    const fieldMeta = {};
-    const phoneIsoCodes = {};
-    const basePhoneIsoCode = reg?.phoneIsoCode || reg?.phone_iso_code || DEFAULT_ISO_CODE;
     if (Array.isArray(reg.fieldValues)) {
       reg.fieldValues.forEach((fv) => {
-        const customField = fv.customField || fv.custom_field || {};
-        const key = customField.fieldKey || customField.field_key;
+        const key = fv.customField?.fieldKey || fv.customField?.field_key;
         if (key) fvMap[key] = fv.value;
-        if (!key) return;
-
-        const inputType = getFieldInputType(customField);
-        fieldMeta[key] = {
-          label: customField.label || key,
-          inputType,
-          required: Boolean(customField.isRequired ?? customField.is_required),
-        };
-
-        if (isPhoneFieldKey(key, inputType)) {
-          const phoneValue = String(fv.value ?? "");
-          if (phoneValue.startsWith("+")) {
-            const parsed = getCountryAndPhoneByFullPhone(phoneValue);
-            phoneIsoCodes[key] = parsed.isoCode || basePhoneIsoCode;
-            fvMap[key] = filterPhoneInput(parsed.phone);
-          } else {
-            phoneIsoCodes[key] = basePhoneIsoCode;
-            fvMap[key] = filterPhoneInput(phoneValue);
-          }
-        }
       });
     }
     const hasApproved = !!(reg.approved_from || reg.approved_to);
@@ -633,9 +555,26 @@ export default function CmsRegistrationsPage() {
       accessLevelId: hasApproved ? (reg.access_level_id || reg.accessLevelId || "") : "",
       allowMultiCheckin: hasApproved ? (reg.allow_multi_checkin ?? reg.allowMultiCheckin ?? false) : false,
       fieldValues: fvMap,
-      fieldMeta,
-      phoneIsoCodes,
     };
+  };
+
+  const buildEditCountryIsoCodes = (reg, fields) => {
+    const isoCodes = {};
+    if (!fields) return isoCodes;
+    const fvMap = {};
+    if (Array.isArray(reg.fieldValues)) {
+      reg.fieldValues.forEach((fv) => {
+        const key = fv.customField?.fieldKey || fv.customField?.field_key;
+        if (key) fvMap[key] = fv.value;
+      });
+    }
+    fields.forEach((field) => {
+      if (isPhoneField(field)) {
+        // Use the registration's stored isoCode if available, otherwise default
+        isoCodes[field.fieldKey] = (reg.phoneIsoCode || reg.phone_iso_code || DEFAULT_ISO_CODE).toLowerCase();
+      }
+    });
+    return isoCodes;
   };
 
   const handleCardEdit = useCallback(async (row) => {
@@ -643,58 +582,36 @@ export default function CmsRegistrationsPage() {
     try {
       const fullDetail = await getRegistrationById(row.id);
       setEditForm(buildEditForm(fullDetail));
-      setEditFieldErrors({});
+      setEditCountryIsoCodes(buildEditCountryIsoCodes(fullDetail, activeCustomFields));
+      setEditTab(0);
       setEditModal(true);
     } finally {
       setFetchingProfile(false);
     }
-  }, []);
+  }, [activeCustomFields]);
 
   const openEditModal = (reg = selected) => {
     if (!reg) return;
     setEditForm(buildEditForm(reg));
-    setEditFieldErrors({});
+    setEditCountryIsoCodes(buildEditCountryIsoCodes(reg, activeCustomFields));
+    setEditTab(0);
     setEditModal(true);
-  };
-
-  const closeEditModal = () => {
-    setEditModal(false);
-    setEditFieldErrors({});
   };
 
   const handleEditSubmit = async () => {
     if (!editForm.id) return;
-
-    const phoneErrors = {};
-    Object.entries(editForm.fieldMeta || {}).forEach(([fieldKey, meta]) => {
-      if (!isPhoneFieldKey(fieldKey, meta?.inputType)) return;
-      const value = editForm.fieldValues?.[fieldKey] || "";
-      const isoCode = editForm.phoneIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
-      const error = validatePhone(value, isoCode);
-      if (error) phoneErrors[fieldKey] = error;
-    });
-
-    if (Object.keys(phoneErrors).length > 0) {
-      setEditFieldErrors(phoneErrors);
-      return;
-    }
-
     setEditSubmitting(true);
     try {
+      // Derive phoneIsoCode from the first phone-type custom field that has a value
+      const phoneField = activeCustomFields.find((f) => isPhoneField(f));
+      const phoneIsoCode = phoneField ? (editCountryIsoCodes[phoneField.fieldKey] || DEFAULT_ISO_CODE) : undefined;
+
       const payload = {
         purposeOfVisit: editForm.purposeOfVisit,
         departmentId: editForm.departmentId || undefined,
         fieldValues: editForm.fieldValues,
+        ...(phoneIsoCode ? { phoneIsoCode } : {}),
       };
-
-      const phoneField = Object.entries(editForm.fieldMeta || {}).find(([fieldKey, meta]) =>
-        isPhoneFieldKey(fieldKey, meta?.inputType),
-      );
-      if (phoneField) {
-        const [fieldKey] = phoneField;
-        payload.phoneIsoCode = editForm.phoneIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
-      }
-
       if (editForm.hasApproved) {
         if (editForm.scheduleFrom) payload.approvedFrom = editForm.scheduleFrom;
         if (editForm.scheduleTo) payload.approvedTo = editForm.scheduleTo;
@@ -710,47 +627,10 @@ export default function CmsRegistrationsPage() {
         setSelected(updated);
       }
       await fetchData();
-      closeEditModal();
+      setEditModal(false);
     } finally {
       setEditSubmitting(false);
     }
-  };
-
-  const handleEditFieldChange = (fieldKey, value) => {
-    setEditForm((prev) => ({
-      ...prev,
-      fieldValues: {
-        ...(prev.fieldValues || {}),
-        [fieldKey]: value,
-      },
-    }));
-
-    if (editFieldErrors[fieldKey]) {
-      setEditFieldErrors((prev) => {
-        const next = { ...prev };
-        delete next[fieldKey];
-        return next;
-      });
-    }
-  };
-
-  const handleEditPhoneIsoCodeChange = (fieldKey, isoCode) => {
-    setEditForm((prev) => ({
-      ...prev,
-      phoneIsoCodes: {
-        ...(prev.phoneIsoCodes || {}),
-        [fieldKey]: isoCode,
-      },
-    }));
-
-    const value = editForm.fieldValues?.[fieldKey] || "";
-    const error = value ? validatePhone(value, isoCode) : null;
-    setEditFieldErrors((prev) => {
-      const next = { ...prev };
-      if (error) next[fieldKey] = error;
-      else delete next[fieldKey];
-      return next;
-    });
   };
 
   // ── Badge printing ────────────────────────────────────────────────────────
@@ -1047,17 +927,6 @@ export default function CmsRegistrationsPage() {
         }
       />
 
-      {isListRefreshing && !loading && (
-        <LinearProgress
-          sx={{
-            mb: 2,
-            borderRadius: 2,
-            height: 4,
-            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
-          }}
-        />
-      )}
-
       {loading ? (
         <LoadingState />
       ) : (
@@ -1256,7 +1125,7 @@ export default function CmsRegistrationsPage() {
                           <ICONS.emailOutline fontSize="inherit" /> {selected.email || "No email"}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                          <ICONS.phone fontSize="inherit" /> {selected.phone || "No phone"}
+                          <ICONS.phone fontSize="inherit" /> {selected.phone ? formatPhoneNumberForDisplay(selected.phone, selected.phoneIsoCode || selected.phone_iso_code) : "No phone"}
                         </Typography>
                       </Stack>
                       <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap", gap: 0.5 }}>
@@ -1396,8 +1265,8 @@ export default function CmsRegistrationsPage() {
                         variant={targetStatus === "visit_ended" ? "contained" : "outlined"}
                         color={btnColors[targetStatus] || "primary"}
                         size="small"
-                        disabled={Boolean(actionLoading)}
-                        startIcon={actionLoading?.registrationId === selected.id && actionLoading?.targetStatus === targetStatus ? <CircularProgress size={14} color="inherit" /> : cfg.icon}
+                        disabled={actionLoading}
+                        startIcon={actionLoading ? <CircularProgress size={14} color="inherit" /> : cfg.icon}
                         onClick={() => openStatusTransition(targetStatus)}
                         sx={{ borderRadius: 30, fontWeight: 700, whiteSpace: "nowrap" }}
                       >
@@ -1502,7 +1371,7 @@ export default function CmsRegistrationsPage() {
             variant="contained"
             color={statusModal.targetStatus === "rejected" ? "error" : "primary"}
             onClick={handleStatusModalConfirm}
-            disabled={Boolean(actionLoading)}
+            disabled={actionLoading}
             startIcon={actionLoading ? <CircularProgress size={16} color="inherit" /> : null}
             sx={{ borderRadius: 30 }}
           >
@@ -1538,7 +1407,7 @@ export default function CmsRegistrationsPage() {
             variant="contained"
             color={confirmModal.isTerminal ? "error" : "primary"}
             onClick={handleConfirmModalConfirm}
-            disabled={Boolean(actionLoading)}
+            disabled={actionLoading}
             startIcon={actionLoading ? <CircularProgress size={16} color="inherit" /> : null}
             sx={{ borderRadius: 30 }}
           >
@@ -1626,132 +1495,203 @@ export default function CmsRegistrationsPage() {
       </Dialog>
 
       {/* ── Edit Registration Modal (SuperAdmin) ─────────────────────────────── */}
-      <Dialog open={editModal} onClose={closeEditModal} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}>
-        <DialogHeader title="Edit Registration" onClose={closeEditModal} />
+      <Dialog open={editModal} onClose={() => setEditModal(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}>
+        <DialogHeader title="Edit Registration" onClose={() => setEditModal(false)} />
         <Divider />
-        <DialogContent sx={{ p: 3 }}>
-          <Stack spacing={2.5}>
-            {/* ── Dates ── */}
-            <Box>
-              <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ textTransform: "uppercase", letterSpacing: 0.5, display: "block", mb: 1 }}>
-                {editForm.hasApproved ? "Approved From" : "Requested From"}
-              </Typography>
-              <DateTimeFieldFlatpickr
-                value={editForm.scheduleFrom || ""}
-                onChange={(val) => setEditForm({ ...editForm, scheduleFrom: val })}
-                placeholder={editForm.hasApproved ? "Approved start date & time" : "Requested start date & time"}
-              />
-            </Box>
-            <Box>
-              <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ textTransform: "uppercase", letterSpacing: 0.5, display: "block", mb: 1 }}>
-                {editForm.hasApproved ? "Approved To" : "Requested To"}
-              </Typography>
-              <DateTimeFieldFlatpickr
-                value={editForm.scheduleTo || ""}
-                onChange={(val) => setEditForm({ ...editForm, scheduleTo: val })}
-                placeholder={editForm.hasApproved ? "Approved end date & time" : "Requested end date & time"}
-              />
-            </Box>
+        <DialogContent sx={{ p: 0 }}>
+          {/* ── Tabs ── */}
+          <Box sx={{ px: 2.5, pt: 2, pb: 0 }}>
+            <Tabs
+              value={editTab}
+              onChange={(_, v) => setEditTab(v)}
+              variant="fullWidth"
+              sx={{
+                minHeight: 40,
+                bgcolor: "action.hover",
+                borderRadius: 999,
+                p: 0.5,
+                "& .MuiTabs-indicator": { display: "none" },
+                "& .MuiTabs-flexContainer": { gap: 0 },
+              }}
+            >
+              {["Visit Details", "Visitor Info"].map((label) => (
+                <Tab
+                  key={label}
+                  label={label}
+                  sx={{
+                    minHeight: 34,
+                    borderRadius: 999,
+                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    textTransform: "none",
+                    "&.Mui-selected": {
+                      bgcolor: "background.paper",
+                      color: "text.primary",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    },
+                  }}
+                />
+              ))}
+            </Tabs>
+          </Box>
 
-            {/* ── Admin-level fields ── */}
-            <FormControl fullWidth>
-              <InputLabel>Department</InputLabel>
-              <Select
-                value={editForm.departmentId || ""}
-                label="Department"
-                onChange={(e) => setEditForm({ ...editForm, departmentId: e.target.value })}
-                sx={{ borderRadius: 2 }}
-              >
-                <MenuItem value=""><em>None</em></MenuItem>
-                {departments.map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
-              </Select>
-            </FormControl>
-
-            {editForm.hasApproved && (
-              <>
+          {/* ── Tab 0: Visit Details ── */}
+          <Box role="tabpanel" hidden={editTab !== 0} sx={{ p: 2.5 }}>
+            {editTab === 0 && (
+              <Stack spacing={2.5}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ textTransform: "uppercase", letterSpacing: 0.5, display: "block", mb: 1 }}>
+                    {editForm.hasApproved ? "Approved From" : "Requested From"}
+                  </Typography>
+                  <DateTimeFieldFlatpickr
+                    value={editForm.scheduleFrom || ""}
+                    onChange={(val) => setEditForm({ ...editForm, scheduleFrom: val })}
+                    placeholder={editForm.hasApproved ? "Approved start date & time" : "Requested start date & time"}
+                  />
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ textTransform: "uppercase", letterSpacing: 0.5, display: "block", mb: 1 }}>
+                    {editForm.hasApproved ? "Approved To" : "Requested To"}
+                  </Typography>
+                  <DateTimeFieldFlatpickr
+                    value={editForm.scheduleTo || ""}
+                    onChange={(val) => setEditForm({ ...editForm, scheduleTo: val })}
+                    placeholder={editForm.hasApproved ? "Approved end date & time" : "Requested end date & time"}
+                  />
+                </Box>
                 <FormControl fullWidth>
-                  <InputLabel>Access Level</InputLabel>
+                  <InputLabel>Department</InputLabel>
                   <Select
-                    value={editForm.accessLevelId || ""}
-                    label="Access Level"
-                    onChange={(e) => setEditForm({ ...editForm, accessLevelId: e.target.value })}
+                    value={editForm.departmentId || ""}
+                    label="Department"
+                    onChange={(e) => setEditForm({ ...editForm, departmentId: e.target.value })}
                     sx={{ borderRadius: 2 }}
                   >
                     <MenuItem value=""><em>None</em></MenuItem>
-                    {accessLevels.filter((al) => al.isActive !== false).map((al) => (
-                      <MenuItem key={al.id} value={al.id}>{al.name}</MenuItem>
-                    ))}
+                    {departments.map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
                   </Select>
                 </FormControl>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={editForm.allowMultiCheckin ?? false}
-                      onChange={(e) => setEditForm({ ...editForm, allowMultiCheckin: e.target.checked })}
-                      color="success"
+                {editForm.hasApproved && (
+                  <>
+                    <FormControl fullWidth>
+                      <InputLabel>Access Level</InputLabel>
+                      <Select
+                        value={editForm.accessLevelId || ""}
+                        label="Access Level"
+                        onChange={(e) => setEditForm({ ...editForm, accessLevelId: e.target.value })}
+                        sx={{ borderRadius: 2 }}
+                      >
+                        <MenuItem value=""><em>None</em></MenuItem>
+                        {accessLevels.filter((al) => al.isActive !== false).map((al) => (
+                          <MenuItem key={al.id} value={al.id}>{al.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={editForm.allowMultiCheckin ?? false}
+                          onChange={(e) => setEditForm({ ...editForm, allowMultiCheckin: e.target.checked })}
+                          color="success"
+                        />
+                      }
+                      label="Allow Multiple Check-ins"
                     />
-                  }
-                  label="Allow Multiple Check-ins"
-                />
-              </>
+                  </>
+                )}
+              </Stack>
             )}
+          </Box>
 
-            {/* ── User-entered fields ── */}
-            <PurposeOfVisitInput
-              value={editForm.purposeOfVisit || ""}
-              onChange={(val) => setEditForm({ ...editForm, purposeOfVisit: val })}
-            />
+          {/* ── Tab 1: Visitor Info ── */}
+          <Box role="tabpanel" hidden={editTab !== 1} sx={{ p: 2.5 }}>
+            {editTab === 1 && (
+              <Stack spacing={2.5}>
+                <PurposeOfVisitInput
+                  value={editForm.purposeOfVisit || ""}
+                  onChange={(val) => setEditForm({ ...editForm, purposeOfVisit: val })}
+                />
+                {activeCustomFields.map((field) => {
+                  const val = editForm.fieldValues?.[field.fieldKey] ?? "";
+                  const setVal = (v) => setEditForm((prev) => ({ ...prev, fieldValues: { ...prev.fieldValues, [field.fieldKey]: v } }));
+                  const opts = Array.isArray(field.optionsJson) ? field.optionsJson : [];
 
-            {Object.entries(editForm.fieldValues || {}).map(([key, value]) => (
-              (() => {
-                const meta = editForm.fieldMeta?.[key] || {};
-                const inputType = meta.inputType || "text";
-                const isPhoneField = isPhoneFieldKey(key, inputType);
-                const error = editFieldErrors[key];
+                  if (["list", "select", "dropdown"].includes(field.inputType)) {
+                    return (
+                      <FormControl key={field.fieldKey} fullWidth>
+                        <InputLabel>{field.label}</InputLabel>
+                        <Select value={val} label={field.label} onChange={(e) => setVal(e.target.value)} sx={{ borderRadius: 2 }}>
+                          <MenuItem value=""><em>None</em></MenuItem>
+                          {opts.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    );
+                  }
 
-                if (isPhoneField) {
-                  const isoCode = editForm.phoneIsoCodes?.[key] || DEFAULT_ISO_CODE;
+                  if (field.inputType === "radio") {
+                    return (
+                      <Box key={field.fieldKey}>
+                        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ textTransform: "uppercase", letterSpacing: 0.5, display: "block", mb: 0.5 }}>
+                          {field.label}
+                        </Typography>
+                        <RadioGroup row value={val} onChange={(e) => setVal(e.target.value)}>
+                          {opts.map((opt) => (
+                            <FormControlLabel key={opt} value={opt} control={<Radio size="small" />} label={opt} />
+                          ))}
+                        </RadioGroup>
+                      </Box>
+                    );
+                  }
+
+                  if (isPhoneField(field)) {
+                    const isoCode = editCountryIsoCodes[field.fieldKey] || DEFAULT_ISO_CODE;
+                    return (
+                      <TextField
+                        key={field.fieldKey}
+                        label={field.label}
+                        fullWidth
+                        value={val}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, "");
+                          setVal(digitsOnly);
+                        }}
+                        type="tel"
+                        helperText="Enter your phone number"
+                        InputProps={{
+                          sx: { borderRadius: 2 },
+                          startAdornment: (
+                            <CountryCodeSelector
+                              value={isoCode}
+                              onChange={(iso) =>
+                                setEditCountryIsoCodes((prev) => ({ ...prev, [field.fieldKey]: iso }))
+                              }
+                              dir="ltr"
+                            />
+                          ),
+                        }}
+                      />
+                    );
+                  }
+
                   return (
                     <TextField
-                      key={key}
-                      label={meta.label || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                      key={field.fieldKey}
+                      label={field.label}
                       fullWidth
-                      type="tel"
-                      value={value || ""}
-                      onChange={(e) => handleEditFieldChange(key, filterPhoneInput(e.target.value))}
-                      onKeyPress={onKeyPressPhone}
-                      error={Boolean(error)}
-                      helperText={error}
-                      InputProps={{
-                        startAdornment: (
-                          <CountryCodeSelector
-                            value={isoCode}
-                            onChange={(iso) => handleEditPhoneIsoCodeChange(key, iso)}
-                          />
-                        ),
-                        sx: { borderRadius: 2 },
-                      }}
+                      value={val}
+                      onChange={(e) => setVal(e.target.value)}
+                      type={field.inputType === "email" ? "email" : field.inputType === "number" ? "number" : "text"}
+                      InputProps={{ sx: { borderRadius: 2 } }}
                     />
                   );
-                }
-
-                return (
-                  <TextField
-                    key={key}
-                    label={meta.label || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                    fullWidth
-                    value={value || ""}
-                    onChange={(e) => handleEditFieldChange(key, e.target.value)}
-                    InputProps={{ sx: { borderRadius: 2 } }}
-                  />
-                );
-              })()
-            ))}
-          </Stack>
+                })}
+              </Stack>
+            )}
+          </Box>
         </DialogContent>
         <Divider />
         <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button variant="outlined" onClick={closeEditModal} disabled={editSubmitting} sx={{ borderRadius: 30 }}>Cancel</Button>
+          <Button variant="outlined" onClick={() => setEditModal(false)} disabled={editSubmitting} sx={{ borderRadius: 30 }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleEditSubmit}
