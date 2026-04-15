@@ -1,5 +1,13 @@
 import api from "./api";
 import withApiHandler from "@/utils/withApiHandler";
+import { getCountryCodeByIsoCode } from "@/utils/countryCodes";
+
+const buildFullPhone = (phone, isoCode) => {
+  if (!phone) return phone;
+  if (phone.startsWith("+")) return phone;
+  const country = getCountryCodeByIsoCode(isoCode);
+  return country ? `${country.code}${phone}` : phone;
+};
 
 const mapUserToFrontend = (user) => ({
   id: user.id,
@@ -28,7 +36,7 @@ export const createAdminUser = withApiHandler(
     const res = await api.post("/users/admin", {
       fullName: data.full_name,
       email: data.email,
-      phone: data.phone,
+      phone: buildFullPhone(data.phone, data.phoneIsoCode),
       phoneIsoCode: data.phoneIsoCode,
       password: data.password || undefined,
     });
@@ -43,7 +51,7 @@ export const createStaffUser = withApiHandler(
     const res = await api.post("/users/staff", {
       fullName: data.full_name,
       email: data.email,
-      phone: data.phone,
+      phone: buildFullPhone(data.phone, data.phoneIsoCode),
       phoneIsoCode: data.phoneIsoCode,
       password: data.password || undefined,
       staffType: data.staff_type,
@@ -59,7 +67,7 @@ export const updateUser = withApiHandler(
     const payload = {
       fullName: data.full_name,
       email: data.email,
-      phone: data.phone,
+      phone: buildFullPhone(data.phone, data.phoneIsoCode),
       phoneIsoCode: data.phoneIsoCode,
       role: data.role,
       status: data.status,

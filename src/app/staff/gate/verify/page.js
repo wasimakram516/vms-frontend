@@ -117,7 +117,7 @@ export default function StaffVerifyPage() {
     setActionLoading(true);
     selfInitiatedRef.current = { id: result.id, status: "checked_in" };
     try {
-      const updated = await updateStatus(result.id, { status: "checked_in" });
+      const updated = await updateStatus(result.id, { status: "checked_in", clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
       if (!updated?.error) {
         setResult(prev => ({ ...prev, status: updated?.status || "checked_in" }));
         const logs = await getRegistrationActivityLogs(result.id);

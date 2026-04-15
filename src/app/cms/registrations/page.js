@@ -485,7 +485,8 @@ export default function CmsRegistrationsPage() {
     if (!selected?.id) return;
     setActionLoading(true);
     try {
-      await updateStatus(selected.id, { status: targetStatus, ...payload });
+      const extra = targetStatus === "checked_in" ? { clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : {};
+      await updateStatus(selected.id, { status: targetStatus, ...extra, ...payload });
       const updated = await getRegistrationById(selected.id);
       setSelected(updated);
       await fetchData();
