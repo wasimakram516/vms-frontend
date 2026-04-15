@@ -127,6 +127,11 @@ export const getRegistrationActivityLogs = withApiHandler(async (id) => {
   return res.data?.data || res.data || [];
 });
 
+export const checkNdaValidity = withApiHandler(async (email) => {
+  const { data } = await api.get("/nda-templates/public/validity-check", { params: { email } });
+  return data?.data || data;
+});
+
 export const verifyRegistrationByToken = withApiHandler(async (token) => {
   const { data } = await api.get(`/registrations/verify`, { params: { token } });
   const result = data?.data || data;

@@ -14,6 +14,7 @@ const mapHostToFrontend = (host) => ({
   contactPersonEmail: host.contactPersonEmail,
   contactPersonPhone: host.contactPersonPhone,
   isKitchenModuleEnabled: host.isKitchenModuleEnabled,
+  ndaNotificationEmail: host.ndaNotificationEmail || "",
   created_at: host.createdAt,
   updated_at: host.updatedAt,
   created_by: host.createdBy?.fullName || host.createdById || null,

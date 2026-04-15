@@ -11,6 +11,7 @@ const mapNdaTemplateToFrontend = (template) => ({
   visitorRecordNote: template.visitorRecordNote,
   footer: template.footer,
   isActive: template.isActive,
+  validityDurationMonths: template.validityDurationMonths ?? 60,
   created_at: template.createdAt,
   updated_at: template.updatedAt,
   created_by: template.createdBy?.fullName || template.createdById || null,
