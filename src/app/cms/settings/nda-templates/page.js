@@ -50,7 +50,16 @@ const emptyForm = () => ({
   visitorRecordTitle: "",
   visitorRecordNote: "",
   footer: "",
+  validityDurationMonths: 60,
 });
+
+function monthsToYearsLabel(months) {
+  const num = parseInt(months, 10);
+  if (!num || num < 1) return "";
+  const years = num / 12;
+  if (years === Math.floor(years)) return `≈ ${years} ${years === 1 ? "year" : "years"}`;
+  return `≈ ${years.toFixed(1)} years`;
+}
 
 function TabPanel({ children, value, index }) {
   return (
@@ -81,6 +90,7 @@ export default function NdaTemplatesPage() {
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState(0);
+  const [formErrors, setFormErrors] = useState({});
 
   const { showMessage } = useMessage();
   const theme = useTheme();
@@ -100,12 +110,14 @@ export default function NdaTemplatesPage() {
 
   const openCreate = () => {
     setForm(emptyForm());
+    setFormErrors({});
     setEditId(null);
     setTab(0);
     setDialogOpen(true);
   };
 
   const openEdit = (tpl) => {
+    setFormErrors({});
     setForm({
       name: tpl.name || "",
       preamble: tpl.preamble || "",
@@ -113,6 +125,7 @@ export default function NdaTemplatesPage() {
       visitorRecordTitle: tpl.visitorRecordTitle || "",
       visitorRecordNote: tpl.visitorRecordNote || "",
       footer: tpl.footer || "",
+      validityDurationMonths: tpl.validityDurationMonths ?? 60,
     });
     setEditId(tpl.id);
     setTab(0);
@@ -121,22 +134,31 @@ export default function NdaTemplatesPage() {
 
   const validateForm = () => {
     const errors = {};
-    
+
     const nameError = validateRequired(form.name, "Template name");
     if (nameError) errors.name = nameError;
-    
+
     const bodyError = validateRequired(form.body, "Body content");
     if (bodyError) errors.body = bodyError;
-    
+
+    const months = parseInt(form.validityDurationMonths, 10);
+    if (!form.validityDurationMonths && form.validityDurationMonths !== 0) {
+      errors.validityDurationMonths = "Validity duration is required";
+    } else if (isNaN(months) || months < 1) {
+      errors.validityDurationMonths = "Validity duration must be at least 1 month";
+    }
+
     return errors;
   };
 
   const handleSave = async () => {
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
+      setFormErrors(validationErrors);
       Object.values(validationErrors).forEach(err => showMessage(err, "error"));
       return;
     }
+    setFormErrors({});
 
     setSaving(true);
     try {
@@ -147,6 +169,7 @@ export default function NdaTemplatesPage() {
         visitorRecordTitle: form.visitorRecordTitle.trim() || undefined,
         visitorRecordNote: form.visitorRecordNote || undefined,
         footer: form.footer || undefined,
+        validityDurationMonths: parseInt(form.validityDurationMonths, 10) || 60,
       };
 
       if (editId) {
@@ -365,9 +388,9 @@ export default function NdaTemplatesPage() {
 
           <DialogContent sx={{ pt: 2 }}>
             {/* Basic info — always visible */}
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }}>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }} alignItems="flex-start">
               <TextField
-                fullWidth
+                sx={{ flex: 1 }}
                 label="Template Heading"
                 placeholder="e.g. Non-Disclosure Agreement"
                 value={form.name}
@@ -375,12 +398,22 @@ export default function NdaTemplatesPage() {
                 helperText="Displayed as the large heading at the top of the PDF"
               />
               <TextField
-                fullWidth
-                label="Visitor Record Heading"
-                placeholder="VISITOR RECORD"
-                value={form.visitorRecordTitle}
-                onChange={(e) => setForm((p) => ({ ...p, visitorRecordTitle: e.target.value }))}
-                helperText="Defaults to 'VISITOR RECORD' if left empty"
+                sx={{ flex: 1 }}
+                label="NDA Validity Duration (months)"
+                type="number"
+                inputProps={{ min: 1 }}
+                value={form.validityDurationMonths}
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, validityDurationMonths: e.target.value }));
+                  if (formErrors.validityDurationMonths) setFormErrors((p) => ({ ...p, validityDurationMonths: undefined }));
+                }}
+                error={!!formErrors.validityDurationMonths}
+                helperText={
+                  formErrors.validityDurationMonths ||
+                  (monthsToYearsLabel(form.validityDurationMonths)
+                    ? `${monthsToYearsLabel(form.validityDurationMonths)} — re-acceptance required after this period`
+                    : "Enter a value of at least 1 month")
+                }
               />
             </Stack>
 
@@ -443,6 +476,15 @@ export default function NdaTemplatesPage() {
             </TabPanel>
 
             <TabPanel value={tab} index={2}>
+              <TextField
+                fullWidth
+                label="Visitor Record Heading"
+                placeholder="VISITOR RECORD"
+                value={form.visitorRecordTitle}
+                onChange={(e) => setForm((p) => ({ ...p, visitorRecordTitle: e.target.value }))}
+                helperText="Defaults to 'VISITOR RECORD' if left empty"
+                sx={{ mb: 2 }}
+              />
               <FieldLabel>Visitor Record Note — italic note shown below the VISITOR RECORD heading</FieldLabel>
               <RichTextEditor
                 value={form.visitorRecordNote}
