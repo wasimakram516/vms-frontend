@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Stack, Typography } from "@mui/material";
+import { ndaDocToHtml } from "@/utils/ndaDocUtils";
 
 const richTextSx = {
   fontSize: 14,
@@ -78,11 +79,16 @@ export default function NdaTemplateContent({ template }) {
     );
   }
 
-  const { preamble, body } = template;
+  const preambleHtml = Array.isArray(template.preamble)
+    ? ndaDocToHtml(template.preamble)
+    : (template.preamble || "");
+  const bodyHtml = Array.isArray(template.body)
+    ? ndaDocToHtml(template.body)
+    : (template.body || "");
 
   return (
     <Stack spacing={2.5}>
-      {preamble ? (
+      {preambleHtml ? (
         <Box
           sx={{
             px: 2,
@@ -96,11 +102,11 @@ export default function NdaTemplateContent({ template }) {
                 : "rgba(18,25,34,0.04)",
           }}
         >
-          <HtmlBlock html={preamble} />
+          <HtmlBlock html={preambleHtml} />
         </Box>
       ) : null}
 
-      <HtmlBlock html={body} />
+      <HtmlBlock html={bodyHtml} />
     </Stack>
   );
 }

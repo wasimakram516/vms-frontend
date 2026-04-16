@@ -42,6 +42,7 @@ import {
   deleteNdaTemplate,
 } from "@/services/ndaTemplateService";
 import { validateRequired } from "@/utils/validationUtils";
+import { htmlToNdaDoc, ndaDocToHtml } from "@/utils/ndaDocUtils";
 
 const emptyForm = () => ({
   name: "",
@@ -63,8 +64,8 @@ function monthsToYearsLabel(months) {
 
 function TabPanel({ children, value, index }) {
   return (
-    <Box role="tabpanel" hidden={value !== index} sx={{ pt: 2 }}>
-      {value === index && children}
+    <Box role="tabpanel" sx={{ pt: 2, display: value !== index ? 'none' : 'block' }}>
+      {children}
     </Box>
   );
 }
@@ -120,11 +121,12 @@ export default function NdaTemplatesPage() {
     setFormErrors({});
     setForm({
       name: tpl.name || "",
-      preamble: tpl.preamble || "",
-      body: tpl.body || "",
+      // Convert stored JSON blocks → HTML for the rich text editor
+      preamble: Array.isArray(tpl.preamble) ? ndaDocToHtml(tpl.preamble) : (tpl.preamble || ""),
+      body: Array.isArray(tpl.body) ? ndaDocToHtml(tpl.body) : (tpl.body || ""),
       visitorRecordTitle: tpl.visitorRecordTitle || "",
-      visitorRecordNote: tpl.visitorRecordNote || "",
-      footer: tpl.footer || "",
+      visitorRecordNote: Array.isArray(tpl.visitorRecordNote) ? ndaDocToHtml(tpl.visitorRecordNote) : (tpl.visitorRecordNote || ""),
+      footer: Array.isArray(tpl.footer) ? ndaDocToHtml(tpl.footer) : (tpl.footer || ""),
       validityDurationMonths: tpl.validityDurationMonths ?? 60,
     });
     setEditId(tpl.id);
@@ -162,21 +164,24 @@ export default function NdaTemplatesPage() {
 
     setSaving(true);
     try {
+      // Convert HTML from the editor → structured JSON blocks before saving
       const payload = {
         name: form.name.trim(),
-        preamble: form.preamble,
-        body: form.body,
+        preamble: htmlToNdaDoc(form.preamble),
+        body: htmlToNdaDoc(form.body),
         visitorRecordTitle: form.visitorRecordTitle.trim() || undefined,
-        visitorRecordNote: form.visitorRecordNote || undefined,
-        footer: form.footer || undefined,
+        visitorRecordNote: form.visitorRecordNote ? htmlToNdaDoc(form.visitorRecordNote) : undefined,
+        footer: form.footer ? htmlToNdaDoc(form.footer) : undefined,
         validityDurationMonths: parseInt(form.validityDurationMonths, 10) || 60,
       };
 
-      if (editId) {
-        await updateNdaTemplate(editId, payload);
-      } else {
-        await createNdaTemplate(payload);
-      }
+      const result = editId
+        ? await updateNdaTemplate(editId, payload)
+        : await createNdaTemplate(payload);
+
+      // withApiHandler returns { error: true } on failure instead of throwing — check it explicitly
+      if (result?.error) return;
+
       await fetchData();
       setDialogOpen(false);
     } finally {
@@ -291,7 +296,9 @@ export default function NdaTemplatesPage() {
                       fontSize: "0.8rem",
                     }}
                     dangerouslySetInnerHTML={{
-                      __html: tpl.preamble || "<em>No preamble</em>",
+                      __html: Array.isArray(tpl.preamble)
+                        ? (ndaDocToHtml(tpl.preamble) || "<em>No preamble</em>")
+                        : (tpl.preamble || "<em>No preamble</em>"),
                     }}
                   />
                 </Box>
