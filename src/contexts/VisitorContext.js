@@ -4,53 +4,76 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 
 const VisitorContext = createContext();
 
+const DEFAULT_VISITOR = {
+  identity: "",
+  userId: null,
+  iso_code: "KW",
+  fullName: "",
+  email: "",
+  phone: "",
+  purposeOfVisit: "",
+  dynamicFields: {},
+};
+
+const DEFAULT_FLOW = {
+  ndaAccepted: false,
+  otpVerified: false,
+  isReturning: false,
+  currentStep: "landing",
+};
+
+const DEFAULT_BOOKING = {
+  date: null,
+  timeFrom: "09:00",
+  timeTo: "10:00",
+};
+
+function readSession(key, fallback) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export const VisitorProvider = ({ children }) => {
-  const [visitorData, setVisitorData] = useState({
-    identity: "", // email or phone
-    userId: null,
-    iso_code: "KW",
-    fullName: "",
-    email: "",
-    phone: "",
-    purposeOfVisit: "",
-    dynamicFields: {},
-  });
+  const [visitorData, setVisitorDataRaw] = useState(() => readSession("vms_visitor", DEFAULT_VISITOR));
+  const [flowState, setFlowStateRaw] = useState(() => readSession("vms_flow", DEFAULT_FLOW));
+  const [bookingData, setBookingDataRaw] = useState(() => readSession("vms_booking", DEFAULT_BOOKING));
 
-  const [flowState, setFlowState] = useState({
-    ndaAccepted: false,
-    otpVerified: false,
-    isReturning: false,
-    currentStep: "landing",
-  });
+  // Wrap setters to also persist to sessionStorage
+  const setVisitorData = (val) => {
+    setVisitorDataRaw((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      sessionStorage.setItem("vms_visitor", JSON.stringify(next));
+      return next;
+    });
+  };
 
-  const [bookingData, setBookingData] = useState({
-    date: null,
-    timeFrom: "09:00",
-    timeTo: "10:00",
-  });
+  const setFlowState = (val) => {
+    setFlowStateRaw((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      sessionStorage.setItem("vms_flow", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const setBookingData = (val) => {
+    setBookingDataRaw((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      sessionStorage.setItem("vms_booking", JSON.stringify(next));
+      return next;
+    });
+  };
 
   const resetVisitorFlow = () => {
-    setVisitorData({
-      identity: "",
-      userId: null,
-      iso_code: "KW",
-      fullName: "",
-      email: "",
-      phone: "",
-      purposeOfVisit: "",
-      dynamicFields: {},
-    });
-    setFlowState({
-      ndaAccepted: false,
-      otpVerified: false,
-      isReturning: false,
-      currentStep: "landing",
-    });
-    setBookingData({
-      date: null,
-      timeFrom: "09:00",
-      timeTo: "10:00",
-    });
+    sessionStorage.removeItem("vms_visitor");
+    sessionStorage.removeItem("vms_flow");
+    sessionStorage.removeItem("vms_booking");
+    setVisitorDataRaw(DEFAULT_VISITOR);
+    setFlowStateRaw(DEFAULT_FLOW);
+    setBookingDataRaw(DEFAULT_BOOKING);
   };
 
   return (

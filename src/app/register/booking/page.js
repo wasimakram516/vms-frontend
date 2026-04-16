@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -55,13 +55,14 @@ export default function BookingPage() {
   const isDark = mode === "dark";
   const isReturning = flowState?.isReturning === true;
   const ndaRequired = isReturning && flowState?.ndaAccepted === false;
-  const showNdaCheckbox = ndaRequired || (isReturning && ndaAccepted);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
   const [ndaOpen, setNdaOpen] = useState(false);
   const [ndaAccepted, setNdaAccepted] = useState(false);
+  const ndaWasRequired = useRef(ndaRequired);
+  const showNdaCheckbox = ndaWasRequired.current;
   const [ndaTemplate, setNdaTemplate] = useState(null);
   const [ndaLoading, setNdaLoading] = useState(false);
 
