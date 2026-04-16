@@ -33,7 +33,7 @@ function resolveSelect(value) {
 }
 
 function resolveCustom(value) {
-  if (!value || PRESET_VALUES.includes(value)) return "";
+  if (!value || value === "Other" || PRESET_VALUES.includes(value)) return "";
   return value;
 }
 
@@ -75,8 +75,7 @@ export default function PurposeOfVisitInput({
       setCustom("");
       onChange(newSelect);
     } else {
-      // Switching to Other — carry forward any existing custom text
-      onChange(custom);
+      onChange(custom || "Other");
     }
   };
 

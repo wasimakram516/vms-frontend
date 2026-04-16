@@ -22,11 +22,36 @@ export const SocketProvider = ({ children }) => {
     const { showMessage } = useMessage();
     const pathname = usePathname();
     const showMessageRef = useRef(showMessage);
+    const notifiedAdminApprovalRef = useRef(new Set());
     const [storedToken, setStoredToken] = useState(() => AuthStorage.getStoredToken());
 
     const API_URL = process.env.NEXT_PUBLIC_WEBSOCKET_HOST || 'http://localhost:4000';
     const SOCKET_URL = API_URL.replace(/\/api\/v1\/?$/, '');
     const isRealtimeRoute = pathname?.startsWith('/cms') || pathname?.startsWith('/staff');
+
+    const canSeeNewRegistration = (registration, user) => {
+        if (user?.role === 'superadmin') return true;
+        if (user?.role !== 'admin') return false;
+
+        const registrationDepartmentId = registration?.departmentId || registration?.department_id || registration?.department?.id;
+        if (!registrationDepartmentId) return false;
+
+        const departmentIds = Array.isArray(user?.departments)
+            ? user.departments.map((dept) => dept.id).filter(Boolean)
+            : [];
+
+        return departmentIds.includes(registrationDepartmentId);
+    };
+
+    const shouldNotifyFinalApproval = (registration, user) => {
+        if (user?.role !== 'superadmin') return false;
+        if (registration?.status !== 'admin_approved') return false;
+        if (!registration?.id) return false;
+        if (notifiedAdminApprovalRef.current.has(registration.id)) return false;
+
+        notifiedAdminApprovalRef.current.add(registration.id);
+        return true;
+    };
 
     useEffect(() => {
         showMessageRef.current = showMessage;
@@ -78,10 +103,20 @@ export const SocketProvider = ({ children }) => {
 
         newSocket.on('registration:new', (registration) => {
             const user = AuthStorage.getStoredUser();
-            const isAuthorized = user?.role === 'admin' || user?.role === 'superadmin';
+            const isAuthorized = canSeeNewRegistration(registration, user);
             
             if (isAuthorized) {
                 showMessageRef.current?.(`New registration: ${registration.user?.fullName || 'Visitor'}`, 'success');
+            }
+        });
+
+        newSocket.on('registration:updated', (registration) => {
+            const user = AuthStorage.getStoredUser();
+            if (shouldNotifyFinalApproval(registration, user)) {
+                showMessageRef.current?.(
+                    `Dept approval received: ${registration.user?.fullName || 'Visitor'} is awaiting final approval.`,
+                    'info',
+                );
             }
         });
 

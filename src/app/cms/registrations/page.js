@@ -258,6 +258,9 @@ export default function CmsRegistrationsPage() {
   const { user: currentUser } = useAuth();
   const userRole = currentUser?.role;
   const isSuperAdmin = userRole === "superadmin";
+  const userDepartmentIds = Array.isArray(currentUser?.departments)
+    ? currentUser.departments.map((dept) => dept.id).filter(Boolean)
+    : [];
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -316,6 +319,21 @@ export default function CmsRegistrationsPage() {
   const { showMessage } = useMessage();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
+
+  const canEditRegistration = useCallback((registration) => {
+    if (!registration) return false;
+    if (isSuperAdmin) return true;
+    if (userRole !== "admin") return false;
+
+    const registrationDepartmentId =
+      registration.departmentId ||
+      registration.department_id ||
+      registration.department?.id;
+
+    if (!registrationDepartmentId) return false;
+
+    return userDepartmentIds.includes(registrationDepartmentId);
+  }, [isSuperAdmin, userDepartmentIds, userRole]);
 
   // Compute from/to (YYYY-MM-DD Oman time) from the selected preset
   const getDateRangeFromPreset = (preset, cFrom, cTo) => {
@@ -612,17 +630,22 @@ export default function CmsRegistrationsPage() {
   };
 
   const handleCardEdit = useCallback(async (row) => {
+    if (!canEditRegistration(row)) {
+      showMessage("You can only edit registrations from your assigned department.", "warning");
+      return;
+    }
     setFetchingProfile(true);
     try {
       const fullDetail = await getRegistrationById(row.id);
       setEditForm(buildEditForm(fullDetail));
       setEditCountryIsoCodes(buildEditCountryIsoCodes(fullDetail, activeCustomFields));
+      setSelected(fullDetail);
       setEditTab(0);
       setEditModal(true);
     } finally {
       setFetchingProfile(false);
     }
-  }, [activeCustomFields]);
+  }, [activeCustomFields, canEditRegistration, showMessage]);
 
   const openEditModal = (reg = selected) => {
     if (!reg) return;
@@ -634,6 +657,10 @@ export default function CmsRegistrationsPage() {
 
   const handleEditSubmit = async () => {
     if (!editForm.id) return;
+    if (!canEditRegistration(selected)) {
+      showMessage("You can only edit registrations from your assigned department.", "warning");
+      return;
+    }
     setEditSubmitting(true);
     try {
       // Derive phoneIsoCode from the first phone-type custom field that has a value
@@ -1055,7 +1082,7 @@ export default function CmsRegistrationsPage() {
                           <ICONS.print fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      {isSuperAdmin && (
+                      {canEditRegistration(row) && (
                         <Tooltip title="Edit Registration">
                           <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleCardEdit(row); }} sx={{ color: "warning.main" }}>
                             <ICONS.edit fontSize="small" />
@@ -1542,7 +1569,7 @@ export default function CmsRegistrationsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Edit Registration Modal (SuperAdmin) ─────────────────────────────── */}
+      {/* ── Edit Registration Modal ─────────────────────────────────────────── */}
       <Dialog open={editModal} onClose={() => setEditModal(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}>
         <DialogHeader title="Edit Registration" onClose={() => setEditModal(false)} />
         <Divider />

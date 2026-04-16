@@ -83,6 +83,9 @@ const PERIODS = ["AM", "PM"];
 export default function CmsApprovalsPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "superadmin";
+  const userDepartmentIds = Array.isArray(user?.departments)
+    ? user.departments.map((dept) => dept.id).filter(Boolean)
+    : [];
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -110,6 +113,19 @@ export default function CmsApprovalsPage() {
   const [selectedAccessLevelId, setSelectedAccessLevelId] = useState("");
   const [allowMultiCheckin, setAllowMultiCheckin] = useState(false);
   const [accessLevelError, setAccessLevelError] = useState("");
+
+  const canSeeRegistration = useCallback((registration) => {
+    if (isSuperAdmin) return true;
+
+    const registrationDepartmentId =
+      registration?.departmentId ||
+      registration?.department_id ||
+      registration?.department?.id;
+
+    if (!registrationDepartmentId) return false;
+
+    return userDepartmentIds.includes(registrationDepartmentId);
+  }, [isSuperAdmin, userDepartmentIds]);
 
   const fetchPending = useCallback(async ({ refreshOnly = false } = {}) => {
     const shouldShowFullLoader = !refreshOnly && !hasLoadedOnce && rows.length === 0;
@@ -148,7 +164,7 @@ export default function CmsApprovalsPage() {
   useEffect(() => {
     const unsubNew = on("registration:new", (newReg) => {
       if (!newReg?.id) return;
-      const isRelevant = isSuperAdmin || newReg.status === "pending";
+      const isRelevant = (newReg.status === "pending" || newReg.status === "admin_approved") && canSeeRegistration(newReg);
       if (isRelevant) {
         setRows((prev) => {
           const exists = prev.some((row) => row.id === newReg.id);
@@ -159,7 +175,7 @@ export default function CmsApprovalsPage() {
     const unsubUpdated = on("registration:updated", (updatedReg) => {
       if (!updatedReg?.id) return;
       const mappedReg = mapRegistration(updatedReg);
-      const isRelevant = isSuperAdmin || mappedReg.status === "pending" || mappedReg.status === "admin_approved";
+      const isRelevant = (mappedReg.status === "pending" || mappedReg.status === "admin_approved") && canSeeRegistration(mappedReg);
       setRows((prev) => {
         const stillRelevant = isRelevant && (mappedReg.status === "pending" || mappedReg.status === "admin_approved");
         if (!stillRelevant) {
@@ -187,7 +203,7 @@ export default function CmsApprovalsPage() {
       unsubNew?.();
       unsubUpdated?.();
     };
-  }, [isSuperAdmin, on, approveTarget?.id, rejectTarget?.id]);
+  }, [canSeeRegistration, isSuperAdmin, on, approveTarget?.id, rejectTarget?.id]);
 
   const filtered = useMemo(() => {
     if (!Array.isArray(rows)) return [];

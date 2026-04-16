@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import html2canvas from "html2canvas";
 import {
   Box,
   Button,
@@ -34,25 +35,238 @@ import { createRegistration } from "@/services/registrationService";
 import { getDepartments } from "@/services/departmentService";
 import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
 import NdaTemplateContent from "@/components/NdaTemplateContent";
-import { COUNTRY_CODES } from "@/utils/countryCodes";
+import { COUNTRY_CODES, getFlagImageUrl } from "@/utils/countryCodes";
 import { motion } from "framer-motion";
+import { QRCodeCanvas } from "qrcode.react";
 import dayjs from "dayjs";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { formatTime, parse24To12, convert12To24, formatDate } from "@/utils/dateUtils";
+import { parse24To12, convert12To24, formatDate } from "@/utils/dateUtils";
 import { validateRequired } from "@/utils/validationUtils";
  
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 const PERIODS = ["AM", "PM"];
+const getSummaryColors = (isDark) => ({
+  primary: isDark ? "#1a1a1a" : "#222222",
+  primaryDark: isDark ? "#0b0b0b" : "#111111",
+  primaryDeep: isDark ? "#000000" : "#0a0a0a",
+  accent: "#f59e0b",
+  ink: isDark ? "#f5f5f5" : "#111111",
+  inkSoft: isDark ? "#a3a3a3" : "#525252",
+  surface: isDark ? "#0f0f0f" : "#f7f7f7",
+  cardTop: isDark ? "#1a1a1a" : "#ffffff",
+  panel: isDark ? "#171717" : "#ffffff",
+  white: "#ffffff",
+  edge: isDark ? "#2a2a2a" : "#3a3a3a",
+});
+
+const extractVisitorIdentity = (currentSuccess, currentVisitorData) => {
+  const normalizeKey = (key) => String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalizeValue = (value) => String(value || "").trim();
+
+  const fieldSources = [
+    currentSuccess?.fieldValues,
+    currentSuccess?.fields,
+    currentSuccess?.customFields,
+    currentVisitorData?.dynamicFields,
+  ];
+
+  const identityTypeKeys = ["id_type", "idType", "identification_type", "document_type", "doc_type"];
+
+  const findFromSources = (keys, matchKey) => {
+    for (const src of fieldSources) {
+      if (!src || typeof src !== "object") continue;
+
+      for (const key of keys) {
+        const val = normalizeValue(src[key]);
+        if (val) {
+          return {
+            value: val,
+            matchedKey: key,
+          };
+        }
+      }
+
+      const matchedEntry = Object.entries(src).find(([k, v]) => {
+        const text = normalizeValue(v);
+        if (!text) return false;
+        return typeof matchKey === "function" ? matchKey(normalizeKey(k), k) : false;
+      });
+
+      if (matchedEntry) {
+        return {
+          value: normalizeValue(matchedEntry[1]),
+          matchedKey: matchedEntry[0],
+        };
+      }
+    }
+
+    return null;
+  };
+
+  const idTypeMatch = findFromSources(
+    identityTypeKeys,
+    (normalizedKey) => normalizedKey.includes("idtype") || normalizedKey.includes("doctype") || normalizedKey.includes("documenttype"),
+  );
+  const normalizedIdType = normalizeKey(idTypeMatch?.value || "");
+
+  const omanIdentityMatch = findFromSources(
+    ["oman_id", "omanId", "omanid", "oman_id_number", "civil_id", "national_id"],
+    (normalizedKey) => normalizedKey.includes("omanid") || normalizedKey.includes("omannationalid") || normalizedKey.includes("civilid"),
+  );
+
+  const passportIdentityMatch = findFromSources(
+    ["passport_number", "passportNumber", "passport_no", "passportNo", "passport"],
+    (normalizedKey) => normalizedKey.includes("passport"),
+  );
+
+  const genericIdentityMatch = findFromSources(
+    ["id_number", "idNumber", "identification_number", "document_number", "idNo", "id_no"],
+    (normalizedKey) => normalizedKey.includes("idnumber") || normalizedKey.includes("identificationnumber") || normalizedKey.includes("documentnumber"),
+  );
+
+  const resolvePassportCountry = () => {
+    const match = findFromSources(
+      [
+        "passport_country",
+        "passportCountry",
+        "passport_nationality",
+        "passportNationality",
+        "passport_country_code",
+        "passportCountryCode",
+        "country_of_issue",
+        "issuing_country",
+        "nationality",
+      ],
+      (normalizedKey) => {
+        const hasPassport = normalizedKey.includes("passport") || normalizedKey.includes("nationality");
+        const hasCountry = normalizedKey.includes("country") || normalizedKey.includes("nation");
+        return hasPassport ? hasCountry : normalizedKey.includes("nationality");
+      },
+    );
+
+    const raw = normalizeValue(match?.value);
+    if (!raw) return null;
+
+    const rawLower = raw.toLowerCase();
+    const normalizedRaw = normalizeKey(raw);
+
+    const byIsoCode = COUNTRY_CODES.find((c) => c.isoCode === rawLower);
+    if (byIsoCode) {
+      return {
+        countryName: byIsoCode.country,
+        isoCode: byIsoCode.isoCode,
+        flagUrl: getFlagImageUrl(byIsoCode.isoCode),
+      };
+    }
+
+    const byName = COUNTRY_CODES.find((c) => c.country.toLowerCase() === rawLower);
+    if (byName) {
+      return {
+        countryName: byName.country,
+        isoCode: byName.isoCode,
+        flagUrl: getFlagImageUrl(byName.isoCode),
+      };
+    }
+
+    const byLooseName = COUNTRY_CODES.find((c) => normalizeKey(c.country) === normalizedRaw);
+    if (byLooseName) {
+      return {
+        countryName: byLooseName.country,
+        isoCode: byLooseName.isoCode,
+        flagUrl: getFlagImageUrl(byLooseName.isoCode),
+      };
+    }
+
+    return {
+      countryName: raw,
+      isoCode: "",
+      flagUrl: "",
+    };
+  };
+
+  const directCandidates = [
+    { type: "passport", value: currentSuccess?.user?.passportNo },
+    { type: "passport", value: currentSuccess?.user?.passport_no },
+    { type: "oman", value: currentSuccess?.user?.omanId },
+    { type: "oman", value: currentSuccess?.user?.oman_id },
+    { type: "generic", value: currentSuccess?.user?.idNumber },
+    { type: "generic", value: currentSuccess?.user?.id_number },
+  ];
+
+  const directIdentityMatch = directCandidates.find((entry) => normalizeValue(entry.value));
+
+  const pickType = () => {
+    if (normalizedIdType.includes("oman")) return "oman";
+    if (normalizedIdType.includes("passport")) return "passport";
+    if (omanIdentityMatch) return "oman";
+    if (passportIdentityMatch) return "passport";
+    if (directIdentityMatch?.type && directIdentityMatch.type !== "generic") return directIdentityMatch.type;
+    return "generic";
+  };
+
+  const type = pickType();
+  const value = normalizeValue(
+    type === "oman"
+      ? (omanIdentityMatch?.value || genericIdentityMatch?.value || directIdentityMatch?.value)
+      : type === "passport"
+        ? (passportIdentityMatch?.value || genericIdentityMatch?.value || directIdentityMatch?.value)
+        : (genericIdentityMatch?.value || omanIdentityMatch?.value || passportIdentityMatch?.value || directIdentityMatch?.value),
+  );
+
+  if (!value) {
+    return {
+      value: "",
+      label: "ID",
+      type: "generic",
+      countryName: "",
+      isoCode: "",
+      flagUrl: "",
+    };
+  }
+
+  if (type === "oman") {
+    return {
+      value,
+      label: "Oman ID",
+      type,
+      countryName: "Oman",
+      isoCode: "om",
+      flagUrl: getFlagImageUrl("om"),
+    };
+  }
+
+  if (type === "passport") {
+    const countryMeta = resolvePassportCountry();
+    return {
+      value,
+      label: countryMeta?.countryName ? `Passport (${countryMeta.countryName})` : "Passport",
+      type,
+      countryName: countryMeta?.countryName || "",
+      isoCode: countryMeta?.isoCode || "",
+      flagUrl: countryMeta?.flagUrl || "",
+    };
+  }
+
+  return {
+    value,
+    label: "ID",
+    type,
+    countryName: "",
+    isoCode: "",
+    flagUrl: "",
+  };
+};
 
 export default function BookingPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState, setFlowState } = useVisitor();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
+  const SUMMARY_COLORS = getSummaryColors(isDark);
   const isReturning = flowState?.isReturning === true;
   const ndaRequired = isReturning && flowState?.ndaAccepted === false;
   const [submitting, setSubmitting] = useState(false);
@@ -62,12 +276,15 @@ export default function BookingPage() {
   const [ndaOpen, setNdaOpen] = useState(false);
   const [ndaAccepted, setNdaAccepted] = useState(false);
   const ndaWasRequired = useRef(ndaRequired);
+  const summaryDownloadRef = useRef(null);
   const showNdaCheckbox = ndaWasRequired.current;
   const [ndaTemplate, setNdaTemplate] = useState(null);
   const [ndaLoading, setNdaLoading] = useState(false);
 
   const [bookingType, setBookingType] = useState("custom");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
+  const bookingDate = bookingData.date ? dayjs(bookingData.date) : null;
+  const hasValidBookingDate = bookingDate?.isValid?.() === true;
 
   useEffect(() => {
     if (isReturning) {
@@ -189,7 +406,7 @@ export default function BookingPage() {
   };
 
   const handleSubmit = async () => {
-    if (!bookingData.date) return;
+    if (!hasValidBookingDate) return;
 
     if (isReturning) {
       const errs = {};
@@ -204,7 +421,7 @@ export default function BookingPage() {
     try {
       let fromDate, toDate;
       if (bookingType === "preset") {
-        const date = bookingData.date;
+        const date = bookingDate;
         let from = date.clone();
         let to = date.clone();
 
@@ -224,8 +441,8 @@ export default function BookingPage() {
         fromDate = from.format("YYYY-MM-DD");
         toDate = to.format("YYYY-MM-DD");
       } else {
-        fromDate = bookingData.date.format("YYYY-MM-DD");
-        toDate = bookingData.date.format("YYYY-MM-DD");
+        fromDate = bookingDate.format("YYYY-MM-DD");
+        toDate = bookingDate.format("YYYY-MM-DD");
       }
       
       const payload = {
@@ -242,7 +459,6 @@ export default function BookingPage() {
         },
       };
 
-      console.log("Submitting Registration Payload:", payload);
       const res = await createRegistration(payload);
       if (!res.error) {
         setSuccess(res);
@@ -250,6 +466,32 @@ export default function BookingPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleDownloadSummary = async () => {
+    if (!summaryDownloadRef.current || !success) return;
+
+    const canvas = await html2canvas(summaryDownloadRef.current, {
+      backgroundColor: null,
+      useCORS: true,
+      scale: Math.max(window.devicePixelRatio || 1, 2),
+      logging: false,
+      ignoreElements: (element) => element?.dataset?.excludeDownload === "true",
+    });
+
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+    const fileSafeValue = (value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    const identityValue = extractVisitorIdentity(success, visitorData);
+    const downloadName = fileSafeValue(success?.user?.fullName || visitorData.fullName || "visitor");
+    const downloadId = fileSafeValue(identityValue?.value || success?.qr_token || success?.qrToken || success?.id || Date.now());
+    link.download = `registration-summary-${downloadName}-${downloadId}.png`;
+    link.click();
   };
 
   if (success) {
@@ -265,6 +507,7 @@ export default function BookingPage() {
 
     const fromDate = success.requestedFrom ? new Date(success.requestedFrom) : null;
     const toDate = success.requestedTo ? new Date(success.requestedTo) : null;
+    const qrToken = success.qr_token || success.qrToken || success.id;
 
     const fmtDate = (d) =>
       d ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(d) : "—";
@@ -272,139 +515,322 @@ export default function BookingPage() {
       d ? new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).format(d) : "—";
 
     const sameDay = fromDate && toDate && fmtDate(fromDate) === fmtDate(toDate);
+    const contactLine = [visitorEmail, visitorPhone].filter(Boolean).join("  ·  ");
+    const summaryCardBorder = isDark
+      ? alpha(SUMMARY_COLORS.white, 0.22)
+      : alpha(SUMMARY_COLORS.primary, 0.14);
+    const summarySectionBorder = isDark
+      ? alpha(SUMMARY_COLORS.white, 0.18)
+      : alpha(SUMMARY_COLORS.primary, 0.12);
+    const summaryRowBorder = isDark
+      ? alpha(SUMMARY_COLORS.white, 0.16)
+      : alpha(SUMMARY_COLORS.primary, 0.1);
+    const summaryHeaderBg = isDark
+      ? SUMMARY_COLORS.white
+      : `linear-gradient(135deg, ${SUMMARY_COLORS.primaryDeep} 0%, ${SUMMARY_COLORS.primary} 56%, ${SUMMARY_COLORS.edge} 100%)`;
+    const summaryHeaderText = isDark ? SUMMARY_COLORS.primaryDark : SUMMARY_COLORS.white;
+    const summaryHeaderMutedText = isDark
+      ? alpha(SUMMARY_COLORS.primaryDark, 0.72)
+      : alpha(SUMMARY_COLORS.white, 0.82);
 
-    const DetailRow = ({ icon, label, value }) => (
-      <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ py: 1.5, px: 2.5 }}>
-        <Box sx={{ color: "text.disabled", mt: 0.1, flexShrink: 0 }}>{icon}</Box>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6 }}>
-            {label}
-          </Typography>
-          <Typography variant="body2" fontWeight={600} color="text.primary" sx={{ mt: 0.25 }}>
-            {value}
-          </Typography>
-        </Box>
-      </Stack>
+    const visitorIdentity = extractVisitorIdentity(success, visitorData);
+    const hostBrandName =
+      success?.hostDetails?.name ||
+      success?.host?.name ||
+      success?.hostName ||
+      success?.host_name ||
+      "Sinan VMS";
+
+    const DetailRow = ({ label, value, index }) => (
+      <Box
+        sx={{
+          px: 2,
+          py: 1.5,
+          borderBottom: `1px solid ${summaryRowBorder}`,
+          bgcolor: index % 2 === 0
+            ? (isDark ? alpha("#ffffff", 0.06) : alpha("#000000", 0.035))
+            : "transparent",
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            color: SUMMARY_COLORS.inkSoft,
+            textTransform: "uppercase",
+            letterSpacing: 1.1,
+          }}
+        >
+          {label}
+        </Typography>
+        <Typography
+          variant="body1"
+          fontWeight={700}
+          sx={{
+            color: SUMMARY_COLORS.ink,
+            lineHeight: 1.45,
+            mt: 0.45,
+            wordBreak: "break-word",
+          }}
+        >
+          {value}
+        </Typography>
+      </Box>
     );
+
+    const summaryRows = [
+      {
+        label: sameDay ? "Visit Date" : "From",
+        value: sameDay
+          ? `${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)} – ${fmtTime(toDate)}`
+          : `${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)}`,
+      },
+      ...(!sameDay
+        ? [{ label: "To", value: `${fmtDate(toDate)}  ·  ${fmtTime(toDate)}` }]
+        : []),
+      ...(deptName ? [{ label: "Department", value: deptName }] : []),
+      ...(purposeText ? [{ label: "Purpose of Visit", value: purposeText }] : []),
+    ];
 
     return (
       <VisitorLayout justifyContent="center">
-        <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }}>
-          <Stack spacing={2.5}>
+        <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }} style={{ width: "100%" }}>
+          <Stack spacing={2.2}>
 
-            {/* Icon + title */}
-            <Stack alignItems="center" spacing={1}>
-              <Box
-                sx={{
-                  width: 60, height: 60, borderRadius: "50%",
-                  bgcolor: (theme) => alpha(theme.palette.success.main, 0.1),
-                  color: "success.main",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}
-              >
-                <ICONS.checkCircle sx={{ fontSize: 32 }} />
-              </Box>
+            <Stack alignItems="center" spacing={0.5}>
               <Typography variant="h6" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-                Application Sent!
+                Booking Summary
               </Typography>
-              <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 320 }}>
-                Pending approval — you'll receive a confirmation email once reviewed.
+              <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 360 }}>
+                Application submitted successfully. Download your summary card below.
               </Typography>
             </Stack>
 
-            {/* Card */}
-            <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 3, overflow: "hidden" }}>
-
-              {/* Visitor */}
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ px: 2.5, py: 2, bgcolor: (theme) => alpha(theme.palette.text.primary, 0.03) }}>
+            <Box ref={summaryDownloadRef} sx={{ width: "100%", maxWidth: 430, mx: "auto" }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  position: "relative",
+                  width: "100%",
+                  overflow: "hidden",
+                  borderRadius: "30px",
+                  background: `linear-gradient(180deg, ${SUMMARY_COLORS.cardTop} 0%, ${SUMMARY_COLORS.surface} 100%)`,
+                  border: `1px solid ${summaryCardBorder}`,
+                  boxShadow: `0 28px 70px ${alpha(SUMMARY_COLORS.primaryDeep, 0.24)}`,
+                }}
+              >
                 <Box
                   sx={{
-                    width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
-                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
-                    color: "primary.main",
-                    display: "flex", alignItems: "center", justifyContent: "center",
+                    position: "relative",
+                    px: { xs: 2.5, sm: 3 },
+                    pt: 3,
+                    pb: 4.25,
+                    overflow: "hidden",
+                    background: summaryHeaderBg,
                   }}
                 >
-                  <ICONS.person sx={{ fontSize: 20 }} />
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      width: 180,
+                      height: 180,
+                      borderRadius: "50%",
+                      top: -72,
+                      right: -48,
+                      bgcolor: isDark ? alpha(SUMMARY_COLORS.primaryDark, 0.06) : alpha(SUMMARY_COLORS.white, 0.08),
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      width: 120,
+                      height: 120,
+                      borderRadius: "50%",
+                      bottom: -60,
+                      left: -28,
+                      bgcolor: isDark ? alpha(SUMMARY_COLORS.primaryDark, 0.04) : alpha(SUMMARY_COLORS.white, 0.05),
+                    }}
+                  />
+
+                  <Box sx={{ position: "relative", zIndex: 1 }}>
+                    <Typography
+                      variant="h5"
+                      fontWeight={800}
+                      sx={{
+                        color: summaryHeaderText,
+                        lineHeight: 1.15,
+                        wordBreak: "break-word",
+                        mb: 1,
+                      }}
+                    >
+                      {visitorName}
+                    </Typography>
+                    {visitorIdentity?.value && (
+                      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.25, flexWrap: "wrap" }}>
+                        {visitorIdentity?.flagUrl && (
+                          <Box
+                            component="img"
+                            src={visitorIdentity.flagUrl}
+                            alt={visitorIdentity.countryName || "Passport Country"}
+                            sx={{
+                              width: 18,
+                              height: 12,
+                              objectFit: "cover",
+                              borderRadius: 0.4,
+                              border: `1px solid ${alpha(SUMMARY_COLORS.primaryDark, 0.16)}`,
+                            }}
+                          />
+                        )}
+                        <Typography
+                          variant="caption"
+                          sx={{ display: "block", color: summaryHeaderMutedText, wordBreak: "break-word" }}
+                        >
+                          {visitorIdentity.label}: {visitorIdentity.value}
+                        </Typography>
+                      </Stack>
+                    )}
+                    {contactLine && (
+                      <Typography
+                        variant="caption"
+                        sx={{ display: "block", mt: 0.85, color: summaryHeaderMutedText, wordBreak: "break-word" }}
+                      >
+                        {contactLine}
+                      </Typography>
+                    )}
+                  </Box>
                 </Box>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography fontWeight={700} noWrap>{visitorName}</Typography>
-                  <Typography variant="caption" color="text.secondary" noWrap>
-                    {[visitorEmail, visitorPhone].filter(Boolean).join("  ·  ")}
+
+                <Box sx={{ px: { xs: 2.5, sm: 3 }, py: 3 }}>
+                  <Box
+                    sx={{
+                      mb: 2.25,
+                      borderRadius: 4,
+                      overflow: "hidden",
+                      bgcolor: SUMMARY_COLORS.panel,
+                      border: `1px solid ${summarySectionBorder}`,
+                    }}
+                  >
+                    {summaryRows.map((row, index) => (
+                      <DetailRow key={row.label} label={row.label} value={row.value} index={index} />
+                    ))}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: "26px",
+                      background: SUMMARY_COLORS.panel,
+                      border: `1px solid ${summarySectionBorder}`,
+                      boxShadow: `0 14px 30px ${alpha(SUMMARY_COLORS.primaryDeep, 0.08)}`,
+                    }}
+                  >
+                    <Box sx={{ display: "flex", justifyContent: "center", mb: qrToken ? 1.5 : 0 }}>
+                      <Box
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 3,
+                          bgcolor: SUMMARY_COLORS.white,
+                          border: "1px solid #e4eef1",
+                        }}
+                      >
+                        <QRCodeCanvas
+                          value={qrToken || "N/A"}
+                          size={170}
+                          bgColor={SUMMARY_COLORS.white}
+                          fgColor={SUMMARY_COLORS.primaryDark}
+                          includeMargin={false}
+                        />
+                      </Box>
+                    </Box>
+
+                    {qrToken && (
+                      <Box
+                        sx={{
+                          px: 1.75,
+                          py: 0.85,
+                          borderRadius: 999,
+                          display: "flex",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          fontWeight={700}
+                          sx={{
+                            color: isDark ? SUMMARY_COLORS.white : SUMMARY_COLORS.primaryDark,
+                            letterSpacing: 0.8,
+                            wordBreak: "break-all",
+                          }}
+                        >
+                          Token: {qrToken}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Divider sx={{ my: 1.5 }} />
+
+                  <Typography
+                    variant="caption"
+                    display="block"
+                    textAlign="center"
+                    sx={{ color: SUMMARY_COLORS.inkSoft }}
+                  >
+                    Powered by {hostBrandName}
                   </Typography>
                 </Box>
-              </Stack>
-
-              <Divider />
-
-              {/* Date */}
-              {sameDay ? (
-                <DetailRow
-                  icon={<ICONS.event sx={{ fontSize: 18 }} />}
-                  label="Visit Date"
-                  value={`${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)} – ${fmtTime(toDate)}`}
-                />
-              ) : (
-                <>
-                  <DetailRow
-                    icon={<ICONS.event sx={{ fontSize: 18 }} />}
-                    label="From"
-                    value={`${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)}`}
-                  />
-                  <Divider sx={{ mx: 2.5 }} />
-                  <DetailRow
-                    icon={<ICONS.event sx={{ fontSize: 18 }} />}
-                    label="To"
-                    value={`${fmtDate(toDate)}  ·  ${fmtTime(toDate)}`}
-                  />
-                </>
-              )}
-
-              {deptName && (
-                <>
-                  <Divider sx={{ mx: 2.5 }} />
-                  <DetailRow
-                    icon={<ICONS.business sx={{ fontSize: 18 }} />}
-                    label="Department"
-                    value={deptName}
-                  />
-                </>
-              )}
-
-              {purposeText && (
-                <>
-                  <Divider sx={{ mx: 2.5 }} />
-                  <DetailRow
-                    icon={<ICONS.info sx={{ fontSize: 18 }} />}
-                    label="Purpose of Visit"
-                    value={purposeText}
-                  />
-                </>
-              )}
-
-              <Divider />
-
-              {/* Status */}
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, py: 1.5 }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={500}>Status</Typography>
-                <Stack direction="row" spacing={0.75} alignItems="center">
-                  <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "warning.main" }} />
-                  <Typography variant="caption" fontWeight={700} color="warning.dark" sx={{ textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.65rem" }}>
-                    Pending Review
-                  </Typography>
-                </Stack>
-              </Stack>
+              </Paper>
             </Box>
 
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={<ICONS.home />}
-              onClick={() => { resetVisitorFlow(); router.push("/"); }}
-              sx={{ py: 1.5, borderRadius: 30, fontWeight: 700 }}
+            <Box
+              sx={{
+                px: 1.75,
+                py: 0.9,
+                borderRadius: 999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 0.75,
+                bgcolor: (theme) => alpha(theme.palette.warning.main, isDark ? 0.24 : 0.24),
+                border: "1px solid",
+                borderColor: (theme) => alpha(theme.palette.warning.main, isDark ? 0.5 : 0.46),
+                width: "fit-content",
+                mx: "auto",
+              }}
             >
-              Back to Home
-            </Button>
+              <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "warning.main" }} />
+              <Typography
+                variant="caption"
+                fontWeight={800}
+                sx={{
+                  color: isDark ? "#fef3c7" : "#7c2d12",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  fontSize: "0.72rem",
+                }}
+              >
+                Status: Pending Review
+              </Typography>
+            </Box>
+
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
+              <Button
+                variant="contained"
+                startIcon={<ICONS.download />}
+                onClick={handleDownloadSummary}
+                sx={{ py: 1.5, borderRadius: 30, fontWeight: 700, width: "100%", flex: 1 }}
+              >
+                Save
+              </Button>
+
+              <Button
+                variant="contained"
+                startIcon={<ICONS.home />}
+                onClick={() => { resetVisitorFlow(); router.push("/"); }}
+                sx={{ py: 1.5, borderRadius: 30, fontWeight: 700, width: "100%", flex: 1 }}
+              >
+                Home
+              </Button>
+            </Stack>
 
           </Stack>
         </motion.div>
@@ -514,7 +940,7 @@ export default function BookingPage() {
               }}
             >
               <DateCalendar
-                value={bookingData.date}
+                value={hasValidBookingDate ? bookingDate : null}
                 onChange={handleDateChange}
                 disablePast
               />
@@ -646,14 +1072,14 @@ export default function BookingPage() {
                   </Box>
 
                   {/* Date Range Display */}
-                  {bookingData.date && (
+                  {hasValidBookingDate && (
                     <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider", mb: 2.5 }}>
                       <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
                         Date Range
                       </Typography>
                       <Typography variant="body2" fontWeight={600} color="text.primary">
                         {(() => {
-                          const date = bookingData.date;
+                          const date = bookingDate;
                           let from = date.clone();
                           let to = date.clone();
 
@@ -719,7 +1145,7 @@ export default function BookingPage() {
           <Button
             variant="contained"
             fullWidth
-            disabled={submitting || !bookingData.date}
+            disabled={submitting || !hasValidBookingDate}
             startIcon={submitting ? <CircularProgress size={24} color="inherit" /> : <ICONS.send />}
             onClick={handleSubmit}
             sx={{ py: 1.5, borderRadius: 30 }}
