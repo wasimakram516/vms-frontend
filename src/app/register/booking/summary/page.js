@@ -190,7 +190,7 @@ export default function SummaryPage() {
   const fromDate = registration.requestedFrom ? new Date(registration.requestedFrom) : null;
   const toDate = registration.requestedTo ? new Date(registration.requestedTo) : null;
   const qrToken = registration.qr_token || registration.qrToken || registration.id;
-  const hostBrandName = registration?.hostDetails?.name || registration?.host?.name || "Sinan VMS";
+  const hostBrandName = registration?.hostName || registration?.host?.name || registration?.hostDetails?.name;
   const visitorIdentity = extractVisitorIdentity(registration, visitorData);
 
   const fmtDate = (d) =>
