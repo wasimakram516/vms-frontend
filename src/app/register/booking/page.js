@@ -245,8 +245,11 @@ export default function BookingPage() {
         sessionStorage.setItem("vms_summary", JSON.stringify({ registration: res, visitorData }));
         resetVisitorFlow();
         router.push("/register/booking/summary");
+        // intentionally do NOT reset submitting — loading screen persists until navigation
+        return;
       }
-    } finally {
+      setSubmitting(false);
+    } catch (e) {
       setSubmitting(false);
     }
   };
