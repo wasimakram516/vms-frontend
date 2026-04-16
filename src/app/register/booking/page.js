@@ -55,6 +55,7 @@ export default function BookingPage() {
   const isDark = mode === "dark";
   const isReturning = flowState?.isReturning === true;
   const ndaRequired = isReturning && flowState?.ndaAccepted === false;
+  const showNdaCheckbox = ndaRequired || (isReturning && ndaAccepted);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
   const [departments, setDepartments] = useState([]);
@@ -461,7 +462,7 @@ export default function BookingPage() {
               rounded
             />
 
-            {ndaRequired && (
+            {showNdaCheckbox && (
               <Stack spacing={0.75}>
                 <FormControlLabel
                   control={
@@ -481,7 +482,9 @@ export default function BookingPage() {
                   }
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ pl: 4 }}>
-                  Your previous NDA has expired. Please review and accept the NDA before submitting.
+                  {ndaAccepted
+                    ? "NDA accepted. You may proceed."
+                    : "Your previous NDA has expired. Please review and accept the NDA before submitting."}
                 </Typography>
                 {fieldErrors.nda && (
                   <Typography variant="caption" color="error.main" sx={{ pl: 4 }}>
