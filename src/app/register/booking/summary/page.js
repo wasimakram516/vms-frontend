@@ -183,7 +183,6 @@ export default function SummaryPage() {
   const isoCode = (visitorData.phoneIsoCode || visitorData.iso_code || "").toLowerCase();
   const dialCode = COUNTRY_CODES.find((c) => c.isoCode === isoCode)?.code ?? "";
   const visitorPhone = rawPhone ? `${dialCode} ${rawPhone}`.trim() : null;
-  const contactLine = [visitorEmail, visitorPhone].filter(Boolean).join("  ·  ");
 
   const deptName = registration.department?.name;
   const purposeText = registration.purposeOfVisit;
@@ -312,10 +311,28 @@ export default function SummaryPage() {
                       </Typography>
                     </Stack>
                   )}
-                  {contactLine && (
-                    <Typography variant="caption" sx={{ display: "block", mt: 0.85, color: summaryHeaderMutedText, wordBreak: "break-word" }}>
-                      {contactLine}
-                    </Typography>
+                  {(visitorEmail || visitorPhone) && (
+                    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.85, flexWrap: "wrap", rowGap: 0.5 }}>
+                      {visitorEmail && (
+                        <>
+                          <ICONS.email sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
+                          <Typography variant="caption" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
+                            {visitorEmail}
+                          </Typography>
+                        </>
+                      )}
+                      {visitorEmail && visitorPhone && (
+                        <Typography variant="caption" sx={{ color: summaryHeaderMutedText }}>·</Typography>
+                      )}
+                      {visitorPhone && (
+                        <>
+                          <ICONS.phone sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
+                          <Typography variant="caption" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
+                            {visitorPhone}
+                          </Typography>
+                        </>
+                      )}
+                    </Stack>
                   )}
                 </Box>
               </Box>

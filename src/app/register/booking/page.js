@@ -255,22 +255,6 @@ export default function BookingPage() {
   };
 
 
-  if (submitting) {
-    return (
-      <VisitorLayout justifyContent="center">
-        <Stack alignItems="center" spacing={2.5} sx={{ py: 6 }}>
-          <CircularProgress size={52} thickness={4} />
-          <Typography variant="h6" fontWeight={700}>
-            Submitting your booking…
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Please wait while we confirm your registration.
-          </Typography>
-        </Stack>
-      </VisitorLayout>
-    );
-  }
-
   return (
     <>
     <VisitorLayout
