@@ -38,7 +38,8 @@ import { getHost, createHost, updateHost, deleteHost } from "@/services/hostServ
 import { uploadMediaFiles } from "@/utils/mediaUpload";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, getCountryAndPhoneByFullPhone } from "@/utils/countryCodes";
-import { validateRequired, validateEmail, validateUrl } from "@/utils/validationUtils";
+import { validateRequired, validateEmail, validateUrl, validatePhone } from "@/utils/validationUtils";
+import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
 import { formatDateTimeWithLocale } from "@/utils/dateUtils";
 
 const emptyForm = () => ({
@@ -97,6 +98,7 @@ export default function HostDetailsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
+  const [formErrors, setFormErrors] = useState({});
   const [isEdit, setIsEdit] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isoCodes, setIsoCodes] = useState(emptyIsoCodes());
@@ -128,6 +130,7 @@ export default function HostDetailsPage() {
   const openCreate = () => {
     setForm(emptyForm());
     setIsoCodes(emptyIsoCodes());
+    setFormErrors({});
     setLogoFile(null);
     setLogoPreview("");
     setIsEdit(false);
@@ -154,6 +157,7 @@ export default function HostDetailsPage() {
     });
     setLogoFile(null);
     setLogoPreview(host.logoUrl || "");
+    setFormErrors({});
     setIsEdit(true);
     setDialogOpen(true);
   };
@@ -194,16 +198,28 @@ export default function HostDetailsPage() {
       const cpEmailError = validateEmail(form.contactPersonEmail, "Contact Email");
       if (cpEmailError) errors.contactPersonEmail = cpEmailError;
     }
-    
+
+    if (form.phone) {
+      const phoneError = validatePhone(form.phone, isoCodes.phone);
+      if (phoneError) errors.phone = phoneError;
+    }
+
+    if (form.contactPersonPhone) {
+      const cpPhoneError = validatePhone(form.contactPersonPhone, isoCodes.contactPersonPhone);
+      if (cpPhoneError) errors.contactPersonPhone = cpPhoneError;
+    }
+
     return errors;
   };
 
   const handleSave = async () => {
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
+      setFormErrors(validationErrors);
       Object.values(validationErrors).forEach(err => showMessage(err, "error"));
       return;
     }
+    setFormErrors({});
 
     setSaving(true);
     let finalLogoUrl = form.logoUrl;
@@ -401,6 +417,7 @@ export default function HostDetailsPage() {
                     <ListItemText
                       primary="Kitchen Module"
                       primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}
+                      secondaryTypographyProps={{ component: "div" }}
                       secondary={
                         <Chip
                           label={host.isKitchenModuleEnabled ? "Enabled" : "Disabled"}
@@ -528,7 +545,10 @@ export default function HostDetailsPage() {
                   fullWidth
                   label="Phone"
                   value={form.phone}
-                  onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value.replace(/\D/g, "") }))}
+                  onChange={(e) => setForm((p) => ({ ...p, phone: filterPhoneInput(e.target.value) }))}
+                  onKeyPress={onKeyPressPhone}
+                  error={!!formErrors.phone}
+                  helperText={formErrors.phone}
                   InputProps={{
                     startAdornment: (
                       <CountryCodeSelector
@@ -594,7 +614,10 @@ export default function HostDetailsPage() {
                   fullWidth
                   label="Contact Phone"
                   value={form.contactPersonPhone}
-                  onChange={(e) => setForm((p) => ({ ...p, contactPersonPhone: e.target.value.replace(/\D/g, "") }))}
+                  onChange={(e) => setForm((p) => ({ ...p, contactPersonPhone: filterPhoneInput(e.target.value) }))}
+                  onKeyPress={onKeyPressPhone}
+                  error={!!formErrors.contactPersonPhone}
+                  helperText={formErrors.contactPersonPhone}
                   InputProps={{
                     startAdornment: (
                       <CountryCodeSelector
