@@ -21,6 +21,8 @@ import {
   ListItemText,
   Switch,
   FormControlLabel,
+  Grid,
+  Chip,
 } from "@mui/material";
 import { useMessage } from "@/contexts/MessageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -372,49 +374,64 @@ export default function HostDetailsPage() {
 
             <Divider />
 
-            {/* Organization details */}
-            <SectionLabel>Organization</SectionLabel>
-            <List dense disablePadding>
-              <DetailItem icon={ICONS.email} primary="Email" secondary={host.email} />
-              <DetailItem icon={ICONS.phone} primary="Phone" secondary={host.phone} />
-              <DetailItem icon={ICONS.location} primary="Address" secondary={host.address} />
-              <DetailItem icon={ICONS.Language} primary="Website" secondary={host.website} />
-            </List>
+            <Grid container spacing={3} sx={{ mt: 0.5 }} alignItems="stretch">
+              {/* Left column */}
+              <Grid size={{ xs: 12, md: 6 }} sx={{ borderRight: { md: "1px solid" }, borderColor: { md: "divider" }, pr: { md: 3 } }}>
+                <SectionLabel>Organization</SectionLabel>
+                <List dense disablePadding>
+                  <DetailItem icon={ICONS.email} primary="Email" secondary={host.email} />
+                  <DetailItem icon={ICONS.phone} primary="Phone" secondary={host.phone} />
+                  <DetailItem icon={ICONS.location} primary="Address" secondary={host.address} />
+                  <DetailItem icon={ICONS.Language} primary="Website" secondary={host.website} />
+                </List>
 
-            {/* NDA Notification */}
-            <Divider sx={{ mt: 1 }} />
-            <SectionLabel>NDA Notifications</SectionLabel>
-            <List dense disablePadding>
-              <DetailItem icon={ICONS.email} primary="NDA Notification Email" secondary={host.ndaNotificationEmail} />
-            </List>
+                <Divider sx={{ mt: 2 }} />
+                <SectionLabel>NDA Notifications</SectionLabel>
+                <List dense disablePadding>
+                  <DetailItem icon={ICONS.email} primary="NDA Notification Email" secondary={host.ndaNotificationEmail} />
+                </List>
 
-            {/* Contact person */}
-            <Divider sx={{ mt: 1 }} />
-            <SectionLabel>Contact Person</SectionLabel>
-            <List dense disablePadding>
-              <DetailItem icon={ICONS.person} primary="Name" secondary={host.contactPersonName} />
-              <DetailItem icon={ICONS.email} primary="Email" secondary={host.contactPersonEmail} />
-              <DetailItem icon={ICONS.phone} primary="Phone" secondary={host.contactPersonPhone} />
-            </List>
+                <Divider sx={{ mt: 2 }} />
+                <SectionLabel>System Modules</SectionLabel>
+                <List dense disablePadding>
+                  <ListItem disablePadding sx={{ py: 0.6 }}>
+                    <ListItemIcon sx={{ minWidth: 36, color: "text.secondary" }}>
+                      <ICONS.diningTable fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Kitchen Module"
+                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}
+                      secondary={
+                        <Chip
+                          label={host.isKitchenModuleEnabled ? "Enabled" : "Disabled"}
+                          size="small"
+                          color={host.isKitchenModuleEnabled ? "success" : "default"}
+                          variant="outlined"
+                          sx={{ mt: 0.5, fontWeight: 600, fontSize: "0.72rem" }}
+                        />
+                      }
+                    />
+                  </ListItem>
+                </List>
+              </Grid>
 
-            {/* System Modules */}
-            <Divider sx={{ mt: 1 }} />
-            <SectionLabel>System Modules</SectionLabel>
-            <List dense disablePadding>
-              <DetailItem 
-                icon={ICONS.diningTable} 
-                primary="Kitchen Module" 
-                secondary={host.isKitchenModuleEnabled ? "Enabled" : "Disabled"} 
-              />
-            </List>
+              {/* Right column */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <SectionLabel>Contact Person</SectionLabel>
+                <List dense disablePadding>
+                  <DetailItem icon={ICONS.person} primary="Name" secondary={host.contactPersonName} />
+                  <DetailItem icon={ICONS.email} primary="Email" secondary={host.contactPersonEmail} />
+                  <DetailItem icon={ICONS.phone} primary="Phone" secondary={host.contactPersonPhone} />
+                </List>
 
-            {/* Logs */}
-            <Divider sx={{ mt: 1 }} />
-            <SectionLabel>Logs</SectionLabel>
-            <List dense disablePadding>
-              <DetailItem icon={ICONS.person} primary="Created" secondary={`${host.created_by || "N/A"} · ${host.created_at ? formatDateTimeWithLocale(host.created_at, "en-GB") : "N/A"}`} />
-              <DetailItem icon={ICONS.sync} primary="Updated" secondary={`${host.updated_by || "N/A"} · ${host.updated_at ? formatDateTimeWithLocale(host.updated_at, "en-GB") : "N/A"}`} />
-            </List>
+                <Divider sx={{ mt: 2 }} />
+                <SectionLabel>Logs</SectionLabel>
+                <List dense disablePadding>
+                  <DetailItem icon={ICONS.person} primary="Created" secondary={`${host.created_by || "N/A"} · ${host.created_at ? formatDateTimeWithLocale(host.created_at, "en-GB") : "N/A"}`} />
+                  <DetailItem icon={ICONS.sync} primary="Updated" secondary={`${host.updated_by || "N/A"} · ${host.updated_at ? formatDateTimeWithLocale(host.updated_at, "en-GB") : "N/A"}`} />
+                </List>
+              </Grid>
+            </Grid>
           </Box>
         )}
 
