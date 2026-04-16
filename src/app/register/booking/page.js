@@ -196,7 +196,7 @@ export default function BookingPage() {
       if (!visitorData.departmentId) errs.departmentId = "Department is required";
       const purposeErr = validateRequired(visitorData.purposeOfVisit, "Purpose of Visit");
       if (purposeErr) errs.purposeOfVisit = purposeErr;
-      if (ndaRequired && !ndaAccepted) errs.nda = "You must accept the NDA before submitting";
+      if (showNdaCheckbox && !ndaAccepted) errs.nda = "You must accept the NDA before submitting";
       if (Object.keys(errs).length) { setFieldErrors(errs); return; }
     }
 
