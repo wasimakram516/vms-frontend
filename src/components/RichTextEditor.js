@@ -30,6 +30,8 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
     const editorRef = useRef(null);
     const colorPickerAnchorRef = useRef(null);
     const fontSizeSelectRef = useRef(null);
+    // Persists the editor's selection range across focus-loss events (e.g. clicking the font-size dropdown).
+    const savedRangeRef = useRef(null);
     const [activeCommands, setActiveCommands] = useState({
         bold: false,
         italic: false,
@@ -40,48 +42,6 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
     const [fontSize, setFontSize] = useState(14);
     const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
-    const parseHTMLForFormatting = (html) => {
-        if (!html) return { alignment: null, fontSize: 14 };
-
-        let detectedAlignment = null;
-        let detectedFontSize = 14;
-
-        const textAlignMatch = html.match(/text-align:\s*(center|left|right|justify)/i);
-        if (textAlignMatch) {
-            const align = textAlignMatch[1].toLowerCase();
-            if (align === 'center') detectedAlignment = 'center';
-            else if (align === 'right') detectedAlignment = 'right';
-            else if (align === 'left') detectedAlignment = 'left';
-        }
-
-        const fontSizeMatch = html.match(/font-size:\s*([^;'"]+)/i);
-        if (fontSizeMatch) {
-            const fontSizeStr = fontSizeMatch[1].trim();
-            const fontSizeNum = parseFloat(fontSizeStr);
-            if (fontSizeNum && fontSizeNum >= 8 && fontSizeNum <= 100) {
-                detectedFontSize = Math.round(fontSizeNum);
-            }
-        }
-
-        const fontSizeAttrMatch = html.match(/<font[^>]*size=["']?(\d+)["']?/i);
-        if (fontSizeAttrMatch) {
-            const sizeAttr = parseInt(fontSizeAttrMatch[1]);
-            const sizeMap = {
-                1: 8,
-                2: 10,
-                3: 12,
-                4: 14,
-                5: 18,
-                6: 24,
-                7: 36
-            };
-            if (sizeAttr >= 1 && sizeAttr <= 7) {
-                detectedFontSize = sizeMap[sizeAttr];
-            }
-        }
-
-        return { alignment: detectedAlignment, fontSize: detectedFontSize };
-    };
 
     useEffect(() => {
         try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (_) {}
@@ -94,45 +54,21 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
         if (value === el.innerHTML) return;
         el.innerHTML = value || "";
 
-        const formatting = parseHTMLForFormatting(value);
+        // Detect alignment from first block element's inline style (reliable DOM read).
+        const firstBlock = el.querySelector("p, h1, h2, h3");
+        const detectedAlignment = firstBlock?.style?.textAlign || null;
+        setAlignment(detectedAlignment);
+        el.style.textAlign = detectedAlignment || "left";
 
-        if (formatting.alignment) {
-            setAlignment(formatting.alignment);
-            setTimeout(() => {
-                if (editorRef.current) {
-                    editorRef.current.focus();
-                    const range = document.createRange();
-                    range.selectNodeContents(editorRef.current);
-                    range.collapse(false);
-                    const sel = window.getSelection();
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-
-                    if (formatting.alignment === 'center') {
-                        document.execCommand('justifyCenter', false, null);
-                        editorRef.current.style.textAlign = "center";
-                    } else if (formatting.alignment === 'right') {
-                        document.execCommand('justifyRight', false, null);
-                        editorRef.current.style.textAlign = "right";
-                    } else {
-                        document.execCommand('justifyLeft', false, null);
-                        editorRef.current.style.textAlign = "left";
-                    }
-
-                    setTimeout(() => {
-                        updateActiveCommands();
-                    }, 0);
-                }
-            }, 50);
-        } else {
-            if (editorRef.current) {
-                editorRef.current.style.textAlign = "left";
-            }
+        // Detect font size from first element that carries an explicit font-size style.
+        // DOM traversal is more reliable than regex on the raw HTML string.
+        const firstSized = el.querySelector("[style*='font-size']");
+        let detectedFontSize = 14;
+        if (firstSized?.style?.fontSize) {
+            const px = parseFloat(firstSized.style.fontSize);
+            if (!isNaN(px) && px >= 8 && px <= 100) detectedFontSize = Math.round(px);
         }
-
-        if (formatting.fontSize !== fontSize) {
-            setFontSize(formatting.fontSize);
-        }
+        setFontSize(detectedFontSize);
     }, [value]);
 
     const updateActiveCommands = () => {
@@ -194,6 +130,13 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
         updateActiveCommands();
     };
 
+    const handleBlur = () => {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+        }
+    };
+
 
     const executeCommand = (command, value = null) => {
         editorRef.current?.focus();
@@ -228,7 +171,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
             }
 
             document.execCommand("justifyLeft", false, null);
-            setAlignment("left");
+            setAlignment(null);
             setTimeout(() => {
                 updateActiveCommands();
                 handleInput();
@@ -291,6 +234,31 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
         }, 0);
     };
 
+    const handleClearFormat = () => {
+        if (!editorRef.current) return;
+        editorRef.current.focus();
+        document.execCommand("removeFormat", false, null);
+
+        // removeFormat only strips inline styles (bold, italic, font-size, color).
+        // Also clear block-level text-align from every paragraph in the selection.
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            editorRef.current.querySelectorAll("p, h1, h2, h3, li").forEach((block) => {
+                if (range.intersectsNode(block)) {
+                    block.style.textAlign = "";
+                }
+            });
+        }
+        editorRef.current.style.textAlign = "";
+        setAlignment(null);
+
+        setTimeout(() => {
+            updateActiveCommands();
+            handleInput();
+        }, 0);
+    };
+
     const handleFontColor = (color) => {
         executeCommand("foreColor", color);
         setColorPickerOpen(false);
@@ -304,7 +272,15 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
 
         editorRef.current.focus();
         const selection = window.getSelection();
-        if (selection.rangeCount === 0) return;
+
+        // After clicking the font-size dropdown, the editor loses focus and the browser
+        // clears the selection. Restore the last saved range so the font size is applied
+        // to whatever the user had selected before opening the dropdown.
+        if (!selection || selection.rangeCount === 0) {
+            if (!savedRangeRef.current) return;
+            selection.removeAllRanges();
+            selection.addRange(savedRangeRef.current.cloneRange());
+        }
 
         const range = selection.getRangeAt(0);
 
@@ -363,13 +339,15 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
         if (range.collapsed) {
             const span = document.createElement("span");
             span.style.fontSize = `${size}px`;
-            span.innerHTML = "\u200B";
+            span.appendChild(document.createTextNode("\u200B"));
             try {
                 range.insertNode(span);
-                range.setStartAfter(span);
-                range.collapse(true);
+                // Place cursor INSIDE the span so subsequent typed characters inherit the font size.
+                const inner = document.createRange();
+                inner.setStart(span.firstChild, 1);
+                inner.collapse(true);
                 selection.removeAllRanges();
-                selection.addRange(range);
+                selection.addRange(inner);
             } catch (e) {
                 editorRef.current.innerHTML += span.outerHTML;
             }
@@ -379,15 +357,24 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                 span.style.fontSize = `${size}px`;
                 range.surroundContents(span);
             } catch (e) {
-                const contents = range.extractContents();
-                const span = document.createElement("span");
-                span.style.fontSize = `${size}px`;
-                span.appendChild(contents);
-                range.insertNode(span);
+                // Selection spans multiple block elements — apply font size per block
+                // to preserve paragraph structure instead of wrapping everything in one span.
+                const blocks = editorRef.current.querySelectorAll("p, h1, h2, h3, li");
+                blocks.forEach((block) => {
+                    if (range.intersectsNode(block)) {
+                        const wrapper = document.createElement("span");
+                        wrapper.style.fontSize = `${size}px`;
+                        while (block.firstChild) {
+                            wrapper.appendChild(block.firstChild);
+                        }
+                        block.appendChild(wrapper);
+                    }
+                });
             }
         }
 
         setTimeout(() => {
+            // Unwrap redundant nested font-size spans that carry the same size.
             const spans = editorRef.current.querySelectorAll("span[style*='font-size']");
             spans.forEach((span) => {
                 const parent = span.parentElement;
@@ -403,9 +390,14 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                 }
             });
 
-            const zwsp = editorRef.current.querySelectorAll("span:not(:has(*))");
-            zwsp.forEach((span) => {
-                if (span.textContent === "\u200B" && span.style.fontSize) {
+            // Remove stale zero-width placeholder spans (only \u200B, no real text).
+            // Avoid removing the span the cursor is currently inside.
+            const sel = window.getSelection();
+            const cursorNode = sel?.rangeCount > 0 ? sel.getRangeAt(0).startContainer : null;
+            editorRef.current.querySelectorAll("span").forEach((span) => {
+                if (span.textContent === "\u200B") {
+                    const cursorInside = cursorNode && (span === cursorNode || span.contains(cursorNode));
+                    if (!cursorInside) span.remove();
                 }
             });
 
@@ -621,7 +613,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                 <Box sx={{ display: "flex", gap: 0.5, px: 0.5 }}>
                     <IconButton
                         size="small"
-                        onClick={() => executeCommand("removeFormat")}
+                        onClick={handleClearFormat}
                         title="Clear Formatting"
                     >
                         <FormatClearIcon fontSize="small" />
@@ -633,6 +625,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                 contentEditable
                 onInput={handleInput}
                 onFocus={handleFocus}
+                onBlur={handleBlur}
                 onMouseUp={updateActiveCommands}
                 onKeyUp={updateActiveCommands}
                 onSelect={updateActiveCommands}

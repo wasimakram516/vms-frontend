@@ -11,18 +11,19 @@ import {
   Typography,
   ToggleButtonGroup,
   ToggleButton,
-  TextField,
   Divider,
   CircularProgress,
   Box,
   IconButton,
 } from "@mui/material";
+import { DatePicker } from "@mui/x-date-pickers";
 import CloseIcon from "@mui/icons-material/Close";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import TodayIcon from "@mui/icons-material/Today";
 import DateRangeIcon from "@mui/icons-material/DateRange";
 import ViewWeekIcon from "@mui/icons-material/ViewWeek";
+import dayjs from "dayjs";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { exportVisitorReport } from "@/services/dashboardService";
 
@@ -130,36 +131,25 @@ export default function ExportDialog({ open, onClose }) {
         {/* Custom date range — shown only when period=custom */}
         {period === "custom" && (
           <Stack spacing={2} mb={1}>
-            <TextField
+            <DatePicker
               label="From"
-              type="date"
-              size="small"
-              fullWidth
-              value={from}
-              onChange={(e) => { setFrom(e.target.value); setError(""); }}
-              inputProps={{ max: today() }}
-              InputLabelProps={{ shrink: true }}
-              sx={{
-                "& input[type='date']::-webkit-calendar-picker-indicator": {
-                  filter: isDark ? "invert(1) brightness(1.5)" : "none",
-                  cursor: "pointer",
-                },
+              value={from ? dayjs(from) : null}
+              onChange={(val) => { setFrom(val ? val.format("YYYY-MM-DD") : ""); setError(""); }}
+              maxDate={dayjs(today())}
+              format="DD MMM YYYY"
+              slotProps={{
+                textField: { size: "small", fullWidth: true, InputProps: { sx: { borderRadius: 2 } } },
               }}
             />
-            <TextField
+            <DatePicker
               label="To"
-              type="date"
-              size="small"
-              fullWidth
-              value={to}
-              onChange={(e) => { setTo(e.target.value); setError(""); }}
-              inputProps={{ min: from, max: today() }}
-              InputLabelProps={{ shrink: true }}
-              sx={{
-                "& input[type='date']::-webkit-calendar-picker-indicator": {
-                  filter: isDark ? "invert(1) brightness(1.5)" : "none",
-                  cursor: "pointer",
-                },
+              value={to ? dayjs(to) : null}
+              onChange={(val) => { setTo(val ? val.format("YYYY-MM-DD") : ""); setError(""); }}
+              minDate={from ? dayjs(from) : undefined}
+              maxDate={dayjs(today())}
+              format="DD MMM YYYY"
+              slotProps={{
+                textField: { size: "small", fullWidth: true, InputProps: { sx: { borderRadius: 2 } } },
               }}
             />
           </Stack>

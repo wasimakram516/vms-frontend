@@ -77,7 +77,7 @@ export default function ApprovalSection({ from, to, lastTrigger }) {
     return (
       <Box sx={{ width: "100%", height: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
+          <PieChart margin={{ top: 20, right: 10, bottom: 5, left: 10 }}>
             <Pie
               data={pieData}
               dataKey="count"
@@ -85,10 +85,10 @@ export default function ApprovalSection({ from, to, lastTrigger }) {
               cx="50%"
               cy="50%"
               innerRadius={chartType === "Donut" ? "42%" : 0}
-              outerRadius="70%"
+              outerRadius="63%"
               paddingAngle={chartType === "Donut" ? 3 : 1}
               label={({ x, y, percent }) =>
-                percent > 0.04 ? (
+                percent > 0.08 ? (
                   <text x={x} y={y} fill={labelFill} textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>
                     {`${(percent * 100).toFixed(0)}%`}
                   </text>

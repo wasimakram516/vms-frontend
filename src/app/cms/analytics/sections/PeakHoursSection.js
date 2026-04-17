@@ -46,10 +46,10 @@ function HeatGrid2D({ grid, isDark }) {
         >
           {/* Day label */}
           <Box
+            style={{ color: isDark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)" }}
             sx={{
               fontSize: "0.7rem",
               fontWeight: 700,
-              color: "text.secondary",
               textAlign: "right",
               pr: 1,
             }}
@@ -69,12 +69,14 @@ function HeatGrid2D({ grid, isDark }) {
                 arrow
               >
                 <Box
+                  style={{
+                    backgroundColor: primary,
+                    opacity: 0.05 + intensity * 0.95,
+                  }}
                   sx={{
                     height: 28,
                     mx: 0.2,
                     borderRadius: 1,
-                    bgcolor: primary,
-                    opacity: 0.05 + intensity * 0.95,
                     cursor: "default",
                     transition: "opacity 0.15s",
                     "&:hover": { opacity: Math.min(1, 0.05 + intensity * 0.95 + 0.12) },
@@ -92,9 +94,9 @@ function HeatGrid2D({ grid, isDark }) {
         {HOURS.map((h) => (
           <Box
             key={h}
+            style={{ color: isDark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)" }}
             sx={{
               fontSize: "0.58rem",
-              color: "text.secondary",
               textAlign: "center",
               lineHeight: 1,
               overflow: "hidden",

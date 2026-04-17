@@ -54,6 +54,7 @@ import { getCustomFields } from "@/services/customFieldService";
 import BadgePDF from "@/components/badges/BadgePDF";
 import ICONS from "@/utils/iconUtil";
 import DateTimeFieldFlatpickr from "@/components/forms/DateTimeFieldFlatpickr";
+import { DatePicker } from "@mui/x-date-pickers";
 import AppCard from "@/components/cards/AppCard";
 import DialogHeader from "@/components/modals/DialogHeader";
 import FilterModal from "@/components/modals/FilterModal";
@@ -62,6 +63,7 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
+import RecordMetadata from "@/components/RecordMetadata";
 import {
   getRegistrations,
   updateStatus,
@@ -69,6 +71,7 @@ import {
   updateRegistration,
   getRegistrationActivityLogs,
   mapRegistration,
+  exportVisitorHistoryCsv,
 } from "@/services/registrationService";
 import { getAccessLevels } from "@/services/accessLevelService";
 import { getDepartments } from "@/services/departmentService";
@@ -291,6 +294,9 @@ export default function CmsRegistrationsPage() {
 
   // Confirm modal (cancel / checkin / checkout / visit_ended)
   const [confirmModal, setConfirmModal] = useState({ open: false, targetStatus: null, message: "" });
+
+  // CSV export
+  const [csvExportLoading, setCsvExportLoading] = useState(false);
 
   // Timeline modal
   const [timelineModal, setTimelineModal] = useState({ open: false });
@@ -575,6 +581,20 @@ export default function CmsRegistrationsPage() {
     const { targetStatus } = confirmModal;
     setConfirmModal({ open: false, targetStatus: null, message: "" });
     await executeStatusChange(targetStatus);
+  };
+
+  // ── CSV export ────────────────────────────────────────────────────────────
+
+  const handleExportCsv = async () => {
+    if (!selected?.id) return;
+    setCsvExportLoading(true);
+    try {
+      await exportVisitorHistoryCsv(selected.id);
+    } catch {
+      // error silently — user will see no download
+    } finally {
+      setCsvExportLoading(false);
+    }
   };
 
   // ── Timeline ──────────────────────────────────────────────────────────────
@@ -894,25 +914,25 @@ export default function CmsRegistrationsPage() {
         ))}
         {datePreset === "custom" && (
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", gap: 1 }}>
-            <TextField
-              type="date"
-              size="small"
+            <DatePicker
               label="From"
-              InputLabelProps={{ shrink: true }}
-              value={customFrom}
-              onChange={(e) => { setCustomFrom(e.target.value); setPage(0); }}
-              sx={{ width: 160 }}
-              inputProps={{ max: customTo || undefined }}
+              value={customFrom ? dayjs(customFrom) : null}
+              onChange={(val) => { setCustomFrom(val ? val.format("YYYY-MM-DD") : ""); setPage(0); }}
+              maxDate={customTo ? dayjs(customTo) : undefined}
+              format="DD MMM YYYY"
+              slotProps={{
+                textField: { size: "small", sx: { width: 200 }, InputProps: { sx: { borderRadius: 2 } } },
+              }}
             />
-            <TextField
-              type="date"
-              size="small"
+            <DatePicker
               label="To"
-              InputLabelProps={{ shrink: true }}
-              value={customTo}
-              onChange={(e) => { setCustomTo(e.target.value); setPage(0); }}
-              sx={{ width: 160 }}
-              inputProps={{ min: customFrom || undefined }}
+              value={customTo ? dayjs(customTo) : null}
+              onChange={(val) => { setCustomTo(val ? val.format("YYYY-MM-DD") : ""); setPage(0); }}
+              minDate={customFrom ? dayjs(customFrom) : undefined}
+              format="DD MMM YYYY"
+              slotProps={{
+                textField: { size: "small", sx: { width: 200 }, InputProps: { sx: { borderRadius: 2 } } },
+              }}
             />
           </Stack>
         )}
@@ -1076,24 +1096,35 @@ export default function CmsRegistrationsPage() {
                       )}
                     </Box>
 
-                    <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 1 }}>
-                      <Tooltip title="Print Badge">
-                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); handlePrintBadge(row); }} sx={{ color: "success.main" }}>
-                          <ICONS.print fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      {canEditRegistration(row) && (
-                        <Tooltip title="Edit Registration">
-                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleCardEdit(row); }} sx={{ color: "warning.main" }}>
-                            <ICONS.edit fontSize="small" />
+                    <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
+                      <Box sx={{ flex: 1 }}>
+                        <RecordMetadata
+                          createdByName={row.createdBy}
+                          updatedByName={row.updatedBy}
+                          createdAt={row.createdAt || row.created_at}
+                          updatedAt={row.updatedAt}
+                          locale="en-GB"
+                        />
+                      </Box>
+                      <Stack direction="row" spacing={1}>
+                        <Tooltip title="Print Badge">
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); handlePrintBadge(row); }} sx={{ color: "success.main" }}>
+                            <ICONS.print fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                      )}
-                      <Tooltip title="View Details">
-                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenProfile(row); }} sx={{ color: "primary.main" }}>
-                          <ICONS.view fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                        {isSuperAdmin && (
+                          <Tooltip title="Edit Registration">
+                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleCardEdit(row); }} sx={{ color: "warning.main" }}>
+                              <ICONS.edit fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        <Tooltip title="View Details">
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenProfile(row); }} sx={{ color: "primary.main" }}>
+                            <ICONS.view fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
                     </Box>
                   </AppCard>
                 );
@@ -1174,7 +1205,25 @@ export default function CmsRegistrationsPage() {
 
       {/* ── Visitor Detail Dialog ────────────────────────────────────────────── */}
       <Dialog open={!!selected} onClose={closeProfileDialog} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, overflow: "hidden", variant: "frosted" } }}>
-        <DialogHeader title="Visitor Details" onClose={closeProfileDialog} />
+        <DialogHeader title="Visitor Details" onClose={closeProfileDialog}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ flex: 1 }}>
+            <Typography variant="h6" fontWeight={800}>Visitor Details</Typography>
+            <Tooltip title="Export visit history as CSV">
+              <span>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={csvExportLoading ? <CircularProgress size={13} color="inherit" /> : <ICONS.download fontSize="small" />}
+                  onClick={handleExportCsv}
+                  disabled={csvExportLoading || !selected}
+                  sx={{ borderRadius: 30, fontWeight: 700, mr: 1, whiteSpace: "nowrap" }}
+                >
+                  Export CSV
+                </Button>
+              </span>
+            </Tooltip>
+          </Stack>
+        </DialogHeader>
         <Divider />
         <DialogContent sx={{ p: { xs: 2.5, sm: 3.5 } }}>
           {selected && (() => {

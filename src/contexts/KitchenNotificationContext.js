@@ -52,7 +52,7 @@ export const KitchenNotificationProvider = ({ children }) => {
   }, [isAudioPrimed, isMuted]);
 
   const fetchInitialUnseen = useCallback(async () => {
-    if (!user) return;
+    if (!user || user.role === "dev") return;
     try {
       const orders = await getMyOrders();
       if (Array.isArray(orders)) {
@@ -94,6 +94,7 @@ export const KitchenNotificationProvider = ({ children }) => {
 
   const socketEvents = useMemo(() => ({
     "kitchen-order:updated": (order) => {
+      if (user?.role === "dev") return;
       const isMyOrder = order.requester_id === user?.id || order.requesterUserId === user?.id;
       // Only notify if someone else updated it
       const isUnseen = order.is_seen_by_requester === false || order.isSeenByRequester === false;

@@ -2,6 +2,7 @@ import html2canvas from "html2canvas";
 import { PDFDocument, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { formatDateTimeWithLocale, formatDate } from "@/utils/dateUtils";
+import { applyLightModeToClone } from "@/utils/exportAnalyticsPdf";
 
 // Layout & font sizes
 const FONT_TITLE = 16;
@@ -348,6 +349,7 @@ export const exportChartsToPDF = async (
 
       const canvas = await html2canvas(chartElement, {
         scale: 2, backgroundColor: "#ffffff", logging: false, useCORS: true,
+        onclone: applyLightModeToClone,
       });
 
       legendElements.forEach((el) => (el.style.display = ""));

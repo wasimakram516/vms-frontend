@@ -129,11 +129,13 @@ export function SectionHeader({ title, toggle }) {
 export function KpiCard({ label, value, isDark }) {
   return (
     <Box
+      style={{
+        backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+        border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
+      }}
       sx={{
         p: 2,
         borderRadius: 3,
-        bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
-        border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
         minWidth: 140,
       }}
     >

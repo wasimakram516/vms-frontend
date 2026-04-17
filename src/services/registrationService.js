@@ -136,6 +136,23 @@ export const getRegistrationActivityLogs = withApiHandler(async (id) => {
   return res.data?.data || res.data || [];
 });
 
+export async function exportVisitorHistoryCsv(registrationId) {
+  const params = new URLSearchParams({
+    tzOffset: String(new Date().getTimezoneOffset()),
+  });
+
+  const res = await api.get(`/registrations/${registrationId}/export-csv?${params.toString()}`, {
+    responseType: "blob",
+  });
+
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `visitor-history-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export const checkNdaValidity = withApiHandler(async (email) => {
   const { data } = await api.get("/nda-templates/public/validity-check", { params: { email } });
   return data?.data || data;

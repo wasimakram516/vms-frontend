@@ -27,6 +27,7 @@ import {
 } from "@mui/material";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import dayjs from "dayjs";
+import { DatePicker } from "@mui/x-date-pickers";
 import { useKitchenNotifications } from "@/contexts/KitchenNotificationContext";
 import ICONS from "@/utils/iconUtil";
 import AppCard from "@/components/cards/AppCard";
@@ -337,20 +338,15 @@ export default function OrderTrackingModal({ open, onClose, user }) {
         <Collapse in={filtersOpen}>
           <Stack spacing={1.5} sx={{ mb: 2 }}>
             <Stack direction="row" spacing={1} alignItems="center">
-              <TextField
+              <DatePicker
                 label="Order Placement Date"
-                type="date"
-                size="small"
-                fullWidth
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ min: "2020-01-01", max: "2099-12-31" }}
-                sx={{
-                  "& .MuiInputBase-root": { borderRadius: 2 },
-                  "& .MuiInputBase-input::-webkit-calendar-picker-indicator": {
-                    filter: theme.palette.mode === "dark" ? "invert(1)" : "none",
-                  }
+                value={selectedDate ? dayjs(selectedDate) : null}
+                onChange={(val) => setSelectedDate(val ? val.format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"))}
+                minDate={dayjs("2020-01-01")}
+                maxDate={dayjs("2099-12-31")}
+                format="DD MMM YYYY"
+                slotProps={{
+                  textField: { size: "small", fullWidth: true, InputProps: { sx: { borderRadius: 2 } } },
                 }}
               />
               <FormControl size="small" sx={{ minWidth: 140, flexShrink: 0 }}>

@@ -238,6 +238,7 @@ export default function BookingPage() {
           ...visitorData.dynamicFields,
           full_name: visitorData.fullName || visitorData.dynamicFields.full_name,
         },
+        tzOffset: new Date().getTimezoneOffset(),
       };
 
       const res = await createRegistration(payload);

@@ -28,7 +28,7 @@ function PieDonut({ data, donut, isDark }) {
   return (
     <Box sx={{ width: "100%", height: 260 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
+        <PieChart margin={{ top: 20, right: 10, bottom: 5, left: 10 }}>
           <Pie
             data={data}
             dataKey="count"
@@ -36,10 +36,10 @@ function PieDonut({ data, donut, isDark }) {
             cx="50%"
             cy="50%"
             innerRadius={donut ? "45%" : 0}
-            outerRadius="72%"
+            outerRadius="64%"
             paddingAngle={donut ? 3 : 1}
             label={({ x, y, percent }) =>
-              percent > 0.05 ? (
+              percent > 0.08 ? (
                 <text x={x} y={y} fill={labelFill} textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>
                   {`${(percent * 100).toFixed(0)}%`}
                 </text>
@@ -140,7 +140,7 @@ function CategoryCard({ title, data, typeOptions }) {
     if (chartType === "Donut")   return <PieDonut data={data} donut isDark={isDark} />;
     if (chartType === "Treemap") {
       return (
-        <Box sx={{ width: "100%", height: 260 }}>
+        <Box data-pdf-treemap sx={{ width: "100%", height: 260 }}>
           <ResponsiveContainer width="100%" height="100%">
             <Treemap
               data={data.map((d) => ({ name: d.name, size: d.count }))}
@@ -183,7 +183,7 @@ function FunnelView({ stages, isDark }) {
   const tip = tooltipProps(isDark);
 
   return (
-    <Box sx={{ width: "100%", height: 300 }}>
+    <Box data-pdf-funnel sx={{ width: "100%", height: 300 }}>
       <ResponsiveContainer width="100%" height="100%">
         <FunnelChart margin={{ top: 4, right: 100, bottom: 4, left: 0 }}>
           <Tooltip

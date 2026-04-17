@@ -4,7 +4,8 @@ function extractSegments(el, defaultFontSize = null) {
   function cssColorToHex(style) {
     const hexM = style.match(/color\s*:\s*(#[0-9a-fA-F]{3,6})/i);
     if (hexM) return hexM[1];
-    const rgbM = style.match(/color\s*:\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+    // Matches both rgb() and rgba() — alpha channel is discarded.
+    const rgbM = style.match(/color\s*:\s*rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
     if (rgbM) {
       const r = parseInt(rgbM[1]).toString(16).padStart(2, "0");
       const g = parseInt(rgbM[2]).toString(16).padStart(2, "0");
@@ -103,11 +104,12 @@ export function htmlToNdaDoc(html) {
 
   const blocks = [];
 
-  function processNode(node) {
+  // inheritedFontSize: font-size (px) propagated from an ancestor inline wrapper.
+  function processNode(node, inheritedFontSize = 14) {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent.replace(/\u200B/g, "").replace(/\u00A0/g, " ").trim();
       if (text) {
-        blocks.push({ type: "paragraph", align: "justify", segments: [{ text }] });
+        blocks.push({ type: "paragraph", align: null, segments: [{ text }] });
       }
       return;
     }
@@ -117,15 +119,13 @@ export function htmlToNdaDoc(html) {
     const tag = node.tagName.toLowerCase();
 
     if (tag === "p") {
-      // Pass 14 so the editor's default size is always stored explicitly.
-      const segs = extractSegments(node, 14);
-      if (segs.length > 0) {
-        blocks.push({
-          type: "paragraph",
-          align: getAlign(node) || "justify",
-          segments: segs,
-        });
-      }
+      const segs = extractSegments(node, inheritedFontSize);
+      // Always push paragraph blocks, including empty ones (blank lines the user added).
+      blocks.push({
+        type: "paragraph",
+        align: getAlign(node) || null,
+        segments: segs,
+      });
     } else if (tag === "h1" || tag === "h2" || tag === "h3") {
       // No default — the PDF renderer supplies the correct heading pt size.
       const segs = extractSegments(node, null);
@@ -138,15 +138,18 @@ export function htmlToNdaDoc(html) {
         });
       }
     } else if (tag === "ul") {
-      const items = [...node.querySelectorAll("li")]
-        .map((li) => extractSegments(li, 14))
+      // Use direct children only — querySelectorAll("li") would also pick up nested list items.
+      const items = [...node.children]
+        .filter((c) => c.tagName.toLowerCase() === "li")
+        .map((li) => extractSegments(li, inheritedFontSize))
         .filter((s) => s.length > 0);
       if (items.length > 0) {
         blocks.push({ type: "bullet_list", items });
       }
     } else if (tag === "ol") {
-      const items = [...node.querySelectorAll("li")]
-        .map((li) => extractSegments(li, 14))
+      const items = [...node.children]
+        .filter((c) => c.tagName.toLowerCase() === "li")
+        .map((li) => extractSegments(li, inheritedFontSize))
         .filter((s) => s.length > 0);
       if (items.length > 0) {
         blocks.push({ type: "ordered_list", items });
@@ -158,30 +161,47 @@ export function htmlToNdaDoc(html) {
       tag === "b" || tag === "strong" || tag === "i" || tag === "em" ||
       tag === "u" || tag === "s" || tag === "strike" || tag === "sub" || tag === "sup"
     ) {
-      // Inline element at block level (e.g. <span style="font-size:72px"> with no <p> wrapper).
-      // Wrap in a temporary <p> so extractSegments can walk styles correctly.
-      const wrapper = document.createElement("p");
-      wrapper.appendChild(node.cloneNode(true));
-      const segs = extractSegments(wrapper, 14);
-      if (segs.length > 0) {
-        blocks.push({ type: "paragraph", align: "justify", segments: segs });
+      // Check whether this inline element is (incorrectly) wrapping block-level children.
+      // This happens when the font-size handler wraps all paragraphs in a single <span>.
+      const hasBlockChildren = [...node.childNodes].some(
+        (c) =>
+          c.nodeType === Node.ELEMENT_NODE &&
+          ["p", "h1", "h2", "h3", "ul", "ol"].includes(c.tagName.toLowerCase())
+      );
+
+      if (hasBlockChildren) {
+        // Propagate this element's font-size down, then recurse into each child block.
+        const sizeM = (node.style?.cssText || "").match(/font-size\s*:\s*([\d.]+)px/i);
+        const childFontSize = sizeM ? Math.round(parseFloat(sizeM[1])) : inheritedFontSize;
+        for (const child of node.childNodes) {
+          processNode(child, childFontSize);
+        }
+      } else {
+        // Inline element at block level (e.g. <span style="font-size:72px"> with no <p> wrapper).
+        // Wrap in a temporary <p> so extractSegments can walk styles correctly.
+        const wrapper = document.createElement("p");
+        wrapper.appendChild(node.cloneNode(true));
+        const segs = extractSegments(wrapper, inheritedFontSize);
+        if (segs.length > 0) {
+          blocks.push({ type: "paragraph", align: null, segments: segs });
+        }
       }
     } else {
       // Container elements (div, section, blockquote) — recurse into children
       for (const child of node.childNodes) {
-        processNode(child);
+        processNode(child, inheritedFontSize);
       }
     }
   }
 
   for (const child of div.childNodes) {
-    processNode(child);
+    processNode(child, 14);
   }
 
   return blocks;
 }
 
-// ── JSON → HTML 
+// ── JSON → HTML
 
 function escapeHtml(text) {
   return text
@@ -221,7 +241,8 @@ export function ndaDocToHtml(blocks) {
           block.align && block.align !== "left"
             ? ` style="text-align:${block.align}"`
             : "";
-        return `<p${alignStyle}>${segsToHtml(block.segments)}</p>`;
+        const content = segsToHtml(block.segments);
+        return `<p${alignStyle}>${content || "<br>"}</p>`;
       }
       if (block.type === "heading") {
         const alignStyle =
