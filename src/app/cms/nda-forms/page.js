@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -10,12 +10,19 @@ import {
   Tooltip,
   IconButton,
   CircularProgress,
+  TextField,
+  Pagination,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 import AppCard from "@/components/cards/AppCard";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
+import ListToolbar from "@/components/ListToolbar";
 import RoleGuard from "@/components/auth/RoleGuard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import { useMessage } from "@/contexts/MessageContext";
@@ -27,6 +34,9 @@ export default function NdaFormsPage() {
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(12);
   const { showMessage } = useMessage();
 
   const fetchForms = async () => {
@@ -40,6 +50,26 @@ export default function NdaFormsPage() {
   };
 
   useEffect(() => { fetchForms(); }, []);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return forms;
+    return forms.filter((f) =>
+      (f.user?.fullName || "").toLowerCase().includes(q) ||
+      (f.user?.email || "").toLowerCase().includes(q) ||
+      (f.ndaTemplate?.name || "").toLowerCase().includes(q)
+    );
+  }, [forms, searchQuery]);
+
+  const paged = useMemo(
+    () => filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [filtered, page, rowsPerPage]
+  );
+
+  const handleSearch = (e) => {
+    setSearchQuery(e.target.value);
+    setPage(0);
+  };
 
   const handleAction = async (id, action, label) => {
     setActionLoading((p) => ({ ...p, [`${id}-${action}`]: true }));
@@ -91,124 +121,178 @@ export default function NdaFormsPage() {
 
         {loading ? (
           <LoadingState />
-        ) : forms.length === 0 ? (
-          <NoDataAvailable
-            title="No NDA forms yet"
-            description="NDA forms are generated automatically when a visitor checks in. They will appear here once available."
-          />
         ) : (
-          <ResponsiveCardGrid>
-            {forms.map((form) => (
-              <AppCard key={form.id} sx={{ height: "100%", width: "100%" }}>
-                {/* Card header */}
-                <Box
-                  sx={{
-                    bgcolor: "action.hover",
-                    borderBottom: "1px solid",
-                    borderColor: "divider",
-                    p: 2,
+          <>
+            <ListToolbar
+              showingCount={paged.length}
+              totalCount={filtered.length}
+              searchSlot={
+                <TextField
+                  fullWidth
+                  size="small"
+                  variant="outlined"
+                  placeholder="Search by name, email or template..."
+                  value={searchQuery}
+                  onChange={handleSearch}
+                  InputProps={{
+                    startAdornment: (
+                      <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} />
+                    ),
                   }}
-                >
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="subtitle1" fontWeight={800} noWrap>
-                      {form.user?.fullName || "Unknown Visitor"}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                      {form.user?.email || "—"}
-                    </Typography>
-                  </Box>
-                </Box>
+                  sx={{ maxWidth: { md: 380 } }}
+                />
+              }
+              actionsSlot={
+                <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 160 } }}>
+                  <InputLabel>Records per page</InputLabel>
+                  <Select
+                    value={rowsPerPage}
+                    onChange={(e) => { setRowsPerPage(e.target.value); setPage(0); }}
+                    label="Records per page"
+                  >
+                    {[6, 12, 24, 48].map((n) => (
+                      <MenuItem key={n} value={n}>{n}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              }
+            />
 
-                {/* Card body */}
-                <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
-                  <Stack spacing={1}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <ICONS.description sx={{ fontSize: 15, color: "text.secondary", flexShrink: 0 }} />
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        {form.ndaTemplate?.name || "NDA Template"}
-                        {form.ndaTemplate?.version ? ` · v${form.ndaTemplate.version}` : ""}
-                      </Typography>
-                    </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <ICONS.time sx={{ fontSize: 15, color: "text.secondary", flexShrink: 0 }} />
-                      <Typography variant="body2" color="text.secondary">
-                        Accepted {form.acceptedAt ? formatDateTimeWithLocale(form.acceptedAt) : "—"}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                </Box>
+            {paged.length === 0 ? (
+              <NoDataAvailable
+                title={searchQuery ? "No results found" : "No NDA forms yet"}
+                description={
+                  searchQuery
+                    ? "Try adjusting your search query."
+                    : "NDA forms are generated automatically when a visitor checks in. They will appear here once available."
+                }
+              />
+            ) : (
+              <ResponsiveCardGrid>
+                {paged.map((form) => (
+                  <AppCard key={form.id} sx={{ height: "100%", width: "100%" }}>
+                    {/* Card header */}
+                    <Box
+                      sx={{
+                        bgcolor: "action.hover",
+                        borderBottom: "1px solid",
+                        borderColor: "divider",
+                        p: 2,
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="subtitle1" fontWeight={800} noWrap>
+                          {form.user?.fullName || "Unknown Visitor"}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          {form.user?.email || "—"}
+                        </Typography>
+                      </Box>
+                    </Box>
 
-                {/* Card footer */}
-                <Box
-                  sx={{
-                    px: 2,
-                    pb: 2,
-                    pt: 1,
-                    borderTop: "1px solid",
-                    borderColor: "divider",
-                    bgcolor: "action.hover",
-                    display: "flex",
-                    gap: 1,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  {form.ndaFormUrl && (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      startIcon={<ICONS.download fontSize="small" />}
-                      href={form.ndaFormUrl}
-                      download
-                      sx={{ borderRadius: 30, fontSize: "0.72rem" }}
+                    {/* Card body */}
+                    <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
+                      <Stack spacing={1}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <ICONS.description sx={{ fontSize: 15, color: "text.secondary", flexShrink: 0 }} />
+                          <Typography variant="body2" color="text.secondary" noWrap>
+                            {form.ndaTemplate?.name || "NDA Template"}
+                            {form.ndaTemplate?.version ? ` · v${form.ndaTemplate.version}` : ""}
+                          </Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <ICONS.time sx={{ fontSize: 15, color: "text.secondary", flexShrink: 0 }} />
+                          <Typography variant="body2" color="text.secondary">
+                            Accepted {form.acceptedAt ? formatDateTimeWithLocale(form.acceptedAt) : "—"}
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                    </Box>
+
+                    {/* Card footer */}
+                    <Box
+                      sx={{
+                        px: 2,
+                        pb: 2,
+                        pt: 1,
+                        borderTop: "1px solid",
+                        borderColor: "divider",
+                        bgcolor: "action.hover",
+                        display: "flex",
+                        gap: 1,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
                     >
-                      Download
-                    </Button>
-                  )}
-                  <Tooltip title="Resend to Host">
-                    <span>
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        disabled={!!actionLoading[`${form.id}-resend-host`]}
-                        onClick={() => handleAction(form.id, "resend-host", "Resend to host")}
-                        sx={{ bgcolor: "action.hover" }}
-                      >
-                        {actionLoading[`${form.id}-resend-host`]
-                          ? <CircularProgress size={16} />
-                          : <ICONS.email fontSize="small" />}
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                  <Tooltip title="Resend to Visitor">
-                    <span>
-                      <IconButton
-                        size="small"
-                        color="secondary"
-                        disabled={!!actionLoading[`${form.id}-resend-visitor`]}
-                        onClick={() => handleAction(form.id, "resend-visitor", "Resend to visitor")}
-                        sx={{ bgcolor: "action.hover" }}
-                      >
-                        {actionLoading[`${form.id}-resend-visitor`]
-                          ? <CircularProgress size={16} />
-                          : <ICONS.send fontSize="small" />}
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                  <Tooltip title="Delete NDA Record">
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => setDeleteTarget(form)}
-                      sx={{ bgcolor: "action.hover", ml: "auto" }}
-                    >
-                      <ICONS.delete fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              </AppCard>
-            ))}
-          </ResponsiveCardGrid>
+                      {form.ndaFormUrl && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<ICONS.download fontSize="small" />}
+                          href={form.ndaFormUrl}
+                          download
+                          sx={{ borderRadius: 30, fontSize: "0.72rem" }}
+                        >
+                          Download
+                        </Button>
+                      )}
+                      <Tooltip title="Resend to Host">
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            disabled={!!actionLoading[`${form.id}-resend-host`]}
+                            onClick={() => handleAction(form.id, "resend-host", "Resend to host")}
+                            sx={{ bgcolor: "action.hover" }}
+                          >
+                            {actionLoading[`${form.id}-resend-host`]
+                              ? <CircularProgress size={16} />
+                              : <ICONS.email fontSize="small" />}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="Resend to Visitor">
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="secondary"
+                            disabled={!!actionLoading[`${form.id}-resend-visitor`]}
+                            onClick={() => handleAction(form.id, "resend-visitor", "Resend to visitor")}
+                            sx={{ bgcolor: "action.hover" }}
+                          >
+                            {actionLoading[`${form.id}-resend-visitor`]
+                              ? <CircularProgress size={16} />
+                              : <ICONS.send fontSize="small" />}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="Delete NDA Record">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => setDeleteTarget(form)}
+                          sx={{ bgcolor: "action.hover", ml: "auto" }}
+                        >
+                          <ICONS.delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </AppCard>
+                ))}
+              </ResponsiveCardGrid>
+            )}
+
+            <Box display="flex" justifyContent="center" mt={4}>
+              {filtered.length > rowsPerPage && (
+                <Pagination
+                  count={Math.ceil(filtered.length / rowsPerPage)}
+                  page={page + 1}
+                  onChange={(_, v) => setPage(v - 1)}
+                  color="primary"
+                />
+              )}
+            </Box>
+          </>
         )}
       </Box>
 

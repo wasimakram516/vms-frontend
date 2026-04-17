@@ -152,13 +152,44 @@ export default function SummaryPage() {
 
   const handleDownload = async () => {
     if (!summaryRef.current) return;
-    const canvas = await html2canvas(summaryRef.current, {
+    const CARD_WIDTH = 430;
+    const el = summaryRef.current;
+
+    // Force the live element to exactly CARD_WIDTH before capture so html2canvas
+    // measures the correct layout regardless of mobile viewport width.
+    const prevWidth = el.style.width;
+    const prevMaxWidth = el.style.maxWidth;
+    const prevMinWidth = el.style.minWidth;
+    el.style.width = `${CARD_WIDTH}px`;
+    el.style.maxWidth = `${CARD_WIDTH}px`;
+    el.style.minWidth = `${CARD_WIDTH}px`;
+
+    const canvas = await html2canvas(el, {
       backgroundColor: null,
       useCORS: true,
-      scale: Math.max(window.devicePixelRatio || 1, 2),
+      scale: 2,
       logging: false,
-      ignoreElements: (el) => el?.dataset?.excludeDownload === "true",
+      ignoreElements: (node) => node?.dataset?.excludeDownload === "true",
+      onclone: (_doc, clonedEl) => {
+        clonedEl.style.width = `${CARD_WIDTH}px`;
+        clonedEl.style.maxWidth = `${CARD_WIDTH}px`;
+        clonedEl.style.minWidth = `${CARD_WIDTH}px`;
+        // Replace SVG icons with unicode chars (html2canvas SVG rendering is unreliable)
+        clonedEl.querySelectorAll("[data-contact-icon]").forEach((node) => {
+          const type = node.getAttribute("data-contact-icon");
+          const span = _doc.createElement("span");
+          span.textContent = type === "email" ? "✉" : "✆";
+          span.style.fontSize = "12px";
+          span.style.color = node.style.color || "inherit";
+          node.replaceWith(span);
+        });
+      },
     });
+
+    // Restore original styles
+    el.style.width = prevWidth;
+    el.style.maxWidth = prevMaxWidth;
+    el.style.minWidth = prevMinWidth;
     const fileSafe = (v) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const identity = extractVisitorIdentity(registration, visitorData);
     const name = fileSafe(registration?.user?.fullName || visitorData?.fullName || "visitor");
@@ -315,7 +346,7 @@ export default function SummaryPage() {
                     <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.85, flexWrap: "wrap", rowGap: 0.5 }}>
                       {visitorEmail && (
                         <>
-                          <ICONS.email sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
+                          <ICONS.email data-contact-icon="email" sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
                           <Typography variant="caption" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
                             {visitorEmail}
                           </Typography>
@@ -326,7 +357,7 @@ export default function SummaryPage() {
                       )}
                       {visitorPhone && (
                         <>
-                          <ICONS.phone sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
+                          <ICONS.phone data-contact-icon="phone" sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
                           <Typography variant="caption" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
                             {visitorPhone}
                           </Typography>

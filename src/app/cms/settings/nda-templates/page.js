@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -11,6 +11,10 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Pagination,
+  FormControl,
+  InputLabel,
+  Select,
   Stack,
   Chip,
   CircularProgress,
@@ -24,6 +28,7 @@ import { useMessage } from "@/contexts/MessageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import ICONS from "@/utils/iconUtil";
 import AppCard from "@/components/cards/AppCard";
+import ListToolbar from "@/components/ListToolbar";
 import RichTextEditor from "@/components/RichTextEditor";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
@@ -93,6 +98,11 @@ export default function NdaTemplatesPage() {
   const [tab, setTab] = useState(0);
   const [formErrors, setFormErrors] = useState({});
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(12);
+  const PAGE_SIZE = rowsPerPage;
+
   const { showMessage } = useMessage();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -108,6 +118,17 @@ export default function NdaTemplatesPage() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return templates;
+    return templates.filter((t) => (t.name || "").toLowerCase().includes(q));
+  }, [templates, searchQuery]);
+
+  const paged = useMemo(
+    () => filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE),
+    [filtered, page]
+  );
 
   const openCreate = () => {
     setForm(emptyForm());
@@ -245,14 +266,48 @@ export default function NdaTemplatesPage() {
 
         {loading ? (
           <LoadingState />
-        ) : templates.length === 0 ? (
-          <NoDataAvailable
-            title="No NDA templates yet"
-            description="Create your first NDA template to use it in visitor emails and the registration popup."
-          />
         ) : (
-          <ResponsiveCardGrid>
-            {templates.map((tpl) => (
+          <>
+            <ListToolbar
+              showingCount={paged.length}
+              totalCount={filtered.length}
+              itemLabel="templates"
+              searchSlot={
+                <TextField
+                  fullWidth
+                  size="small"
+                  variant="outlined"
+                  placeholder="Search by name..."
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(0); }}
+                  InputProps={{ startAdornment: <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} /> }}
+                  sx={{ maxWidth: { md: 380 } }}
+                />
+              }
+              actionsSlot={
+                <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 160 } }}>
+                  <InputLabel>Records per page</InputLabel>
+                  <Select
+                    value={rowsPerPage}
+                    onChange={(e) => { setRowsPerPage(e.target.value); setPage(0); }}
+                    label="Records per page"
+                  >
+                    {[6, 12, 24, 48].map((n) => (
+                      <MenuItem key={n} value={n}>{n}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              }
+            />
+
+            {paged.length === 0 ? (
+              <NoDataAvailable
+                title={searchQuery ? "No results found" : "No NDA templates yet"}
+                description={searchQuery ? "Try adjusting your search." : "Create your first NDA template to use it in visitor emails and the registration popup."}
+              />
+            ) : (
+              <ResponsiveCardGrid>
+                {paged.map((tpl) => (
               <AppCard key={tpl.id} sx={{ height: "100%", width: "100%" }}>
                 {/* Card header */}
                 <Box
@@ -376,7 +431,20 @@ export default function NdaTemplatesPage() {
                 </Box>
               </AppCard>
             ))}
-          </ResponsiveCardGrid>
+              </ResponsiveCardGrid>
+            )}
+
+            <Box display="flex" justifyContent="center" mt={4}>
+              {filtered.length > PAGE_SIZE && (
+                <Pagination
+                  count={Math.ceil(filtered.length / PAGE_SIZE)}
+                  page={page + 1}
+                  onChange={(_, v) => setPage(v - 1)}
+                  color="primary"
+                />
+              )}
+            </Box>
+          </>
         )}
 
         {/* Create / Edit dialog */}

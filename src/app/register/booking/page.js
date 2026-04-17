@@ -39,7 +39,7 @@ import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { parse24To12, convert12To24, formatDate } from "@/utils/dateUtils";
+import { parse24To12, convert12To24, formatDate, formatTime } from "@/utils/dateUtils";
 import { validateRequired } from "@/utils/validationUtils";
  
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -507,14 +507,16 @@ export default function BookingPage() {
                             from = from.startOf("day").hour(parseInt(fromParts[0])).minute(parseInt(fromParts[1]));
                             to = to.add(1, "day").startOf("day").hour(parseInt(toParts[0])).minute(parseInt(toParts[1]));
                           } else if (selectedPreset === "fullWeek") {
-                            from = from.startOf("day");
-                            to = to.add(6, "days").endOf("day");
+                            from = from.startOf("day").hour(0).minute(0);
+                            to = to.add(6, "days").hour(23).minute(59);
                           } else if (selectedPreset === "fullMonth") {
-                            from = from.startOf("day");
-                            to = to.add(30, "days").endOf("day");
+                            from = from.startOf("day").hour(0).minute(0);
+                            to = to.add(30, "days").hour(23).minute(59);
                           }
 
-                          return `${formatDate(from.toDate())} to ${formatDate(to.toDate())}`;
+                          const fmtDate = (d) => formatDate(d.toDate());
+                          const fmtTime = (d) => formatTime(d.format("HH:mm"));
+                          return `${fmtDate(from)}, ${fmtTime(from)} → ${fmtDate(to)}, ${fmtTime(to)}`;
                         })()}
                       </Typography>
                     </Box>

@@ -204,6 +204,9 @@ export default function RegisterOtpPage() {
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
               onPaste={handlePaste}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               maxLength={1}
               autoComplete="one-time-code"
               autoFocus={i === 0}

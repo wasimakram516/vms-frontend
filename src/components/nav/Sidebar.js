@@ -26,7 +26,7 @@ const getNavItems = (role, isKitchenModuleEnabled = true) => {
     { label: "Registrations", icon: ICONS.appRegister, path: "/cms/registrations" },
     { label: "Approvals", icon: ICONS.checkCircle, path: "/cms/approvals" },
     { label: "Fields", icon: ICONS.form, path: "/cms/fields" },
-    { label: "NDA Forms", icon: ICONS.description, path: "/cms/nda-forms" },
+    { label: "NDA Forms", icon: ICONS.verified, path: "/cms/nda-forms" },
     { label: "Users", icon: ICONS.people, path: "/cms/users" },
     { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
   ];

@@ -1218,7 +1218,7 @@ export default function CmsRegistrationsPage() {
                   disabled={csvExportLoading || !selected}
                   sx={{ borderRadius: 30, fontWeight: 700, mr: 1, whiteSpace: "nowrap" }}
                 >
-                  Export CSV
+                  Export Visit History
                 </Button>
               </span>
             </Tooltip>
