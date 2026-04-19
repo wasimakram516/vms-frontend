@@ -148,7 +148,7 @@ export async function exportVisitorHistoryCsv(registrationId) {
   const url = URL.createObjectURL(res.data);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `visitor-history-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `visitor-history-${new Date().toISOString().slice(0, 10)}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }

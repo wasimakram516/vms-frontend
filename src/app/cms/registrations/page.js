@@ -590,8 +590,8 @@ export default function CmsRegistrationsPage() {
     setCsvExportLoading(true);
     try {
       await exportVisitorHistoryCsv(selected.id);
-    } catch {
-      // error silently — user will see no download
+    } catch (err) {
+      console.error('Export failed:', err);
     } finally {
       setCsvExportLoading(false);
     }
