@@ -4,7 +4,7 @@ import { Box, Stack, Typography } from "@mui/material";
 import { ndaDocToHtml } from "@/utils/ndaDocUtils";
 
 const richTextSx = {
-  fontSize: 14,
+  fontSize: 12,
   lineHeight: 1.8,
   color: "text.primary",
   wordBreak: "break-word",

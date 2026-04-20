@@ -14,12 +14,6 @@ function getTzOffset() {
   return new Date().getTimezoneOffset(); // e.g. -300 for UTC+5, -240 for UTC+4
 }
 
-function getTzLabel(offset) {
-  const h = -offset / 60;
-  if (h === 0) return "UTC";
-  return h > 0 ? `UTC+${h}` : `UTC${h}`;
-}
-
 /** Format a YYYY-MM-DD string as "16 Mar 2026" */
 function formatDateReadable(dateStr) {
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -28,14 +22,30 @@ function formatDateReadable(dateStr) {
   });
 }
 
-/** Format current time shifted by tzOffset as "14 Apr 2026, 03:31 pm" */
+/** Format current time shifted by tzOffset as "14 Apr 2026, 3:31 pm" (12:00 am for midnight) */
 function formatNow(tzOffset) {
   const shifted = new Date(Date.now() - tzOffset * 60_000);
-  return shifted.toLocaleString("en-GB", {
-    day: "2-digit", month: "short", year: "numeric",
-    hour: "2-digit", minute: "2-digit", hour12: true,
-    timeZone: "UTC",
+  const datePart = shifted.toLocaleDateString("en-GB", {
+    day: "2-digit", month: "short", year: "numeric", timeZone: "UTC",
   });
+  const timePart = shifted.toLocaleTimeString("en-US", {
+    hour: "numeric", minute: "2-digit", hour12: true, timeZone: "UTC",
+  }).toLowerCase();
+  return `${datePart}, ${timePart}`;
+}
+
+/** Build full timezone name: "Pakistan Standard Time (GMT +5)" */
+function getTzFullName(tzOffset) {
+  const h = -tzOffset / 60;
+  const sign = h >= 0 ? "+" : "";
+  const gmtSuffix = h === 0 ? "GMT" : `GMT ${sign}${h}`;
+  try {
+    const ianaName = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const parts = Intl.DateTimeFormat("en-US", { timeZone: ianaName, timeZoneName: "long" }).formatToParts(new Date());
+    const longName = parts.find((p) => p.type === "timeZoneName")?.value;
+    if (longName) return `${longName} (${gmtSuffix})`;
+  } catch { /* fall through */ }
+  return gmtSuffix;
 }
 
 // ── Light-mode color conversion helpers ───────────────────────────────────────
@@ -355,8 +365,8 @@ export function applyLightModeToClone(clonedDoc) {
  * @param {{ from: string, to: string }} options
  */
 export async function exportAnalyticsPdf(sectionRefs, { from, to }) {
-  const tzOffset = getTzOffset();
-  const tzLabel  = getTzLabel(tzOffset);
+  const tzOffset  = getTzOffset();
+  const tzFullName = getTzFullName(tzOffset);
 
   const pdf      = await PDFDocument.create();
   const font     = await pdf.embedFont(StandardFonts.Helvetica);
@@ -380,7 +390,7 @@ export async function exportAnalyticsPdf(sectionRefs, { from, to }) {
   let y    = PAGE_H - MARGIN;
 
   // ── Header block ──────────────────────────────────────────────────────────
-  const HEADER_H  = 62;
+  const HEADER_H  = 75;
   const LOGO_H    = 38;                          // logo render height
   const LOGO_W    = logoImage && logoNatH > 0
     ? Math.round((logoNatW / logoNatH) * LOGO_H)
@@ -403,16 +413,21 @@ export async function exportAnalyticsPdf(sectionRefs, { from, to }) {
   }
 
   page.drawText("Sinan VMS - Analytics Report", {
-    x: TEXT_X, y: PAGE_H - 28,
+    x: TEXT_X, y: PAGE_H - 26,
     size: 15, font: boldFont, color: rgb(1, 1, 1),
   });
 
   const fromReadable = from ? formatDateReadable(from) : "";
   const toReadable   = to   ? formatDateReadable(to)   : "";
-  const rangeText    = `Period: ${fromReadable} to ${toReadable}   |   Generated: ${formatNow(tzOffset)} (${tzLabel})`;
+  const rangeText    = `Period: ${fromReadable} to ${toReadable}   |   Generated: ${formatNow(tzOffset)}`;
+  const tzLine       = `Timezone: ${tzFullName}`;
 
   page.drawText(rangeText, {
-    x: TEXT_X, y: PAGE_H - 48,
+    x: TEXT_X, y: PAGE_H - 46,
+    size: 8, font, color: rgb(0.75, 0.75, 0.75),
+  });
+  page.drawText(tzLine, {
+    x: TEXT_X, y: PAGE_H - 60,
     size: 8, font, color: rgb(0.75, 0.75, 0.75),
   });
 

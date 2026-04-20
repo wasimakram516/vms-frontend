@@ -139,6 +139,7 @@ export const getRegistrationActivityLogs = withApiHandler(async (id) => {
 export async function exportVisitorHistoryCsv(registrationId) {
   const params = new URLSearchParams({
     tzOffset: String(new Date().getTimezoneOffset()),
+    tzName: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
 
   const res = await api.get(`/registrations/${registrationId}/export-csv?${params.toString()}`, {

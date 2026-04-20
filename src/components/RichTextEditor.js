@@ -39,7 +39,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
         strikethrough: false,
     });
     const [alignment, setAlignment] = useState(null);
-    const [fontSize, setFontSize] = useState(14);
+    const [fontSize, setFontSize] = useState(12);
     const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
 
@@ -63,7 +63,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
         // Detect font size from first element that carries an explicit font-size style.
         // DOM traversal is more reliable than regex on the raw HTML string.
         const firstSized = el.querySelector("[style*='font-size']");
-        let detectedFontSize = 14;
+        let detectedFontSize = 12;
         if (firstSized?.style?.fontSize) {
             const px = parseFloat(firstSized.style.fontSize);
             if (!isNaN(px) && px >= 8 && px <= 100) detectedFontSize = Math.round(px);
@@ -106,7 +106,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                 }
                 node = node.parentElement;
             }
-            setFontSize(detectedSize ?? 14);
+            setFontSize(detectedSize ?? 12);
         }
     };
 
@@ -637,7 +637,7 @@ const RichTextEditor = ({ value, onChange, placeholder, dir, minHeight, maxHeigh
                     overflowY: "auto",
                     p: 2,
                     outline: "none",
-                    fontSize: "14px",
+                    fontSize: "12px",
                     lineHeight: 1.6,
                     color: "text.primary",
                     "&:empty:before": {

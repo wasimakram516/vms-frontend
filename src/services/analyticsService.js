@@ -9,6 +9,7 @@ function buildParams(from, to) {
   if (from) p.set("from", from);
   if (to)   p.set("to", to);
   p.set("tzOffset", String(new Date().getTimezoneOffset()));
+  p.set("tzName", Intl.DateTimeFormat().resolvedOptions().timeZone);
   return `?${p.toString()}`;
 }
 

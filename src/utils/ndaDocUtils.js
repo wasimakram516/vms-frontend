@@ -105,7 +105,8 @@ export function htmlToNdaDoc(html) {
   const blocks = [];
 
   // inheritedFontSize: font-size (px) propagated from an ancestor inline wrapper.
-  function processNode(node, inheritedFontSize = 14) {
+  // 12 matches the editor's CSS default so unformatted text round-trips at the same size.
+  function processNode(node, inheritedFontSize = 12) {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent.replace(/\u200B/g, "").replace(/\u00A0/g, " ").trim();
       if (text) {
@@ -195,7 +196,7 @@ export function htmlToNdaDoc(html) {
   }
 
   for (const child of div.childNodes) {
-    processNode(child, 14);
+    processNode(child, 12);
   }
 
   return blocks;

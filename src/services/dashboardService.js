@@ -22,6 +22,7 @@ export async function exportVisitorReport({ period = "monthly", from, to } = {})
     params.set("to", to);
   }
   params.set("tzOffset", String(new Date().getTimezoneOffset()));
+  params.set("tzName", Intl.DateTimeFormat().resolvedOptions().timeZone);
 
   const res = await api.get(`/dashboard/export?${params.toString()}`, {
     responseType: "blob",
