@@ -20,6 +20,7 @@ import {
   CircularProgress,
   Tooltip,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
 import { pdf } from "@react-pdf/renderer";
 import QRCode from "qrcode";
@@ -33,8 +34,9 @@ import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useSocket } from "@/contexts/SocketContext";
-import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration } from "@/services/registrationService";
+import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration, verifyRegistrationById } from "@/services/registrationService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
+import { filterNumberInput, onKeyPressNumeric } from "@/utils/phoneUtils";
 
 const STATUS_CONFIG = {
   pending:       { label: "Pending",         color: "warning" },
@@ -49,6 +51,7 @@ const STATUS_CONFIG = {
 };
 
 export default function StaffVerifyPage() {
+  const theme = useTheme();
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
@@ -60,6 +63,9 @@ export default function StaffVerifyPage() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [activityLogs, setActivityLogs] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  const [idSearch, setIdSearch] = useState("");
+  const [isSearchingById, setIsSearchingById] = useState(false);
   const scanningRef = useRef(false);
   const [badgeTemplate, setBadgeTemplate] = useState(null);
 
@@ -102,6 +108,50 @@ export default function StaffVerifyPage() {
       setLoading(false);
     }
   }, []);
+
+  const handleIdSearch = async (e) => {
+    if (e) e.preventDefault();
+    if (!idSearch.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setSearchResults([]);
+    setIsSearchingById(true);
+
+    try {
+      const res = await verifyRegistrationById(idSearch);
+      if (res?.error) {
+        setError(res.message);
+      } else if (res && Array.isArray(res) && res.length > 0) {
+        if (res.length === 1) {
+          handleSelectVisitor(res[0]);
+        } else {
+          setSearchResults(res);
+        }
+      } else {
+        setError("No registration found with this ID.");
+      }
+    } catch (err) {
+      console.error("ID search error:", err);
+      setError("An unexpected error occurred during search.");
+    } finally {
+      setLoading(false);
+      setIsSearchingById(false);
+    }
+  };
+
+  const handleSelectVisitor = async (visitor) => {
+    const mapped = mapRegistration(visitor);
+    setResult(mapped);
+    setSearchResults([]);
+    if (visitor.id && ["checked_in", "checked_out", "visit_ended"].includes(visitor.status)) {
+      const logs = await getRegistrationActivityLogs(visitor.id);
+      setActivityLogs(logs || []);
+    } else {
+      setActivityLogs([]);
+    }
+  };
 
   const handleScanSuccess = useCallback(async (scanned) => {
     if (scanningRef.current) return;
@@ -321,8 +371,104 @@ export default function StaffVerifyPage() {
             Scan visitor QR or enter token manually to grant access.
           </Typography>
 
-          <Box sx={{ minHeight: "calc(90vh - 280px)", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
-            {!showScanner && !loading && !result && !error && (
+          {/* Search by ID functionality */}
+          <Box component="form" onSubmit={handleIdSearch} sx={{ mb: 4 }}>
+            <Stack direction="row" spacing={1}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Search by ID Number"
+                value={idSearch}
+                onChange={(e) => setIdSearch(filterNumberInput(e.target.value))}
+                onKeyPress={onKeyPressNumeric}
+                inputProps={{ 
+                  inputMode: "numeric",
+                  pattern: "[0-9]*" 
+                }}
+                disabled={loading}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 3,
+                    bgcolor: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                  }
+                }}
+              />
+              <Button
+                variant="contained"
+                onClick={handleIdSearch}
+                disabled={loading || !idSearch.trim()}
+                sx={{ borderRadius: 3, px: 3, minWidth: 100 }}
+              >
+                {isSearchingById && loading ? <CircularProgress size={20} color="inherit" /> : "Search"}
+              </Button>
+            </Stack>
+          </Box>
+
+          <Box sx={{ minHeight: "calc(90vh - 350px)", display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center" }}>
+            {!showScanner && !loading && !result && !error && searchResults.length > 0 && (
+              <Box sx={{ width: "100%", mt: 2 }}>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                  Multiple Matches Found
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                   Multiple visitors share this ID number. Please select the correct person:
+                </Typography>
+                <Stack spacing={2}>
+                  {searchResults.map((visitor) => (
+                    <Paper
+                      key={visitor.id}
+                      elevation={0}
+                      variant="frosted"
+                      sx={{
+                        p: 2,
+                        borderRadius: 3,
+                        cursor: "pointer",
+                        transition: "all 0.2s",
+                        border: "1px solid",
+                        borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+                        '&:hover': {
+                          bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+                          transform: "translateY(-2px)",
+                          borderColor: theme.palette.primary.main,
+                        }
+                      }}
+                      onClick={() => handleSelectVisitor(visitor)}
+                    >
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Box>
+                          <Typography sx={{ fontWeight: 600 }}>
+                            {visitor.full_name && visitor.full_name !== "N/A" ? visitor.full_name : (visitor.visitor?.fullName || "Visitor")}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {(visitor.organisation && visitor.organisation !== "N/A" ? visitor.organisation : (visitor.visitor?.organisation !== "N/A" ? visitor.visitor?.organisation : "No Organization"))} 
+                            {" • "}
+                            {(visitor.department?.name || visitor.visitor?.department || "No Department")}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ textAlign: "right" }}>
+                           <Chip 
+                              label={STATUS_CONFIG[visitor.status]?.label || visitor.status} 
+                              color={STATUS_CONFIG[visitor.status]?.color || "default"}
+                              size="small"
+                              sx={{ borderRadius: 1 }}
+                           />
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  ))}
+                </Stack>
+                <Button 
+                   fullWidth 
+                   variant="outlined" 
+                   sx={{ mt: 4, borderRadius: 3 }}
+                   onClick={() => setSearchResults([])}
+                >
+                  Clear Results
+                </Button>
+              </Box>
+            )}
+
+            {!showScanner && !loading && !result && !error && searchResults.length === 0 && (
               <Paper elevation={0} variant="frosted" sx={{ p: 4, borderRadius: 4, textAlign: "center", width: "100%" }}>
             <Box
               sx={{

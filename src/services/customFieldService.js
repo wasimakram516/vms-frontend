@@ -8,6 +8,8 @@ const mapCustomFieldToFrontend = (field) => ({
   inputType: field.inputType,
   isRequired: field.isRequired,
   isActive: field.isActive,
+  isUnique: field.isUnique,
+  uniquenessGroup: field.uniquenessGroup || "",
   sortOrder: field.sortOrder,
   optionsJson: field.optionsJson,
   dependentsJson: field.dependentsJson ?? null,

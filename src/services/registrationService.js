@@ -176,3 +176,17 @@ export const verifyRegistrationByToken = withApiHandler(async (token) => {
     visitEnded: result.visitEnded,
   };
 });
+
+export const verifyRegistrationById = withApiHandler(async (idNumber) => {
+  const { data } = await api.get(`/registrations/verify-by-id`, { params: { idNumber } });
+  const results = data?.data || data;
+
+  if (!results || !Array.isArray(results)) return [];
+
+  return results.map(result => ({
+    ...mapRegistration(result),
+    notApproved: result.notApproved,
+    visitor: result.visitor,
+    visitEnded: result.visitEnded,
+  }));
+});

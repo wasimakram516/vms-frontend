@@ -67,6 +67,8 @@ const emptyForm = () => ({
   inputType: "text",
   isRequired: false,
   isActive: true,
+  isUnique: false,
+  uniquenessGroup: "",
   sortOrder: 99,
   options: "",
   dependentsJson: {},
@@ -150,8 +152,10 @@ export default function CmsFieldsPage() {
       inputType: SUPPORTED_INPUT_TYPES.has(field.inputType)
         ? field.inputType
         : "text",
-      isRequired: field.isRequired,
-      isActive: field.isActive,
+      isRequired: !!field.isRequired,
+      isActive: field.isActive !== false,
+      isUnique: !!field.isUnique,
+      uniquenessGroup: field.uniquenessGroup || "",
       sortOrder: field.sortOrder,
       options: (field.optionsJson || []).join(", "),
       dependentsJson: field.dependentsJson || {},
@@ -223,6 +227,8 @@ export default function CmsFieldsPage() {
       inputType: form.inputType,
       isRequired: form.isRequired,
       isActive: form.isActive,
+      isUnique: form.isUnique,
+      uniquenessGroup: form.isUnique ? (form.uniquenessGroup?.trim() || null) : null,
       sortOrder: Number(form.sortOrder) || 99,
       optionsJson,
       dependentsJson: Object.keys(dependentsJson || {}).length ? dependentsJson : null,
@@ -423,6 +429,26 @@ export default function CmsFieldsPage() {
                           variant={field.isActive ? "filled" : "outlined"}
                           sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
                         />
+                        {field.isUnique && (
+                          <>
+                            <Chip
+                              label="Unique"
+                              size="small"
+                              color="info"
+                              variant="filled"
+                              sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
+                            />
+                            {field.uniquenessGroup && (
+                              <Chip
+                                label={`Group: ${field.uniquenessGroup}`}
+                                size="small"
+                                color="secondary"
+                                variant="tonal"
+                                sx={{ fontWeight: 700, fontSize: "0.6rem", height: 20 }}
+                              />
+                            )}
+                          </>
+                        )}
                       </Stack>
                     </Box>
                   </Box>
@@ -620,7 +646,30 @@ export default function CmsFieldsPage() {
               }
               label="Active"
             />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.isUnique}
+                  onChange={(e) => setForm((p) => ({ ...p, isUnique: e.target.checked }))}
+                  color="success"
+                />
+              }
+              label="Unique"
+            />
           </Stack>
+
+          {form.isUnique && (
+            <TextField
+              label="Uniqueness Group"
+              placeholder="e.g. passport"
+              fullWidth
+              size="small"
+              value={form.uniquenessGroup}
+              onChange={(e) => setForm((p) => ({ ...p, uniquenessGroup: e.target.value }))}
+              helperText="Link fields (Passport + Country) for combined uniqueness check."
+              sx={{ mb: 2, mt: 1 }}
+            />
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
           <Button
