@@ -316,11 +316,12 @@ export default function DetailsPage() {
     <VisitorLayout 
       title="Visitor Registration" 
       subtitle="Please provide your information to ensure a smooth check-in process at Sinan."
+      mobileSubheading="Tell us about yourself"
       maxWidth={650}
     >
       <form autoComplete="off">
         <Stack spacing={3}>
-          <Box sx={{ textAlign: "center" }}>
+          <Box sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}>
             <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
               Tell us about yourself
             </Typography>

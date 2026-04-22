@@ -64,9 +64,9 @@ export default function ReturningVisitorPage() {
   };
   
   return (
-    <VisitorLayout justifyContent="center">
+    <VisitorLayout justifyContent="center" mobileSubheading="Welcome Back">
       <Stack spacing={3}>
-        <Box sx={{ textAlign: "center", mb: 2 }}>
+        <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
           <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
             Welcome Back
           </Typography>

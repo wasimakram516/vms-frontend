@@ -55,9 +55,12 @@ export default function HomePage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center">
+    <VisitorLayout justifyContent="center" mobileSubheading="Visitor Portal">
       <Stack spacing={4}>
-        <Box textAlign="center">
+        <Box 
+          textAlign="center"
+          sx={{ display: { xs: "none", md: "block" } }}
+        >
           <Typography
             variant="h4"
             fontWeight={800}

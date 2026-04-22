@@ -181,9 +181,9 @@ export default function RegisterOtpPage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center">
+    <VisitorLayout justifyContent="center" mobileSubheading="Verify Identity">
       <Stack spacing={3}>
-        <Box sx={{ textAlign: "center", mb: 2 }}>
+        <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
           <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
             Verify Identity
           </Typography>

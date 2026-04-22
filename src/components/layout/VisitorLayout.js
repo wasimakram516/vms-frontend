@@ -23,6 +23,7 @@ export default function VisitorLayout({
   children, 
   title = "Sinan Sentry",
   subtitle = "Experience a seamless visitor journey at Sinan. Please select your visit type to proceed.",
+  mobileSubheading = "",
   maxWidth = 450,
   justifyContent = "flex-start",
 }) {
@@ -60,31 +61,16 @@ export default function VisitorLayout({
           sx={{
             position: "relative",
             top: 0, left: 0, right: 0, bottom: 0,
-            flex: { xs: "0 0 auto", md: "0 0 45%" },
-            minHeight: { md: "auto" },
-            maxHeight: {
-              xs: isMobileCardExpanded ? 0 : 400,
-              sm: isMobileCardExpanded ? 0 : 420,
-              md: "100vh",
-            },
-            display: "flex",
+            flex: { md: "0 0 45%" },
+            display: { xs: "none", md: "flex" },
             flexDirection: "column",
             justifyContent: "center",
-            px: { xs: 3, sm: 4, md: 6 },
-            pt: { xs: isMobileCardExpanded ? 0 : 4, md: 6 },
-            pb: { xs: isMobileCardExpanded ? 0 : 5, md: 6 },
+            px: { md: 6 },
+            pt: { md: 6 },
+            pb: { md: 6 },
             zIndex: 1,
             overflow: "hidden",
             color: "#fff",
-            transition: "max-height 0.4s ease, padding 0.4s ease",
-            "&::before": {
-              content: '""',
-              position: "absolute",
-              top: 0, left: 0, right: 0, bottom: 0,
-              bgcolor: "rgba(0,0,0,0.35)",
-              display: { xs: "block", md: "none" },
-              zIndex: 0,
-            },
           }}
         >
           <motion.div
@@ -175,84 +161,26 @@ export default function VisitorLayout({
           sx={{
             flex: 1,
             overflowY: "auto",
-            background: "transparent",
+            bgcolor: {
+              xs: isDark ? "rgba(18,24,33,0.72)" : "rgba(220,225,235,0.88)",
+              md: "transparent",
+            },
             zIndex: 1,
             position: "relative",
-            mt: { xs: isMobileCardExpanded ? 0 : -3, md: 0 },
-            borderTopLeftRadius: { xs: 32, md: 0 },
-            borderTopRightRadius: { xs: 32, md: 0 },
-            transition: "margin-top 0.4s ease, border-radius 0.4s ease",
-            "&::before": {
-              content: '""',
-              position: "absolute",
-              top: 0, left: 0, right: 0, bottom: 0,
-              bgcolor: isDark ? "rgba(18,24,33,0.65)" : "rgba(255,255,255,0.55)",
-              display: { xs: "block", md: "none" },
-              zIndex: 0,
-              borderTopLeftRadius: "inherit",
-              borderTopRightRadius: "inherit",
-            },
           }}
         >
           <Box
-            sx={{
-              display: { xs: "block", md: "none" },
-              position: "absolute",
-              top: 4,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 3,
-            }}
-          >
-            <Box
-              component="button"
-              type="button"
-              aria-controls="visitor-layout-content-inner"
-              aria-expanded={isMobileCardExpanded}
-              aria-label={isMobileCardExpanded ? "Collapse card" : "Expand card"}
-              onClick={() => setIsMobileCardExpanded((prev) => !prev)}
-              sx={{
-                appearance: "none",
-                border: 0,
-                bgcolor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-                color: isDark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.5)",
-                borderRadius: "50%",
-                width: 32,
-                height: 32,
-                p: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                transition: "transform 0.2s ease, opacity 0.2s ease",
-                opacity: 0.8,
-                "&:hover": {
-                  transform: "translateY(-1px)",
-                  opacity: 1,
-                },
-                "&:focus-visible": {
-                  outline: "2px solid",
-                  outlineColor: "primary.main",
-                  outlineOffset: 2,
-                  opacity: 1,
-                },
-              }}
-            >
-              <MobileCardToggleIcon sx={{ fontSize: 24 }} />
-            </Box>
-          </Box>
-          <Box
             id="visitor-layout-content-inner"
             sx={{
+              width: "100%",
               minHeight: "100%",
               display: "flex",
               flexDirection: "column",
               justifyContent: { xs: "flex-start", md: justifyContent },
               alignItems: "center",
-              pt: { xs: isMobileCardExpanded ? 6 : 7, md: 8 },
-              pb: { xs: isMobileCardExpanded ? 3.5 : 4.25, md: 8 },
-              px: { xs: 3, md: 4 },
-              transition: "padding 0.35s ease",
+              pt: { xs: 3, md: 8 },
+              pb: { xs: 4, md: 8 },
+              px: { xs: 2.5, md: 4 },
               position: "relative",
               zIndex: 1,
             }}
@@ -266,19 +194,62 @@ export default function VisitorLayout({
               <Box
                 sx={{
                   width: "100%",
-                  backdropFilter: "blur(20px)",
-                  background: isDark
-                    ? "linear-gradient(180deg, rgba(34, 43, 55, 0.88) 0%, rgba(22, 29, 38, 0.85) 100%)"
-                    : "rgba(255, 255, 255, 0.82)",
-                  p: { xs: 3, md: 5 },
-                  borderRadius: { xs: 4, md: 6 },
-                  boxShadow: isDark
-                    ? "0 24px 44px rgba(5, 10, 18, 0.3), inset 0 1px 0 rgba(255,255,255,0.08)"
-                    : "0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9)",
-                  border: "1px solid",
-                  borderColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(255,255,255,0.7)",
+                  backdropFilter: { xs: "none", md: "blur(20px)" },
+                  background: {
+                    xs: "transparent",
+                    md: isDark
+                      ? "linear-gradient(180deg, rgba(34, 43, 55, 0.88) 0%, rgba(22, 29, 38, 0.85) 100%)"
+                      : "rgba(255, 255, 255, 0.82)",
+                  },
+                  p: { xs: 3.5, md: 5 },
+                  borderRadius: { xs: 0, md: 6 },
+                  boxShadow: {
+                    xs: "none",
+                    md: isDark
+                      ? "0 24px 44px rgba(5, 10, 18, 0.3), inset 0 1px 0 rgba(255,255,255,0.08)"
+                      : "0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9)",
+                  },
+                  border: {
+                    xs: "none",
+                    md: "1px solid",
+                  },
+                  borderColor: {
+                    md: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(255,255,255,0.7)",
+                  },
                 }}
               >
+                {/* Mobile Header (Rendered inside the card only on xs) */}
+                <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", alignItems: "center", textAlign: "center", mb: 2 }}>
+                   <Box
+                    component="img"
+                    src={brandLogoSrc}
+                    alt="Sinan Sentry logo"
+                    sx={{
+                      width: 120,
+                      height: 120,
+                      mb: 0.5,
+                      objectFit: "contain",
+                      filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.15))",
+                    }}
+                  />
+                  {mobileSubheading && (
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        fontFamily: "'Comfortaa', cursive",
+                        fontWeight: 800,
+                        color: isDark ? "#ffffff" : "text.primary",
+                        mb: 1,
+                        fontSize: "0.9rem",
+                        lineHeight: 1.2,
+                        maxWidth: 240,
+                      }}
+                    >
+                      {mobileSubheading}
+                    </Typography>
+                  )}
+                </Box>
+
                 {children}
               </Box>
             </motion.div>

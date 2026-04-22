@@ -272,13 +272,13 @@ export default function SummaryPage() {
   );
 
   return (
-    <VisitorLayout justifyContent="center">
+    <VisitorLayout justifyContent="center" mobileSubheading="Booking Summary">
       <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }} style={{ width: "100%" }}>
         <Stack spacing={2.2}>
 
           <Stack alignItems="center" spacing={0.75}>
             <ICONS.checkCircle sx={{ fontSize: 48, color: "success.main" }} />
-            <Typography variant="h6" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
+            <Typography variant="h6" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", display: { xs: "none", md: "block" } }}>
               Booking Summary
             </Typography>
             <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 360 }}>

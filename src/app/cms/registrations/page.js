@@ -1096,17 +1096,18 @@ export default function CmsRegistrationsPage() {
                       )}
                     </Box>
 
-                    <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
-                      <Box sx={{ flex: 1 }}>
+                    <Box sx={{ p: 1.2, borderTop: "1px solid", borderColor: "divider", bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)", display: "flex", flexDirection: "column", gap: 1 }}>
+                      <Box sx={{ width: "100%", overflow: "hidden" }}>
                         <RecordMetadata
                           createdByName={row.createdBy}
                           updatedByName={row.updatedBy}
                           createdAt={row.createdAt || row.created_at}
                           updatedAt={row.updatedAt}
                           locale="en-GB"
+                          sx={{ px: 0, py: 0 }}
                         />
                       </Box>
-                      <Stack direction="row" spacing={1}>
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
                         <Tooltip title="Print Badge">
                           <IconButton size="small" onClick={(e) => { e.stopPropagation(); handlePrintBadge(row); }} sx={{ color: "success.main" }}>
                             <ICONS.print fontSize="small" />

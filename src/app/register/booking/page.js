@@ -261,10 +261,11 @@ export default function BookingPage() {
     <VisitorLayout
       title="Appointment Booking"
       subtitle="Select your preferred visit date and arrival time."
+      mobileSubheading="Schedule Your Visit"
       maxWidth={900}
     >
       <Stack spacing={2}>
-        <Box sx={{ textAlign: "center" }}>
+        <Box sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}>
           <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
             Schedule Your Visit
           </Typography>
