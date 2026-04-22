@@ -69,6 +69,7 @@ const emptyForm = () => ({
   isActive: true,
   isUnique: false,
   uniquenessGroup: "",
+  isVipFastTrack: false,
   sortOrder: 99,
   options: "",
   dependentsJson: {},
@@ -156,6 +157,7 @@ export default function CmsFieldsPage() {
       isActive: field.isActive !== false,
       isUnique: !!field.isUnique,
       uniquenessGroup: field.uniquenessGroup || "",
+      isVipFastTrack: field.isVipFastTrack ?? false,
       sortOrder: field.sortOrder,
       options: (field.optionsJson || []).join(", "),
       dependentsJson: field.dependentsJson || {},
@@ -229,6 +231,7 @@ export default function CmsFieldsPage() {
       isActive: form.isActive,
       isUnique: form.isUnique,
       uniquenessGroup: form.isUnique ? (form.uniquenessGroup?.trim() || null) : null,
+      isVipFastTrack: form.isVipFastTrack,
       sortOrder: Number(form.sortOrder) || 99,
       optionsJson,
       dependentsJson: Object.keys(dependentsJson || {}).length ? dependentsJson : null,
@@ -414,7 +417,7 @@ export default function CmsFieldsPage() {
                       </Box>
                     )}
                     <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", py: 0.8 }}>
-                      <Stack direction="row" spacing={1}>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                         <Chip
                           label={field.isRequired ? "Required" : "Optional"}
                           size="small"
@@ -448,6 +451,16 @@ export default function CmsFieldsPage() {
                               />
                             )}
                           </>
+                        )}
+                        {field.isVipFastTrack && (
+                          <Chip
+                            label="VIP Fast Track"
+                            size="small"
+                            color="warning"
+                            variant="filled"
+                            icon={<ICONS.star style={{ fontSize: "0.75rem" }} />}
+                            sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
+                          />
                         )}
                       </Stack>
                     </Box>
@@ -625,7 +638,7 @@ export default function CmsFieldsPage() {
             </Box>
           )}
 
-          <Stack direction="row" spacing={3}>
+          <Box sx={{ display: "flex", flexWrap: "wrap", columnGap: 3, rowGap: 0.5, alignItems: "center" }}>
             <FormControlLabel
               control={
                 <Switch
@@ -656,7 +669,18 @@ export default function CmsFieldsPage() {
               }
               label="Unique"
             />
-          </Stack>
+            <Box sx={{ flexBasis: "100%", height: 0 }} />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.isVipFastTrack}
+                  onChange={(e) => setForm((p) => ({ ...p, isVipFastTrack: e.target.checked }))}
+                  color="success"
+                />
+              }
+              label="VIP Fast Track"
+            />
+          </Box>
 
           {form.isUnique && (
             <TextField

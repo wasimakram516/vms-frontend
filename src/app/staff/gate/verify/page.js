@@ -34,20 +34,21 @@ import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useSocket } from "@/contexts/SocketContext";
-import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration, verifyRegistrationById } from "@/services/registrationService";
+import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration, verifyRegistrationById, createVipRevisit } from "@/services/registrationService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
 import { filterNumberInput, onKeyPressNumeric } from "@/utils/phoneUtils";
+import VipFastTrackModal from "./VipFastTrackModal";
 
 const STATUS_CONFIG = {
-  pending:       { label: "Pending",         color: "warning" },
-  admin_approved:{ label: "Dept. Approved",  color: "info" },
-  approved:      { label: "Approved",        color: "success" },
-  rejected:      { label: "Rejected",        color: "error" },
-  checked_in:    { label: "Checked In",      color: "info" },
-  checked_out:   { label: "Checked Out",     color: "default" },
-  visit_ended:   { label: "Visit Ended",     color: "default" },
-  cancelled:     { label: "Cancelled",       color: "default" },
-  expired:       { label: "Expired",         color: "default" },
+  pending:       { label: "Pending",         color: "warning", icon: <ICONS.time fontSize="small" /> },
+  admin_approved:{ label: "Dept. Approved",  color: "info",    icon: <ICONS.checkCircleOutline fontSize="small" /> },
+  approved:      { label: "Approved",        color: "success", icon: <ICONS.checkCircle fontSize="small" /> },
+  rejected:      { label: "Rejected",        color: "error",   icon: <ICONS.close fontSize="small" /> },
+  checked_in:    { label: "Checked In",      color: "info",    icon: <ICONS.login fontSize="small" /> },
+  checked_out:   { label: "Checked Out",     color: "default", icon: <ICONS.logout fontSize="small" /> },
+  visit_ended:   { label: "Visit Ended",     color: "default", icon: <ICONS.stop fontSize="small" /> },
+  cancelled:     { label: "Cancelled",       color: "default", icon: <ICONS.cancel fontSize="small" /> },
+  expired:       { label: "Expired",         color: "default", icon: <ICONS.history fontSize="small" /> },
 };
 
 export default function StaffVerifyPage() {
@@ -57,6 +58,7 @@ export default function StaffVerifyPage() {
   const isDark = mode === "dark";
   const [showScanner, setShowScanner] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  const [vipModalOpen, setVipModalOpen] = useState(false);
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -177,6 +179,23 @@ export default function StaffVerifyPage() {
     } finally {
       setActionLoading(false);
       setTimeout(() => { selfInitiatedRef.current = null; }, 5000);
+    }
+  };
+
+  const handleVipRevisit = async () => {
+    if (!result?.id) return;
+    setActionLoading(true);
+    try {
+      const newReg = await createVipRevisit(result.id);
+      if (newReg && !newReg.error) {
+        const mapped = mapRegistration(newReg);
+        setResult(mapped);
+        const logs = await getRegistrationActivityLogs(newReg.id);
+        if (logs && !logs.error) setActivityLogs(logs);
+        showMessage("VIP visitor checked in successfully", "success");
+      }
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -446,9 +465,10 @@ export default function StaffVerifyPage() {
                           </Typography>
                         </Box>
                         <Box sx={{ textAlign: "right" }}>
-                           <Chip 
-                              label={STATUS_CONFIG[visitor.status]?.label || visitor.status} 
+                           <Chip
+                              label={STATUS_CONFIG[visitor.status]?.label || visitor.status}
                               color={STATUS_CONFIG[visitor.status]?.color || "default"}
+                              icon={STATUS_CONFIG[visitor.status]?.icon}
                               size="small"
                               sx={{ borderRadius: 1 }}
                            />
@@ -483,55 +503,43 @@ export default function StaffVerifyPage() {
               <ICONS.qrCodeScanner sx={{ fontSize: 40 }} />
             </Box>
             
-            {!manualMode ? (
-              <Stack spacing={2}>
-                <Button 
-                  variant="contained" 
-                  size="large" 
-                  fullWidth 
-                  startIcon={<ICONS.qrCodeScanner />} 
-                  onClick={() => setShowScanner(true)}
-                  sx={{ py: 1.8, borderRadius: 3, fontSize: "1.1rem" }}
-                >
-                  QR Check-in
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  fullWidth 
-                  startIcon={<ICONS.key />}
-                  onClick={() => setManualMode(true)}
-                  sx={{ py: 1.5, borderRadius: 3 }}
-                >
-                  VIP Fast Track
-                </Button>
-              </Stack>
-            ) : (
-              <Stack spacing={3}>
-                <TextField 
-                  fullWidth 
-                  label="Visitor Token" 
-                  autoFocus
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") doVerify(token); }}
-                  placeholder="e.g. SN-ABC123"
-                />
-                <Stack direction="row" spacing={1}>
-                  <Button variant="text" startIcon={<ICONS.back />} onClick={() => setManualMode(false)} sx={{ flex: 1 }}>Back</Button>
-                  <Button variant="contained" startIcon={<ICONS.checkCircle />} onClick={() => doVerify(token)} sx={{ flex: 2 }} disabled={!token.trim()}>Verify</Button>
-                </Stack>
-              </Stack>
-            )}
+            <Stack spacing={2}>
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                startIcon={<ICONS.qrCodeScanner />}
+                onClick={() => setShowScanner(true)}
+                sx={{ py: 1.8, borderRadius: 3, fontSize: "1.1rem" }}
+              >
+                QR Check-in
+              </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                startIcon={<ICONS.key />}
+                onClick={() => setVipModalOpen(true)}
+                sx={{ py: 1.5, borderRadius: 3 }}
+              >
+                VIP Fast Track
+              </Button>
+            </Stack>
           </Paper>
         )}
 
         {showScanner && (
-          <QrScanner 
+          <QrScanner
             onScanSuccess={handleScanSuccess}
             onCancel={() => setShowScanner(false)}
             onError={(err) => { showMessage(err, "error"); setShowScanner(false); }}
           />
         )}
+
+        <VipFastTrackModal
+          open={vipModalOpen}
+          onClose={() => setVipModalOpen(false)}
+          onCheckedIn={() => setVipModalOpen(false)}
+        />
 
         {loading && (
           <LoadingState
@@ -549,10 +557,19 @@ export default function StaffVerifyPage() {
                 <Typography variant="h6" fontWeight={700}>
                   {result.status === "visit_ended" ? "Visit Concluded" : result.status === "rejected" ? "Visit Rejected" : result.status === "cancelled" ? "Visit Cancelled" : result.status === "expired" ? "Visit Expired" : "Verification Success"}
                 </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Chip label={sc.label} color={sc.color} size="small" sx={{ fontWeight: 600 }} />
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Chip label={sc.label} color={sc.color} size="small" icon={sc.icon} sx={{ fontWeight: 600 }} />
+                  {(result.is_vip_fast_track || result.isVipFastTrack) && (
+                    <Chip icon={<ICONS.star style={{ fontSize: 14 }} />} label="VIP Fast Track" color="warning" size="small" sx={{ fontWeight: 800 }} />
+                  )}
                   {result.overstay && (
                     <Chip label="Overstay Detected" color="error" size="small" sx={{ fontWeight: 800 }} />
+                  )}
+                  {(result.is_vip || result.isVip) && (
+                    <Chip icon={<ICONS.star style={{ fontSize: 14 }} />} label="VIP" size="small" sx={{ fontWeight: 800, bgcolor: "success.main", color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
+                  )}
+                  {(result.allow_parking || result.allowParking) && (
+                    <Chip icon={<ICONS.parking style={{ fontSize: 14 }} />} label="Parking Allowed" size="small" sx={{ fontWeight: 800, bgcolor: isDark ? "#CE93D8" : "#6A0DAD", color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
                   )}
                 </Stack>
               </Box>
@@ -575,7 +592,7 @@ export default function StaffVerifyPage() {
                 Not yet approved
               </Alert>
             )}
-            {result.status === "visit_ended" && (
+            {result.status === "visit_ended" && !(result.is_vip_fast_track || result.isVipFastTrack) && (
               <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
                 This visit has already been concluded. No further actions available.
               </Alert>
@@ -681,7 +698,7 @@ export default function StaffVerifyPage() {
                 }, null);
                 const checkInTime = latestCheckInLog?.metadata?.checkedInAt || latestCheckInLog?.createdAt;
                 const expectedCheckout = (() => {
-                  if (!result.approved_to) return "—";
+                  if (!result.approved_to) return null;
                   const approvedTo = new Date(result.approved_to);
                   const now = new Date();
                   const expected = new Date(now);
@@ -723,16 +740,10 @@ export default function StaffVerifyPage() {
                   pushField("Department", department, ICONS.business);
                   pushField("ID Type", resolvedId?.type, ICONS.badge);
                   pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
-                  pushField(
-                    "Approved Date",
-                    `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
-                    ICONS.event
-                  );
-                  pushField(
-                    "Approved Time",
-                    `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
-                    ICONS.time
-                  );
+                  if (result.approved_from || result.approved_to) {
+                    pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
+                    pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
+                  }
                   pushField("Access Level", accessLevel, ICONS.security);
                   if (checkOutTime) pushField("Checked Out At", `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`, ICONS.logout);
                   if (visitEndedAt) pushField("Visit Ended At", `${formatDate(visitEndedAt)} ${formatTime(visitEndedAt)}`, ICONS.logout);
@@ -771,16 +782,10 @@ export default function StaffVerifyPage() {
                   pushField("Department", department, ICONS.business);
                   pushField("ID Type", resolvedId?.type, ICONS.badge);
                   pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
-                  pushField(
-                    "Approved Date",
-                    `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
-                    ICONS.event
-                  );
-                  pushField(
-                    "Approved Time",
-                    `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
-                    ICONS.time
-                  );
+                  if (result.approved_from || result.approved_to) {
+                    pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
+                    pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
+                  }
                   pushField("Access Level", accessLevel, ICONS.security);
                   if (isCheckedOut && checkOutTime) pushField("Checked Out At", `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`, ICONS.logout);
                 }
@@ -800,18 +805,12 @@ export default function StaffVerifyPage() {
                   pushField("Department", department, ICONS.business);
                   pushField("ID Type", resolvedId?.type, ICONS.badge);
                   pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
-                  pushField(
-                    "Approved Date",
-                    `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
-                    ICONS.event
-                  );
-                  pushField(
-                    "Approved Time",
-                    `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
-                    ICONS.time
-                  );
+                  if (result.approved_from || result.approved_to) {
+                    pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
+                    pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
+                  }
                   pushField("Access Level", accessLevel, ICONS.security);
-                  pushField("Check-in Time", checkInTime ? `${formatDate(checkInTime)} ${formatTime(checkInTime)}` : "—", ICONS.login);
+                  if (checkInTime) pushField("Check-in Time", `${formatDate(checkInTime)} ${formatTime(checkInTime)}`, ICONS.login);
                   pushField("Expected Checkout", expectedCheckout, ICONS.logout);
                 }
 
@@ -843,16 +842,26 @@ export default function StaffVerifyPage() {
                 const isCheckedOut = status === "checked_out";
                 const isEnded = status === "visit_ended";
                 const isMulti = result.allow_multi_checkin ?? result.allowMultiCheckin;
+                const isVipEnded = isEnded && (result.is_vip_fast_track || result.isVipFastTrack);
 
                 return (
                   <>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<ICONS.close />}
+                      onClick={reset}
+                    >
+                      Close
+                    </Button>
+
                     {isPending && (
                       <Button
                         fullWidth
                         variant="contained"
                         disabled
                         startIcon={<ICONS.time />}
-                        sx={{ 
+                        sx={{
                           fontSize: "0.85rem",
                           bgcolor: isDark ? "rgba(255,255,255,0.08) !important" : "rgba(0,0,0,0.06) !important",
                           color: isDark ? "rgba(255,255,255,0.4) !important" : "rgba(0,0,0,0.4) !important",
@@ -901,14 +910,18 @@ export default function StaffVerifyPage() {
                         Check In Again
                       </Button>
                     )}
-                    <Button 
-                      fullWidth 
-                      variant="outlined" 
-                      startIcon={<ICONS.close />} 
-                      onClick={reset}
-                    >
-                      Close
-                    </Button>
+                    {isVipEnded && (
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="warning"
+                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.star />}
+                        onClick={handleVipRevisit}
+                        disabled={actionLoading}
+                      >
+                        VIP Check In
+                      </Button>
+                    )}
                   </>
                 );
               })()}

@@ -407,10 +407,23 @@ export default function CmsRegistrationsPage() {
   const { on } = useSocket();
 
   useEffect(() => {
-    const unsubNew = on("registration:new", () => fetchData({ silent: true }));
+    const unsubNew = on("registration:new", (newReg) => {
+      if (!newReg?.id) { fetchData({ silent: true }); return; }
+      const mappedReg = mapRegistration(newReg);
+      setData((prev) => {
+        if (prev.some((r) => r.id === newReg.id)) return prev;
+        return [mappedReg, ...prev];
+      });
+    });
     const unsubUpdated = on("registration:updated", (updatedReg) => {
       if (!updatedReg?.id) return;
       const mappedReg = mapRegistration(updatedReg);
+
+      // Remove archived revisit registrations from the list
+      if (updatedReg.isRevisitArchived) {
+        setData((prev) => prev.filter((r) => r.id !== updatedReg.id));
+        return;
+      }
 
       // Update list
       setData((prev) => {
@@ -1051,28 +1064,41 @@ export default function CmsRegistrationsPage() {
                           {formatDateTimeWithLocale(row.created_at)}
                         </Typography>
                       </Stack>
-                      <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mt: 1 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
                         <Chip label={config.label} color={config.color} size="small" icon={config.icon} sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }} />
+                        {(row.isVipFastTrack || row.is_vip_fast_track) && (
+                          <Chip label="VIP Fast Track" color="warning" size="small" icon={<ICONS.star />} sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }} />
+                        )}
+                        {(row.is_vip || row.isVip) && (
+                          <Chip icon={<ICONS.star style={{ fontSize: 14 }} />} label="VIP" size="small" sx={{ fontWeight: 800, borderRadius: 1.5, height: 24, bgcolor: "success.main", color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
+                        )}
+                        {(row.allow_parking || row.allowParking) && (
+                          <Chip icon={<ICONS.parking style={{ fontSize: 14 }} />} label="Parking Allowed" size="small" sx={{ fontWeight: 800, borderRadius: 1.5, height: 24, bgcolor: isDark ? "#CE93D8" : "#6A0DAD", color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
+                        )}
                       </Stack>
                     </Box>
 
                     <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
-                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", py: 0.8, borderBottom: "1px solid", borderColor: "divider" }}>
-                        <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
-                          <ICONS.emailOutline fontSize="small" sx={{ opacity: 0.6 }} /> Email
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
-                          {row.email || "—"}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", py: 0.8, borderBottom: "1px solid", borderColor: "divider" }}>
-                        <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
-                          <ICONS.info fontSize="small" sx={{ opacity: 0.6 }} /> Purpose
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
-                          {row.purpose_of_visit || "—"}
-                        </Typography>
-                      </Box>
+                      {row.email && (
+                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", py: 0.8, borderBottom: "1px solid", borderColor: "divider" }}>
+                          <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
+                            <ICONS.emailOutline fontSize="small" sx={{ opacity: 0.6 }} /> Email
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
+                            {row.email}
+                          </Typography>
+                        </Box>
+                      )}
+                      {row.purpose_of_visit && (
+                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", py: 0.8, borderBottom: "1px solid", borderColor: "divider" }}>
+                          <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
+                            <ICONS.info fontSize="small" sx={{ opacity: 0.6 }} /> Purpose
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
+                            {row.purpose_of_visit}
+                          </Typography>
+                        </Box>
+                      )}
                       {(row.requested_from || row.requested_to) && (
                         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", py: 0.8 }}>
                           <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
@@ -1251,9 +1277,12 @@ export default function CmsRegistrationsPage() {
                         </Typography>
                       </Stack>
                       <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap", gap: 0.5 }}>
-                        <Chip label={sc.label} color={sc.color} size="small" sx={{ fontWeight: 700, height: 22, fontSize: "0.65rem" }} />
+                        <Chip label={sc.label} color={sc.color} size="small" icon={sc.icon} sx={{ fontWeight: 700, height: 22, fontSize: "0.65rem" }} />
                         {allowMultiCheckin && (
-                          <Chip label="Multi Check-in Allowed" color="primary" size="small" variant="outlined" sx={{ fontWeight: 600, height: 22, fontSize: "0.65rem" }} />
+                          <Chip icon={<ICONS.replay style={{ fontSize: 13 }} />} label="Multi Check-in Allowed" color="primary" size="small" variant="outlined" sx={{ fontWeight: 600, height: 22, fontSize: "0.65rem" }} />
+                        )}
+                        {(selected.is_vip_fast_track || selected.isVipFastTrack) && (
+                          <Chip icon={<ICONS.star style={{ fontSize: 13 }} />} label="VIP Fast Track" color="warning" size="small" sx={{ fontWeight: 800, height: 22, fontSize: "0.65rem" }} />
                         )}
                         {selected.status === "visit_ended" && (
                           <Chip label="Visit Concluded" color="default" size="small" sx={{ fontWeight: 600, height: 22, fontSize: "0.65rem" }} />
@@ -1263,6 +1292,12 @@ export default function CmsRegistrationsPage() {
                         )}
                         {selected.overstay && (
                           <Chip label="Overstay Detected" color="error" size="small" sx={{ fontWeight: 800, height: 22, fontSize: "0.65rem" }} />
+                        )}
+                        {(selected.is_vip || selected.isVip) && (
+                          <Chip icon={<ICONS.star style={{ fontSize: 13 }} />} label="VIP" size="small" sx={{ fontWeight: 800, height: 22, fontSize: "0.65rem", bgcolor: "success.main", color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
+                        )}
+                        {(selected.allow_parking || selected.allowParking) && (
+                          <Chip icon={<ICONS.parking style={{ fontSize: 13 }} />} label="Parking Allowed" size="small" sx={{ fontWeight: 800, height: 22, fontSize: "0.65rem", bgcolor: isDark ? "#CE93D8" : "#6A0DAD", color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
                         )}
                       </Stack>
                     </Box>

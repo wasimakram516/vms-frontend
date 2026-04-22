@@ -112,6 +112,8 @@ export default function CmsApprovalsPage() {
   const [accessLevels, setAccessLevels] = useState([]);
   const [selectedAccessLevelId, setSelectedAccessLevelId] = useState("");
   const [allowMultiCheckin, setAllowMultiCheckin] = useState(false);
+  const [allowParking, setAllowParking] = useState(false);
+  const [isVip, setIsVip] = useState(false);
   const [accessLevelError, setAccessLevelError] = useState("");
 
   const canSeeRegistration = useCallback((registration) => {
@@ -286,6 +288,8 @@ export default function CmsApprovalsPage() {
 
       setSelectedAccessLevelId(isAdminApproved ? (fullReg.access_level_id || fullReg.accessLevelId || "") : "");
       setAllowMultiCheckin(isAdminApproved ? (fullReg.allow_multi_checkin ?? false) : false);
+      setAllowParking(isAdminApproved ? (fullReg.allow_parking ?? false) : false);
+      setIsVip(isAdminApproved ? (fullReg.is_vip ?? false) : false);
       setAccessLevelError("");
     } finally {
       setFetchingProfile(false);
@@ -497,6 +501,8 @@ export default function CmsApprovalsPage() {
         approvedTo: dayjs(`${toDate}T${scheduleType === "preset" && selectedPreset === "fullDay" ? scheduledFrom : scheduledTo}`).toISOString(),
         accessLevelId: selectedAccessLevelId,
         allowMultiCheckin,
+        allowParking,
+        isVip,
       };
 
       await updateStatus(approveTarget.id, { status: isSuperAdmin ? "approved" : "admin_approved", ...payload });
@@ -1124,6 +1130,48 @@ export default function CmsApprovalsPage() {
                     label={allowMultiCheckin ? "Enabled" : "Disabled"}
                     size="small"
                     color={allowMultiCheckin ? "success" : "default"}
+                    sx={{ fontWeight: 700, height: 20, fontSize: "0.65rem" }}
+                  />
+                </Stack>
+              }
+            />
+            <FormControlLabel
+              sx={{ mb: 1 }}
+              control={
+                <Switch
+                  checked={allowParking}
+                  onChange={(e) => setAllowParking(e.target.checked)}
+                  color="success"
+                />
+              }
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2">Allow Parking</Typography>
+                  <Chip
+                    label={allowParking ? "Enabled" : "Disabled"}
+                    size="small"
+                    color={allowParking ? "success" : "default"}
+                    sx={{ fontWeight: 700, height: 20, fontSize: "0.65rem" }}
+                  />
+                </Stack>
+              }
+            />
+            <FormControlLabel
+              sx={{ mb: 1 }}
+              control={
+                <Switch
+                  checked={isVip}
+                  onChange={(e) => setIsVip(e.target.checked)}
+                  color="success"
+                />
+              }
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2">VIP</Typography>
+                  <Chip
+                    label={isVip ? "Enabled" : "Disabled"}
+                    size="small"
+                    color={isVip ? "success" : "default"}
                     sx={{ fontWeight: 700, height: 20, fontSize: "0.65rem" }}
                   />
                 </Stack>

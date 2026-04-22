@@ -123,6 +123,8 @@ import {
   Key as KeyIcon,
   GridView as GridViewIcon,
   Insights as InsightsIcon,
+  LocalParking as LocalParkingIcon,
+  WorkspacePremium as WorkspacePremiumIcon,
 } from "@mui/icons-material";
 
 // Screen Sharing / Devices
@@ -263,6 +265,8 @@ const ICONS = {
   grid: GridViewIcon,
   insights: InsightsIcon,
   key: KeyIcon,
+  parking: LocalParkingIcon,
+  vip: WorkspacePremiumIcon,
   peopleAlt: PeopleAltIcon,
   person: PersonIcon,
   poll: PollIcon,

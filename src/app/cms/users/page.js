@@ -239,8 +239,8 @@ export default function UsersPage() {
     const filtered = users.filter((u) => {
       if (u.role === "dev") return false;
       const matchSearch =
-        u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchQuery.toLowerCase());
+        (u.full_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.email ?? "").toLowerCase().includes(searchQuery.toLowerCase());
       const matchRole = roleFilter === "all" || u.role === roleFilter;
       const matchStaffType =
         roleFilter !== "staff" || 

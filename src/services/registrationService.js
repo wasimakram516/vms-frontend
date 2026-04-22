@@ -59,7 +59,7 @@ export const mapRegistration = (r) => {
   const mapped = {
     id: r.id,
     full_name: r.user?.fullName || "N/A",
-    email: r.user?.email || "N/A",
+    email: r.user?.email || null,
     phone: r.user?.phone || "N/A",
     purpose_of_visit: r.purposeOfVisit,
     status: r.status,
@@ -72,6 +72,8 @@ export const mapRegistration = (r) => {
     qr_token: r.qrToken,
     rejection_reason: r.rejectionReason,
     allow_multi_checkin: r.allowMultiCheckin,
+    allow_parking: r.allowParking ?? false,
+    is_vip: r.isVip ?? false,
     department: r.department,
     department_id: r.departmentId,
     access_level: r.accessLevel,
@@ -79,6 +81,8 @@ export const mapRegistration = (r) => {
     admin_approved_at: r.adminApprovedAt,
     admin_approved_by_user_id: r.adminApprovedByUserId,
     admin_rejection_reason: r.adminRejectionReason,
+    is_vip_fast_track: r.isVipFastTrack ?? false,
+    vip_fast_track_approved_at: r.vipFastTrackApprovedAt,
     ...r,
   };
 
@@ -157,6 +161,31 @@ export async function exportVisitorHistoryCsv(registrationId) {
 export const checkNdaValidity = withApiHandler(async (email) => {
   const { data } = await api.get("/nda-templates/public/validity-check", { params: { email } });
   return data?.data || data;
+});
+
+export const createVipRegistration = withApiHandler(
+  async (fieldValues) => {
+    const { data } = await api.post("/registrations/vip-fast-track", { fieldValues });
+    return data?.data ?? data;
+  },
+  { showSuccess: true }
+);
+
+export const createVipRevisit = withApiHandler(
+  async (registrationId) => {
+    const { data } = await api.post(`/registrations/${registrationId}/vip-revisit`);
+    return data?.data ?? data;
+  },
+  { showSuccess: true }
+);
+
+export const getVipFastTrackFields = withApiHandler(async () => {
+  const res = await api.get("/custom-fields/vip-fast-track");
+  const payload = res.data?.data ?? res.data ?? [];
+  const fields = Array.isArray(payload) ? payload : [];
+  return [...fields].sort(
+    (a, b) => Number(a?.sortOrder ?? 0) - Number(b?.sortOrder ?? 0)
+  );
 });
 
 export const verifyRegistrationByToken = withApiHandler(async (token) => {
