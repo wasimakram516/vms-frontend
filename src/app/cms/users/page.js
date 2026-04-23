@@ -759,37 +759,27 @@ export default function UsersPage() {
 
                     <Box
                       sx={{
-                        p: 1.5,
+                        p: 1.2,
                         borderTop: "1px solid",
                         borderColor: "divider",
-                        bgcolor: isDark
-                          ? "rgba(255,255,255,0.02)"
-                          : "rgba(0,0,0,0.01)",
+                        bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)",
                         display: "flex",
-                        flexDirection: { xs: "column", sm: "row" },
-                        justifyContent: "space-between",
-                        alignItems: { xs: "stretch", sm: "center" },
-                        gap: 1.5,
+                        flexDirection: "column",
+                        gap: 1
                       }}
                     >
-                      <Box sx={{ flex: 1 }}>
+                      <Box sx={{ width: "100%", overflow: "hidden" }}>
                         <RecordMetadata
                           createdByName={u.created_by}
                           updatedByName={u.updated_by}
                           createdAt={u.created_at}
                           updatedAt={u.updated_at}
                           locale="en-GB"
+                          sx={{ px: 0, py: 0 }}
                         />
                       </Box>
                       {isSuperAdmin && (
-                        <Box
-                          sx={{
-                            display: "flex",
-                            justifyContent: "flex-end",
-                            gap: 1,
-                            width: { xs: "100%", sm: "auto" },
-                          }}
-                        >
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
                           <Tooltip title="Edit User">
                             <IconButton
                               color="primary"
@@ -836,7 +826,7 @@ export default function UsersPage() {
                               </IconButton>
                             </Tooltip>
                           )}
-                        </Box>
+                        </Stack>
                       )}
                     </Box>
                   </AppCard>

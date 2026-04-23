@@ -242,25 +242,27 @@ function AccessLevelsContent() {
 
               <Box
                 sx={{
-                  p: 1.5,
+                  p: 1.2,
                   borderTop: "1px solid",
                   borderColor: "divider",
                   bgcolor: "action.hover",
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
+                  flexDirection: "column",
                   gap: 1,
                 }}
               >
-                <RecordMetadata
-                  createdByName={al.createdBy?.fullName || al.createdById}
-                  updatedByName={al.updatedBy?.fullName || al.updatedById}
-                  createdAt={al.createdAt}
-                  updatedAt={al.updatedAt}
-                  locale="en-GB"
-                />
+                <Box sx={{ width: "100%", overflow: "hidden" }}>
+                  <RecordMetadata
+                    createdByName={al.createdBy?.fullName || al.createdById}
+                    updatedByName={al.updatedBy?.fullName || al.updatedById}
+                    createdAt={al.createdAt}
+                    updatedAt={al.updatedAt}
+                    locale="en-GB"
+                    sx={{ px: 0, py: 0 }}
+                  />
+                </Box>
                 {!readOnly && (
-                  <Stack direction="row" spacing={0.5}>
+                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                     <Tooltip title="Edit">
                       <IconButton size="small" onClick={() => openEdit(al)} sx={{ color: "primary.main" }}>
                         <ICONS.edit fontSize="small" />

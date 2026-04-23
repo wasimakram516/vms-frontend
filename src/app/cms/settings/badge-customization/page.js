@@ -398,32 +398,31 @@ export default function BadgeCustomizationPage() {
                         </Box>
                       </Box>
 
-                      {/* Actions - Redesigned Footer */}
                       <Box
                         sx={{
                           display: "flex",
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          width: "100%",
-                          p: 1.5,
+                          flexDirection: "column",
+                          p: 1.2,
                           borderTop: "1px solid",
                           borderColor: "divider",
                           bgcolor: "action.hover",
                           gap: 1,
                         }}
                       >
-                        <RecordMetadata
-                          createdByName={template.created_by}
-                          updatedByName={template.updated_by}
-                          createdAt={template.created_at}
-                          updatedAt={template.updated_at}
-                          locale="en-GB"
-                        />
+                        <Box sx={{ width: "100%", overflow: "hidden" }}>
+                          <RecordMetadata
+                            createdByName={template.created_by}
+                            updatedByName={template.updated_by}
+                            createdAt={template.created_at}
+                            updatedAt={template.updated_at}
+                            locale="en-GB"
+                            sx={{ px: 0, py: 0 }}
+                          />
+                        </Box>
 
                         {/* Right side: Activate/Deactivate + Edit/Delete */}
                         {!readOnly && (
-                          <Stack direction="row" spacing={1} alignItems="center">
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
                             {template.isActive ? (
                               <Tooltip title="Remove active status">
                                 <IconButton

@@ -362,27 +362,27 @@ export default function NdaTemplatesPage() {
                 {/* Card footer — actions and metadata */}
                 <Box
                   sx={{
-                    p: 1.5,
+                    p: 1.2,
                     borderTop: "1px solid",
                     borderColor: "divider",
                     bgcolor: "action.hover",
                     display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
+                    flexDirection: "column",
                     gap: 1,
                   }}
                 >
-                  <Box sx={{ flex: 1 }}>
+                  <Box sx={{ width: "100%", overflow: "hidden" }}>
                     <RecordMetadata
                       createdByName={tpl.created_by}
                       updatedByName={tpl.updated_by}
                       createdAt={tpl.created_at}
                       updatedAt={tpl.updated_at}
                       locale="en-GB"
+                      sx={{ px: 0, py: 0 }}
                     />
                   </Box>
                   {!readOnly && (
-                    <Stack direction="row" spacing={1}>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
                       {tpl.isActive ? (
                         <Tooltip title="Deactivate">
                           <IconButton

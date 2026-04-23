@@ -468,21 +468,26 @@ export default function CmsFieldsPage() {
 
                   <Box
                     sx={{
-                      p: 1.5, borderTop: "1px solid", borderColor: "divider",
+                      p: 1.2,
+                      borderTop: "1px solid",
+                      borderColor: "divider",
                       bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)",
-                      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1,
                     }}
                   >
-                    <Box sx={{ flex: 1 }}>
+                    <Box sx={{ width: "100%", overflow: "hidden" }}>
                       <RecordMetadata
                         createdByName={field.created_by}
                         updatedByName={field.updated_by}
                         createdAt={field.created_at}
                         updatedAt={field.updated_at}
                         locale="en-GB"
+                        sx={{ px: 0, py: 0 }}
                       />
                     </Box>
-                    <Stack direction="row" spacing={1}>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
                       <IconButton
                         size="small" color="primary" onClick={() => openEdit(field)}
                         sx={{ bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)" }}

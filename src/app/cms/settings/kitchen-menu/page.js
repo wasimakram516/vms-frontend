@@ -337,27 +337,26 @@ function KitchenMenuContent() {
                 {!readOnly && (
                   <Box
                     sx={{
-                      p: 1.5,
+                      p: 1.2,
                       borderTop: "1px solid",
                       borderColor: "divider",
                       bgcolor: "action.hover",
                       display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
+                      flexDirection: "column",
                       gap: 1,
                     }}
                   >
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ width: "100%", overflow: "hidden" }}>
                       <RecordMetadata
                         createdByName={item.created_by}
                         updatedByName={item.updated_by}
                         createdAt={item.created_at}
                         updatedAt={item.updated_at}
                         locale="en-GB"
-                        sx={{ p: 0 }}
+                        sx={{ px: 0, py: 0 }}
                       />
                     </Box>
-                    <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
                       {item.status === "active" ? (
                         <Tooltip title="Deactivate">
                           <IconButton

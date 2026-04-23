@@ -281,25 +281,27 @@ function DepartmentsContent() {
 
               <Box
                 sx={{
-                  p: 1.5,
+                  p: 1.2,
                   borderTop: "1px solid",
                   borderColor: "divider",
                   bgcolor: "action.hover",
                   display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
+                  flexDirection: "column",
                   gap: 1,
                 }}
               >
-                <RecordMetadata
-                  createdByName={dept.createdBy?.fullName || dept.createdById}
-                  updatedByName={dept.updatedBy?.fullName || dept.updatedById}
-                  createdAt={dept.createdAt}
-                  updatedAt={dept.updatedAt}
-                  locale="en-GB"
-                />
+                <Box sx={{ width: "100%", overflow: "hidden" }}>
+                  <RecordMetadata
+                    createdByName={dept.createdBy?.fullName || dept.createdById}
+                    updatedByName={dept.updatedBy?.fullName || dept.updatedById}
+                    createdAt={dept.createdAt}
+                    updatedAt={dept.updatedAt}
+                    locale="en-GB"
+                    sx={{ px: 0, py: 0 }}
+                  />
+                </Box>
                 {!readOnly && (
-                  <Stack direction="row" spacing={0.5}>
+                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                     <Tooltip title="Edit">
                       <IconButton size="small" onClick={() => openEdit(dept)} sx={{ color: "primary.main" }}>
                         <ICONS.edit fontSize="small" />
