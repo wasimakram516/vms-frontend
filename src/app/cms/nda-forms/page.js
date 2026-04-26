@@ -206,6 +206,17 @@ export default function NdaFormsPage() {
                             Accepted {form.acceptedAt ? formatDateTimeWithLocale(form.acceptedAt) : "—"}
                           </Typography>
                         </Stack>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <ICONS.event sx={{ fontSize: 15, color: "text.secondary", flexShrink: 0 }} />
+                          <Typography variant="body2" color="text.secondary">
+                            {(() => {
+                              if (!form.acceptedAt) return "Expires —";
+                              const d = new Date(form.acceptedAt);
+                              d.setMonth(d.getMonth() + (form.validityDurationMonthsSnapshot ?? 60));
+                              return `Expires ${formatDateTimeWithLocale(d)}`;
+                            })()}
+                          </Typography>
+                        </Stack>
                       </Stack>
                     </Box>
 

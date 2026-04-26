@@ -36,7 +36,6 @@ import { useColorMode } from "@/contexts/ThemeContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration, verifyRegistrationById, createVipRevisit } from "@/services/registrationService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
-import { filterNumberInput, onKeyPressNumeric } from "@/utils/phoneUtils";
 import VipFastTrackModal from "./VipFastTrackModal";
 
 const STATUS_CONFIG = {
@@ -398,12 +397,8 @@ export default function StaffVerifyPage() {
                 size="small"
                 placeholder="Search by ID Number"
                 value={idSearch}
-                onChange={(e) => setIdSearch(filterNumberInput(e.target.value))}
-                onKeyPress={onKeyPressNumeric}
-                inputProps={{ 
-                  inputMode: "numeric",
-                  pattern: "[0-9]*" 
-                }}
+                onChange={(e) => setIdSearch(e.target.value)}
+                inputProps={{ inputMode: "text" }}
                 disabled={loading}
                 sx={{
                   '& .MuiOutlinedInput-root': {
@@ -739,7 +734,7 @@ export default function StaffVerifyPage() {
                   pushField("Purpose", purpose, ICONS.info);
                   pushField("Department", department, ICONS.business);
                   pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
                   if (result.approved_from || result.approved_to) {
                     pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
                     pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
@@ -755,7 +750,7 @@ export default function StaffVerifyPage() {
                   pushField("Purpose", purpose, ICONS.info);
                   pushField("Department", department, ICONS.business);
                   pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
                   if (result.approved_from || result.approved_to) {
                     pushField(
                       "Approved Date",
@@ -781,7 +776,7 @@ export default function StaffVerifyPage() {
                   pushField("Purpose", purpose, ICONS.info);
                   pushField("Department", department, ICONS.business);
                   pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
                   if (result.approved_from || result.approved_to) {
                     pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
                     pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
@@ -795,7 +790,7 @@ export default function StaffVerifyPage() {
                   pushField("Purpose", purpose, ICONS.info);
                   pushField("Department", department, ICONS.business);
                   pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
                 }
                 // CheckedIn: Show check-in timestamp, expected checkout time
                 else if (isCheckedIn) {
@@ -804,7 +799,7 @@ export default function StaffVerifyPage() {
                   pushField("Purpose", purpose, ICONS.info);
                   pushField("Department", department, ICONS.business);
                   pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField("ID Number", resolvedId?.value, ICONS.vpnKey);
+                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
                   if (result.approved_from || result.approved_to) {
                     pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
                     pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
