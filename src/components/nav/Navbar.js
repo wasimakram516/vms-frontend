@@ -30,7 +30,8 @@ export default function Navbar() {
   const router = useRouter();
   const brandLogo = mode === "dark" ? "/logo-mark-light.png" : "/logo-mark-dark.png";
   const isStaffArea = pathname?.startsWith("/staff");
-  const brandHref = isStaffArea ? "/staff" : "/";
+  const kitchenAdmin = user?.adminType === "kitchen";
+  const brandHref = isStaffArea ? "/staff" : kitchenAdmin ? "/cms/kitchen" : "/";
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
