@@ -23,6 +23,10 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  FormLabel,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useEffect, useState, useMemo } from "react";
@@ -52,6 +56,7 @@ import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
 
 const CREATABLE_ROLES = ["admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
+const ADMIN_TYPES = ["departmental", "kitchen"];
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
@@ -69,6 +74,7 @@ export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [staffTypeFilter, setStaffTypeFilter] = useState("all");
+  const [adminTypeFilter, setAdminTypeFilter] = useState("all");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
   const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
@@ -85,6 +91,7 @@ export default function UsersPage() {
     staff_type: "gate",
     department_ids: [],
     phone: "",
+    adminType: "departmental",
   };
 
   const [form, setForm] = useState(defaultForm);
@@ -126,6 +133,7 @@ export default function UsersPage() {
       role: u.role || "staff",
       staff_type: u.staff_type || "",
       department_ids: Array.isArray(u.departments) ? u.departments.map((d) => d.id) : [],
+      adminType: u.adminType || "departmental",
     });
     
     if (u.role === "visitor") {
@@ -246,15 +254,27 @@ export default function UsersPage() {
         roleFilter !== "staff" || 
         staffTypeFilter === "all" || 
         (u.staff_type && u.staff_type === staffTypeFilter);
-      return matchSearch && matchRole && matchStaffType;
+      const matchAdminType =
+        roleFilter !== "admin" ||
+        adminTypeFilter === "all" ||
+        (u.adminType && u.adminType === adminTypeFilter) ||
+        (!u.adminType && adminTypeFilter === "departmental"); // fallback for old records
+      return matchSearch && matchRole && matchStaffType && matchAdminType;
     });
 
-    // Sort by role order: superadmin, admin, staff_gate, staff_kitchen, visitor
+    // Sort by role order: superadmin, admin, staff, visitor
     const roleOrder = { superadmin: 0, admin: 1, staff: 2, visitor: 3 };
     return filtered.sort((a, b) => {
       let aOrder = roleOrder[a.role] ?? 4;
       let bOrder = roleOrder[b.role] ?? 4;
       
+      // For admin, sort by adminType: departmental first, then kitchen
+      if (a.role === "admin" && b.role === "admin") {
+        const adminOrder = { departmental: 0, kitchen: 1 };
+        aOrder = 1 + (adminOrder[a.adminType || "departmental"] ?? 2);
+        bOrder = 1 + (adminOrder[b.adminType || "departmental"] ?? 2);
+      }
+
       // For staff, sort by staff_type: gate first, then kitchen
       if (a.role === "staff" && b.role === "staff") {
         const staffOrder = { gate: 0, kitchen: 1 };
@@ -264,7 +284,7 @@ export default function UsersPage() {
       
       return aOrder - bOrder;
     });
-  }, [users, searchQuery, roleFilter, staffTypeFilter]);
+  }, [users, searchQuery, roleFilter, staffTypeFilter, adminTypeFilter]);
 
   const pagedUsers = useMemo(() => {
     return filteredUsers.slice(
@@ -276,7 +296,8 @@ export default function UsersPage() {
   const pagedGroupedUsers = useMemo(() => {
     const groups = {
       superadmin: [],
-      admin: [],
+      admin_departmental: [],
+      admin_kitchen: [],
       staff_gate: [],
       staff_kitchen: [],
       staff_unassigned: [],
@@ -287,7 +308,11 @@ export default function UsersPage() {
       if (u.role === "superadmin") {
         groups.superadmin.push(u);
       } else if (u.role === "admin") {
-        groups.admin.push(u);
+        if (u.adminType === "kitchen") {
+          groups.admin_kitchen.push(u);
+        } else {
+          groups.admin_departmental.push(u);
+        }
       } else if (u.role === "staff") {
         if (u.staff_type === "gate") {
           groups.staff_gate.push(u);
@@ -314,6 +339,8 @@ export default function UsersPage() {
     switch (role) {
       case "superadmin":
         return "error";
+      case "admin_departmental":
+      case "admin_kitchen":
       case "admin":
         return "primary";
       case "staff":
@@ -411,6 +438,7 @@ export default function UsersPage() {
               onChange={(e) => {
                 setRoleFilter(e.target.value);
                 if (e.target.value !== "staff") setStaffTypeFilter("all");
+                if (e.target.value !== "admin") setAdminTypeFilter("all");
                 setPage(0);
               }}
               sx={{ minWidth: { xs: "100%", sm: 160 } }}
@@ -435,6 +463,26 @@ export default function UsersPage() {
               >
                 <MenuItem value="all">All Types</MenuItem>
                 {STAFF_TYPES.map((t) => (
+                  <MenuItem key={t} value={t}>
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+            {roleFilter === "admin" && (
+              <TextField
+                select
+                label="Admin Type"
+                size="small"
+                value={adminTypeFilter}
+                onChange={(e) => {
+                  setAdminTypeFilter(e.target.value);
+                  setPage(0);
+                }}
+                sx={{ minWidth: { xs: "100%", sm: 160 } }}
+              >
+                <MenuItem value="all">All Types</MenuItem>
+                {ADMIN_TYPES.map((t) => (
                   <MenuItem key={t} value={t}>
                     {t.charAt(0).toUpperCase() + t.slice(1)}
                   </MenuItem>
@@ -469,13 +517,14 @@ export default function UsersPage() {
         />
       ) : (
         <>
-          {["superadmin", "admin", "staff_gate", "staff_kitchen", "staff_unassigned", "visitor"].map((role) => {
+          {["superadmin", "admin_departmental", "admin_kitchen", "staff_gate", "staff_kitchen", "staff_unassigned", "visitor"].map((role) => {
             const roleUsers = pagedGroupedUsers[role];
-            if (roleUsers.length === 0) return null;
+            if (!roleUsers || roleUsers.length === 0) return null;
 
             const roleLabels = {
               superadmin: "Super Admins",
-              admin: "Admins",
+              admin_departmental: "Departmental Admins",
+              admin_kitchen: "Kitchen Admins",
               staff_gate: "Gate Staff",
               staff_kitchen: "Kitchen Staff",
               staff_unassigned: "Unassigned Staff",
@@ -607,6 +656,14 @@ export default function UsersPage() {
                             sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }}
                           />
                         )}
+                        {u.role === "admin" && (
+                          <Chip
+                            label={(u.adminType || "departmental").toUpperCase()}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }}
+                          />
+                        )}
                       </Stack>
                     </Box>
 
@@ -620,7 +677,7 @@ export default function UsersPage() {
                           py: 0.8,
                           borderBottom:
                             (u.role === "staff" && u.staff_type) ||
-                            (u.role === "admin" && u.departments?.length > 0)
+                            (u.role === "admin" && (u.adminType || u.departments?.length > 0))
                               ? "1px solid"
                               : "none",
                           borderColor: "divider",
@@ -662,8 +719,12 @@ export default function UsersPage() {
                             justifyContent: "space-between",
                             alignItems: "flex-start",
                             py: 0.8,
-                            borderBottom: "1px solid",
-                            borderColor: "divider",
+                          borderBottom:
+                            (u.role === "staff" && u.staff_type) ||
+                            (u.role === "admin" && (u.adminType || u.departments?.length > 0))
+                              ? "1px solid"
+                              : "none",
+                          borderColor: "divider",
                           }}
                         >
                           <Typography
@@ -955,6 +1016,20 @@ export default function UsersPage() {
             )}
 
             {form.role === "admin" && (
+              <FormControl component="fieldset">
+                <FormLabel component="legend" sx={{ fontWeight: 600, mb: 1, fontSize: "0.85rem" }}>Admin Type</FormLabel>
+                <RadioGroup
+                  row
+                  value={form.adminType}
+                  onChange={(e) => setForm({ ...form, adminType: e.target.value })}
+                >
+                  <FormControlLabel value="departmental" control={<Radio size="small" />} label={<Typography variant="body2">Departmental</Typography>} />
+                  <FormControlLabel value="kitchen" control={<Radio size="small" />} label={<Typography variant="body2">Kitchen</Typography>} />
+                </RadioGroup>
+              </FormControl>
+            )}
+
+            {form.role === "admin" && form.adminType === "departmental" && (
               <FormControl fullWidth>
                 <InputLabel>Departments</InputLabel>
                 <Select

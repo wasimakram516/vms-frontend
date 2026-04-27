@@ -10,6 +10,7 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useEffect } from "react";
 import { VisitorProvider } from "@/contexts/VisitorContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
+import { KitchenNotificationProvider } from "@/contexts/KitchenNotificationContext";
 
 export default function ClientRoot({ children }) {
   useEffect(() => {
@@ -136,7 +137,9 @@ export default function ClientRoot({ children }) {
               <AuthProvider>
                 <SettingsProvider>
                   <VisitorProvider>
-                    <ClientLayout>{children}</ClientLayout>
+                    <KitchenNotificationProvider>
+                      <ClientLayout>{children}</ClientLayout>
+                    </KitchenNotificationProvider>
                   </VisitorProvider>
                 </SettingsProvider>
               </AuthProvider>

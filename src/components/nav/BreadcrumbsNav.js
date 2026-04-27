@@ -65,7 +65,8 @@ export default function BreadcrumbsNav() {
   const { user } = useAuth();
 
   const isDev = user?.role === "dev";
-  const dashboardHref = isDev ? "/cms/settings" : "/cms/dashboard";
+  const isKitchenAdmin = user?.role === "admin" && (user?.adminType || "departmental") === "kitchen";
+  const dashboardHref = isDev ? "/cms/settings" : isKitchenAdmin ? "/cms/kitchen" : "/cms/dashboard";
 
   // Only render inside /cms
   if (!pathname.startsWith("/cms")) return null;
@@ -91,6 +92,8 @@ export default function BreadcrumbsNav() {
     };
   });
 
+  const kitchenAdminAllowedPaths = ["/cms/kitchen", "/cms/settings/kitchen-menu"];
+
   return (
     <Box sx={{ mb: 3 }}>
       <Breadcrumbs separator="›" aria-label="breadcrumb">
@@ -113,14 +116,17 @@ export default function BreadcrumbsNav() {
           const segment = formatSegment(p.segment);
           const isLast = i === paths.length - 1;
 
-          return isLast ? (
+          // For Kitchen Admins, don't make intermediate crumbs clickable if they can't access that path
+          const isBlocked = isKitchenAdmin && !kitchenAdminAllowedPaths.some(allowed => p.href === allowed || p.href.startsWith(allowed));
+
+          return isLast || isBlocked ? (
             <Box
               key={i}
               sx={{
                 display: "flex",
                 alignItems: "center",
-                color: "text.primary",
-                fontWeight: "bold",
+                color: isLast ? "text.primary" : "text.secondary",
+                fontWeight: isLast ? "bold" : 400,
               }}
             >
               {segment}

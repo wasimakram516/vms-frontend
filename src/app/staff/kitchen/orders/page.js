@@ -23,7 +23,7 @@ import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import RoleGuard from "@/components/auth/RoleGuard";
 import useSocket from "@/utils/useSocket";
-import { getAllOrders, updateOrderStatus } from "@/services/kitchenService";
+import { getAllOrders, updateOrderStatus, updateOrderStatusSilent } from "@/services/kitchenService";
 import { useMessage } from "@/contexts/MessageContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -80,7 +80,7 @@ const STATUS_CONFIG = {
   },
 };
 
-const ACTIVE_STATUSES = ["initiated", "received", "in_preparation", "ready"];
+const ACTIVE_STATUSES = ["received", "in_preparation", "ready"];
 
 function OrderCard({ order, onStatusUpdate, onCancel, updatingId, currentUser }) {
   const theme = useTheme();
@@ -88,11 +88,12 @@ function OrderCard({ order, onStatusUpdate, onCancel, updatingId, currentUser })
   const isDark = mode === "dark";
   const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.received;
   const isUpdating = updatingId === order.id;
+  const isRecent = dayjs().diff(dayjs(order.created_at), "minute") <= 15;
 
   return (
     <AppCard
       sx={{
-        ...(order.status === "initiated" && {
+        ...(isRecent && {
           borderColor: alpha(theme.palette.primary.main, 0.45),
           boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.1)}, 0 8px 32px ${alpha(theme.palette.primary.main, 0.15)}`,
           animation: "cardEntrance 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)",
@@ -107,7 +108,7 @@ function OrderCard({ order, onStatusUpdate, onCancel, updatingId, currentUser })
         sx={{
           height: 3,
           bgcolor: cfg.dotColor,
-          opacity: order.status === "initiated" ? 1 : 0.5,
+          opacity: isRecent ? 1 : 0.5,
         }}
       />
 
@@ -127,7 +128,7 @@ function OrderCard({ order, onStatusUpdate, onCancel, updatingId, currentUser })
               >
                 {order.requester}
               </Typography>
-              {order.status === "initiated" && (
+              {isRecent && (
                 <Chip
                   label="NEW"
                   size="small"
@@ -468,7 +469,8 @@ function KitchenDashboardContent() {
       setOrders(all.filter((o) => 
         ACTIVE_STATUSES.includes(o.status) || 
         o.status === "cancelled" || 
-        o.status === "delivered"
+        o.status === "delivered" ||
+        o.status === "initiated"
       ));
       setLastUpdated(new Date());
     }
@@ -485,12 +487,17 @@ function KitchenDashboardContent() {
         setLastUpdated(new Date());
         showMessage(`New order from ${mapped.requester}`, "info");
         playAlert();
+        
+        // Auto-receive new orders
+        if (mapped.status === "initiated") {
+          updateOrderStatusSilent(mapped.id, { status: "received" });
+        }
       },
       "kitchen-order:updated": (updated) => {
         const mapped = mapOrder(updated);
         setOrders((prev) => {
           const isTerminal = mapped.status === "cancelled" || mapped.status === "delivered";
-          if (!ACTIVE_STATUSES.includes(mapped.status) && !isTerminal) {
+          if (!ACTIVE_STATUSES.includes(mapped.status) && !isTerminal && mapped.status !== "initiated") {
             return prev.filter((o) => o.id !== mapped.id);
           }
           const exists = prev.find((o) => o.id === mapped.id);
@@ -526,6 +533,18 @@ function KitchenDashboardContent() {
     created_at: raw.createdAt || raw.created_at,
     updated_at: raw.updatedAt || raw.updated_at,
   });
+  
+  // Auto-receive effect for initial load
+  useEffect(() => {
+    if (loading || orders.length === 0) return;
+    
+    const initiatedOrders = orders.filter(o => o.status === "initiated");
+    if (initiatedOrders.length > 0) {
+      initiatedOrders.forEach(order => {
+        updateOrderStatusSilent(order.id, { status: "received" });
+      });
+    }
+  }, [orders, loading]);
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     setUpdatingId(orderId);
@@ -534,7 +553,7 @@ function KitchenDashboardContent() {
     if (!res?.error) {
       setOrders((prev) => {
         const isTerminal = newStatus === "cancelled" || newStatus === "delivered";
-        if (!ACTIVE_STATUSES.includes(newStatus) && !isTerminal) {
+        if (!ACTIVE_STATUSES.includes(newStatus) && !isTerminal && newStatus !== "initiated") {
           return prev.filter((o) => o.id !== orderId);
         }
         return prev.map((o) =>
@@ -558,7 +577,7 @@ function KitchenDashboardContent() {
     return dayjs().diff(dayjs(terminalAt), "hour") < 24;
   });
 
-  const newCount = byStatus("initiated").length;
+  const newCount = orders.filter(o => dayjs().diff(dayjs(o.created_at), "minute") <= 15).length;
   const totalActive = orders.filter(o => ACTIVE_STATUSES.includes(o.status)).length;
   const tabStatuses = ACTIVE_STATUSES;
 
@@ -723,7 +742,7 @@ function KitchenDashboardContent() {
               width: { xs: "100%", md: "auto" },
             }}
           >
-            {/* New / Initiated - Always Visible */}
+            {/* New Orders - Always Visible */}
             <Box
               sx={{
                 px: 1.75,
@@ -887,12 +906,12 @@ function KitchenDashboardContent() {
           /* Desktop: Horizontal Scrollboard */
           <Box
             sx={{
-              display: "flex",
-              overflowX: "auto",
+              display: "grid",
+              gridTemplateColumns: `repeat(${ACTIVE_STATUSES.length}, minmax(0, 1fr))`,
               pb: 3,
-              gap: 3,
-              alignItems: "stretch",
-              px: 0.5,
+              gap: { sm: 2, md: 3 },
+              px: { sm: 1, md: 0.5 },
+              overflowX: "hidden",
               "&::-webkit-scrollbar": { height: 8 },
               "&::-webkit-scrollbar-track": { bgcolor: "transparent" },
               "&::-webkit-scrollbar-thumb": { 
@@ -903,7 +922,7 @@ function KitchenDashboardContent() {
             }}
           >
             {ACTIVE_STATUSES.map((k) => (
-              <Box key={k} sx={{ flex: "1 1 320px", width: 320, minWidth: 320, maxWidth: 450, minHeight: "60vh" }}>
+              <Box key={k} sx={{ minHeight: "60vh" }}>
                 <ColumnHeader statusKey={k} count={byStatus(k).length} />
                 <Stack spacing={2}>
                   {byStatus(k).length === 0 ? (

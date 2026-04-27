@@ -44,7 +44,12 @@ function computeVisibleFieldIds(fields, fieldValues) {
   const allChildIds = new Set();
   fields.forEach((f) => {
     const deps = f.dependentsJson || f.dependents_json;
-    if (deps) Object.values(deps).forEach((ids) => ids.forEach((id) => allChildIds.add(id)));
+    if (deps) {
+      Object.values(deps).forEach((config) => {
+        const ids = Array.isArray(config) ? config : (config?.fieldIds || []);
+        ids.forEach((id) => allChildIds.add(id));
+      });
+    }
   });
 
   const visible = new Set();
@@ -65,7 +70,8 @@ function computeVisibleFieldIds(fields, fieldValues) {
     const key = current.fieldKey || current.field_key;
     const val = fieldValues[key];
     if (val && deps[val]) {
-      deps[val].forEach((childId) => {
+      const ids = Array.isArray(deps[val]) ? deps[val] : (deps[val]?.fieldIds || []);
+      ids.forEach((childId) => {
         if (!visible.has(childId)) {
           visible.add(childId);
           const child = fieldById[childId];
@@ -101,10 +107,10 @@ function iconForField(fieldKey, label) {
 
 // ── Field renderer ────────────────────────────────────────────────────────────
 
-function DynamicField({ field, value, error, onChange }) {
+function DynamicField({ field, value, error, isForcedRequired, onChange }) {
   const fieldKey = field.fieldKey || field.field_key;
   const inputType = (field.inputType || field.input_type || "text").toLowerCase();
-  const isRequired = field.isRequired || field.is_required;
+  const isRequired = field.isRequired || field.is_required || isForcedRequired;
   const options = field.optionsJson || field.options_json || [];
 
   if (inputType === "select") {
@@ -177,7 +183,12 @@ function DynamicField({ field, value, error, onChange }) {
     );
   }
 
-  const htmlType = ["number", "email", "date", "time"].includes(inputType) ? inputType : "text";
+  let htmlType = ["number", "email", "date", "time"].includes(inputType) ? inputType : "text";
+  const labelLower = (field.label || "").toLowerCase();
+  const keyLower = fieldKey.toLowerCase();
+  if (labelLower.includes("passport") || keyLower.includes("passport")) {
+    htmlType = "text";
+  }
 
   return (
     <TextField
@@ -231,6 +242,23 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
     [fields, fieldValues]
   );
 
+  const forcedRequiredIds = useMemo(() => {
+    const forced = new Set();
+    fields.filter(f => visibleFieldIds.has(f.id)).forEach(parent => {
+      const deps = parent.dependentsJson || parent.dependents_json;
+      if (!deps) return;
+      const val = fieldValues[parent.fieldKey || parent.field_key];
+      if (val && deps[val]) {
+        const config = deps[val];
+        if (config.areAllRequired) {
+          const ids = Array.isArray(config) ? config : (config?.fieldIds || []);
+          ids.forEach(id => forced.add(id));
+        }
+      }
+    });
+    return forced;
+  }, [fields, visibleFieldIds, fieldValues]);
+
   const handleChange = (key, value) => {
     setFieldValues((prev) => {
       const next = { ...prev, [key]: value };
@@ -238,9 +266,10 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
       const field = fields.find((f) => (f.fieldKey || f.field_key) === key);
       const deps = field?.dependentsJson || field?.dependents_json;
       if (deps) {
-        Object.entries(deps).forEach(([triggerVal, childIds]) => {
+        Object.entries(deps).forEach(([triggerVal, config]) => {
           if (triggerVal !== value) {
-            childIds.forEach((childId) => {
+            const ids = Array.isArray(config) ? config : (config?.fieldIds || []);
+            ids.forEach((childId) => {
               const childField = fields.find((f) => f.id === childId);
               if (childField) delete next[childField.fieldKey || childField.field_key];
             });
@@ -255,7 +284,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
   const validate = () => {
     const newErrors = {};
     fields
-      .filter((f) => visibleFieldIds.has(f.id) && (f.isRequired || f.is_required))
+      .filter((f) => visibleFieldIds.has(f.id) && (f.isRequired || f.is_required || forcedRequiredIds.has(f.id)))
       .forEach((f) => {
         const key = f.fieldKey || f.field_key;
         const val = fieldValues[key];
@@ -342,6 +371,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
                       field={f}
                       value={fieldValues[f.fieldKey || f.field_key]}
                       error={errors[f.fieldKey || f.field_key]}
+                      isForcedRequired={forcedRequiredIds.has(f.id)}
                       onChange={handleChange}
                     />
                   ))}

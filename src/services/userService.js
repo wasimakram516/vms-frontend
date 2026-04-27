@@ -17,6 +17,7 @@ const mapUserToFrontend = (user) => ({
   phone: user.phone,
   iso_code: user.iso_code || user.phoneIsoCode || user.isoCode,
   staff_type: user.staffType,
+  adminType: user.adminType,
   status: user.status,
   departments: Array.isArray(user.departments) ? user.departments : [],
   created_at: user.createdAt,
@@ -39,6 +40,7 @@ export const createAdminUser = withApiHandler(
       phone: buildFullPhone(data.phone, data.phoneIsoCode),
       phoneIsoCode: data.phoneIsoCode,
       password: data.password || undefined,
+      adminType: data.adminType || undefined,
     });
     const userData = res.data?.data || res.data;
     return userData ? mapUserToFrontend(userData) : null;
@@ -76,6 +78,9 @@ export const updateUser = withApiHandler(
     // Only include staffType for staff roles
     if (data.role === "staff") {
       payload.staffType = data.staff_type;
+    }
+    if (data.role === "admin") {
+      payload.adminType = data.adminType;
     }
     const res = await api.patch(`/users/${id}`, payload);
     const userData = res.data?.data || res.data;

@@ -20,7 +20,11 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { useState } from "react";
 import ICONS from "@/utils/iconUtil";
 
-const getNavItems = (role, isKitchenModuleEnabled = true) => {
+const getNavItems = (user, isKitchenModuleEnabled = true) => {
+  const role = user?.role;
+  const adminType = user?.role === "admin" ? (user?.adminType || "departmental") : user?.adminType;
+
+  // Base items for Departmental Admin, SuperAdmin
   const base = [
     { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard" },
     { label: "Registrations", icon: ICONS.appRegister, path: "/cms/registrations" },
@@ -31,7 +35,18 @@ const getNavItems = (role, isKitchenModuleEnabled = true) => {
     { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
   ];
 
-  if (isKitchenModuleEnabled) {
+  if (role === "admin" && adminType === "kitchen") {
+    return [
+      { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" },
+      { label: "Menu Settings", icon: ICONS.settings, path: "/cms/settings/kitchen-menu" }
+    ];
+  }
+
+  // Departmental Admin: Everything EXCEPT Kitchen Orders
+  if (role === "admin" && adminType === "departmental") {
+    // base is already what we want, just make sure we don't add kitchen later
+  } else if (isKitchenModuleEnabled) {
+    // SuperAdmin: Add Kitchen Orders if enabled
     base.push({ label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" });
   }
 
@@ -52,7 +67,7 @@ export default function Sidebar() {
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const navItems = getNavItems(user?.role, hostSettings?.isKitchenModuleEnabled);
+  const navItems = getNavItems(user, hostSettings?.isKitchenModuleEnabled);
 
   const isActive = (path) =>
     path === "/cms" ? pathname === "/cms" : pathname.startsWith(path);

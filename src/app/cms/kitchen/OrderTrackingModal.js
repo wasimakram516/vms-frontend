@@ -60,7 +60,12 @@ export default function OrderTrackingModal({ open, onClose, user }) {
   const [sessionUnseenIds, setSessionUnseenIds] = useState(new Set());
   const hasCapturedInitialRef = useRef(false);
 
-  const { markAllAsSeen } = useKitchenNotifications();
+  const { markAllAsSeen, setIsTrackingOpen } = useKitchenNotifications();
+
+  useEffect(() => {
+    setIsTrackingOpen(open && viewType === "my");
+    return () => setIsTrackingOpen(false);
+  }, [open, viewType, setIsTrackingOpen]);
 
   const STATUS_OPTIONS = [
     { value: "all", label: "All Statuses" },
@@ -85,32 +90,36 @@ export default function OrderTrackingModal({ open, onClose, user }) {
     if (!background) setLoading(true);
     try {
       const res = viewType === "all" && isSuperAdmin
-        ? await getAllOrders(selectedDate)
+        ? await getAllOrders({ date: selectedDate })
         : await getMyOrders(selectedDate);
       const all = Array.isArray(res) ? res : [];
       setOrders(all);
 
-      // Session capture: Identify orders that are unseen when we first open the modal
-      if (!hasCapturedInitialRef.current && all.length > 0) {
-        const userIdStr = String(user?.id || "");
-        const unseen = all
-          .filter(o => 
-            !o.is_seen_by_requester && 
-            (String(o.requester_id || o.requesterUserId || "") === userIdStr)
-          )
+      // Mark as seen logic: ONLY for my orders AND only if "My Orders" tab is active
+      if (open && viewType === "my" && all.length > 0 && user?.id) {
+        const userIdStr = String(user.id);
+        const myUnseen = all
+          .filter(o => {
+            const rid = String(o.requester_id || o.requesterUserId || "");
+            const isMyOrder = rid === userIdStr;
+            return !o.is_seen_by_requester && isMyOrder;
+          })
           .map(o => o.id);
         
-        if (unseen.length > 0) {
-          setSessionUnseenIds(new Set(unseen));
-          markOrdersAsSeen(); // Commit to DB immediately
-          markAllAsSeen(); // Clear global badge instantly
+        if (myUnseen.length > 0) {
+          setSessionUnseenIds(prev => {
+            const next = new Set(prev);
+            myUnseen.forEach(id => next.add(id));
+            return next;
+          });
+          markOrdersAsSeen(); 
+          markAllAsSeen(); 
         }
-        hasCapturedInitialRef.current = true;
       }
     } finally {
       if (!background) setLoading(false);
     }
-  }, [viewType, selectedDate, isSuperAdmin, user?.id]);
+  }, [open, viewType, selectedDate, isSuperAdmin, user?.id]);
 
   useEffect(() => {
     if (open) {
@@ -122,9 +131,9 @@ export default function OrderTrackingModal({ open, onClose, user }) {
 
   useSocket(
     useMemo(() => ({
-      "kitchen-order:new": () => fetchOrders(true),
-      "kitchen-order:updated": () => fetchOrders(true),
-    }), [fetchOrders])
+      "kitchen-order:new": () => open && fetchOrders(true),
+      "kitchen-order:updated": () => open && fetchOrders(true),
+    }), [fetchOrders, open])
   );
 
   const uniqueRequesters = useMemo(() => {
@@ -216,7 +225,11 @@ export default function OrderTrackingModal({ open, onClose, user }) {
   const activeFilterChips = useMemo(() => {
     const chips = [];
     const isToday = selectedDate === dayjs().format("YYYY-MM-DD");
-    chips.push({ key: "date", label: isToday ? "Today" : dayjs(selectedDate).format("MMM D, YYYY") });
+    if (selectedDate) {
+      chips.push({ key: "date", label: isToday ? "Today" : dayjs(selectedDate).format("MMM D, YYYY") });
+    } else {
+      chips.push({ key: "date", label: "All Time" });
+    }
     if (statusFilter !== "all") {
       const found = STATUS_OPTIONS.find((o) => o.value === statusFilter);
       if (found) chips.push({ key: "status", label: found.label });
@@ -341,12 +354,18 @@ export default function OrderTrackingModal({ open, onClose, user }) {
               <DatePicker
                 label="Order Placement Date"
                 value={selectedDate ? dayjs(selectedDate) : null}
-                onChange={(val) => setSelectedDate(val ? val.format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"))}
+                onChange={(val) => setSelectedDate(val ? val.format("YYYY-MM-DD") : null)}
                 minDate={dayjs("2020-01-01")}
                 maxDate={dayjs("2099-12-31")}
                 format="DD MMM YYYY"
                 slotProps={{
-                  textField: { size: "small", fullWidth: true, InputProps: { sx: { borderRadius: 2 } } },
+                  textField: { 
+                    size: "small", 
+                    fullWidth: true, 
+                    InputProps: { sx: { borderRadius: 2 } },
+                    placeholder: "All Dates"
+                  },
+                  field: { clearable: true }
                 }}
               />
               <FormControl size="small" sx={{ minWidth: 140, flexShrink: 0 }}>

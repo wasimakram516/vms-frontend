@@ -143,6 +143,13 @@ export default function DetailsPage() {
     }));
   };
 
+  // Helper to safely get child field IDs from both old array and new object formats
+  const getChildFieldIds = (config) => {
+    if (!config) return [];
+    if (Array.isArray(config)) return config;
+    return config.fieldIds || [];
+  };
+
   // ── Dependent field visibility ─────────────────────────────────────────────
   // Build a set of all child field IDs that appear in any dependentsJson
   const allChildFieldIds = useMemo(() => {
@@ -150,7 +157,9 @@ export default function DetailsPage() {
     fields.forEach((f) => {
       const deps = f.dependents_json || f.dependentsJson;
       if (deps) {
-        Object.values(deps).forEach((childIds) => childIds.forEach((id) => ids.add(id)));
+        Object.values(deps).forEach((config) => {
+          getChildFieldIds(config).forEach((id) => ids.add(id));
+        });
       }
     });
     return ids;
@@ -177,7 +186,7 @@ export default function DetailsPage() {
       if (!deps) continue;
       const currentValue = visitorData.dynamicFields?.[current.field_key || current.fieldKey];
       if (currentValue && deps[currentValue]) {
-        deps[currentValue].forEach((childId) => {
+        getChildFieldIds(deps[currentValue]).forEach((childId) => {
           if (!visible.has(childId)) {
             visible.add(childId);
             const child = fieldById[childId];
@@ -190,13 +199,30 @@ export default function DetailsPage() {
     return visible;
   }, [fields, allChildFieldIds, visitorData.dynamicFields]);
 
+  // Compute which fields are forced as required by their parent's trigger settings
+  const forcedRequiredIds = useMemo(() => {
+    const forced = new Set();
+    fields.filter(f => visibleFieldIds.has(f.id)).forEach(parent => {
+      const deps = parent.dependents_json || parent.dependentsJson;
+      if (!deps) return;
+      const val = visitorData.dynamicFields[parent.field_key || parent.fieldKey];
+      if (val && deps[val]) {
+        const config = deps[val];
+        if (config.areAllRequired) {
+          getChildFieldIds(config).forEach(id => forced.add(id));
+        }
+      }
+    });
+    return forced;
+  }, [fields, visibleFieldIds, visitorData.dynamicFields]);
+
   // Recursively clear values for all fields that are no longer visible under a given parent
   const clearHiddenChildren = (parentField, newValue, updatedDynamicFields) => {
     const deps = parentField?.dependents_json || parentField?.dependentsJson;
     if (!deps) return;
-    Object.entries(deps).forEach(([triggerVal, childIds]) => {
+    Object.entries(deps).forEach(([triggerVal, config]) => {
       if (triggerVal !== newValue) {
-        childIds.forEach((childId) => {
+        getChildFieldIds(config).forEach((childId) => {
           const childField = fields.find((f) => f.id === childId);
           if (childField) {
             const childKey = childField.field_key || childField.fieldKey;
@@ -240,7 +266,7 @@ export default function DetailsPage() {
           ...f,
           inputName: fieldKey,
           inputType: f.input_type || f.inputType || "text",
-          required: f.is_required || f.isRequired,
+          required: f.is_required || f.isRequired || forcedRequiredIds.has(f.id),
           label: f.label,
           values: f.options_json || f.optionsJson,
         },
@@ -343,7 +369,7 @@ export default function DetailsPage() {
             ) : (
               fields.filter((f) => visibleFieldIds.has(f.id)).map((f) => {
                 const fieldKey = f.field_key || f.fieldKey;
-                const isRequired = f.is_required || f.isRequired;
+                const isRequired = f.is_required || f.isRequired || forcedRequiredIds.has(f.id);
                 const inputType = (f.input_type || f.inputType || "text").toLowerCase();
                 const options = f.options_json || f.optionsJson || [];
                 let val = visitorData.dynamicFields[fieldKey] !== undefined ? visitorData.dynamicFields[fieldKey] : (inputType === "checkbox" ? [] : "");
@@ -432,6 +458,11 @@ export default function DetailsPage() {
                 }
 
                 const fieldLabel = (f.label || "").toLowerCase();
+                const fieldKeyLower = fieldKey.toLowerCase();
+                if (fieldLabel.includes("passport") || fieldKeyLower.includes("passport")) {
+                  textType = "text";
+                }
+
                 if (fieldLabel.includes("time") && !fieldLabel.includes("date")) {
                   textType = "time";
                 }

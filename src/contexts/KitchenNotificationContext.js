@@ -12,6 +12,7 @@ export const KitchenNotificationProvider = ({ children }) => {
   const { user } = useAuth();
   const { showMessage } = useMessage();
   const [unseenIds, setUnseenIds] = useState(new Set());
+  const [isTrackingOpen, setIsTrackingOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isAudioPrimed, setIsAudioPrimed] = useState(false);
   const statusAudioRef = useRef(null);
@@ -53,6 +54,7 @@ export const KitchenNotificationProvider = ({ children }) => {
 
   const fetchInitialUnseen = useCallback(async () => {
     if (!user || user.role === "dev") return;
+    if (user.role === "admin" && (user.adminType || "departmental") === "departmental") return;
     try {
       const orders = await getMyOrders();
       if (Array.isArray(orders)) {
@@ -98,15 +100,14 @@ export const KitchenNotificationProvider = ({ children }) => {
       const isMyOrder = order.requester_id === user?.id || order.requesterUserId === user?.id;
       // Only notify if someone else updated it
       const isUnseen = order.is_seen_by_requester === false || order.isSeenByRequester === false;
-      
       if (isMyOrder && isUnseen) {
-        setUnseenIds(prev => {
-          const next = new Set(prev);
-          next.add(order.id);
-          return next;
-        });
-        
-        playAlert();
+        if (!isTrackingOpen) {
+          setUnseenIds(prev => {
+            const next = new Set(prev);
+            next.add(order.id);
+            return next;
+          });
+        }
         
         const statusLabel = (order.status || "updated").replace("_", " ").toUpperCase();
         if (order.status === "cancelled") {
@@ -115,9 +116,11 @@ export const KitchenNotificationProvider = ({ children }) => {
         } else {
           showMessage(`Your order status is now ${statusLabel}`, "info");
         }
+        
+        playAlert();
       }
     }
-  }), [user?.id, playAlert, showMessage]);
+  }), [user?.id, playAlert, showMessage, isTrackingOpen]);
 
   useSocket(socketEvents);
 
@@ -143,6 +146,8 @@ export const KitchenNotificationProvider = ({ children }) => {
     unseenCount,
     isMuted,
     isAudioPrimed,
+    isTrackingOpen,
+    setIsTrackingOpen,
     toggleMute,
     markAllAsSeen,
   };

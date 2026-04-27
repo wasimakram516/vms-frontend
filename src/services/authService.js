@@ -17,6 +17,7 @@ const mapUserToFrontend = (user) => {
     ...user,
     full_name: user.fullName || user.full_name || "User",
     staff_type: user.staffType || user.staff_type || null,
+    adminType: user.adminType || null,
     name: user.fullName || user.full_name || user.name || "User",
   };
 };

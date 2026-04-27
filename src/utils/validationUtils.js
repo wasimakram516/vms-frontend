@@ -102,7 +102,10 @@ export const validateField = (field, value, options = {}) => {
     if (err) errors.push(err);
   }
 
-  if (field.inputType === "number") {
+  const isPassportField = (field.label || "").toLowerCase().includes("passport") || 
+                          (field.inputName || "").toLowerCase().includes("passport");
+
+  if (field.inputType === "number" && !isPassportField) {
     const err = validateNumber(value, field.label || field.inputName);
     if (err) errors.push(err);
   }

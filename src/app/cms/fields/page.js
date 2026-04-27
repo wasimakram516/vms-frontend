@@ -23,6 +23,9 @@ import {
   InputLabel,
   OutlinedInput,
   Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useMessage } from "@/contexts/MessageContext";
@@ -68,7 +71,6 @@ const emptyForm = () => ({
   isRequired: false,
   isActive: true,
   isUnique: false,
-  uniquenessGroup: "",
   isVipFastTrack: false,
   sortOrder: 99,
   options: "",
@@ -117,8 +119,9 @@ export default function CmsFieldsPage() {
     const map = {};
     fields.forEach((f) => {
       const deps = f.dependentsJson || f.dependents_json || {};
-      Object.entries(deps).forEach(([triggerValue, childIds]) => {
-        childIds.forEach((childId) => {
+      Object.entries(deps).forEach(([triggerValue, config]) => {
+        const ids = Array.isArray(config) ? config : (config?.fieldIds || []);
+        ids.forEach((childId) => {
           if (!map[childId]) map[childId] = [];
           map[childId].push({ parentLabel: f.label, triggerValue });
         });
@@ -156,7 +159,6 @@ export default function CmsFieldsPage() {
       isRequired: !!field.isRequired,
       isActive: field.isActive !== false,
       isUnique: !!field.isUnique,
-      uniquenessGroup: field.uniquenessGroup || "",
       isVipFastTrack: field.isVipFastTrack ?? false,
       sortOrder: field.sortOrder,
       options: (field.optionsJson || []).join(", "),
@@ -175,7 +177,7 @@ export default function CmsFieldsPage() {
     setForm((p) => {
       const cleaned = {};
       for (const opt of newOptions) {
-        cleaned[opt] = p.dependentsJson?.[opt] || [];
+        cleaned[opt] = p.dependentsJson?.[opt] || { fieldIds: [], isUniqueTogether: false, areAllRequired: false };
       }
       return { ...p, options: value, dependentsJson: cleaned };
     });
@@ -183,13 +185,51 @@ export default function CmsFieldsPage() {
 
   // Update which child fields are shown for a given option value
   const handleDependentsChange = (optionValue, selectedFieldIds) => {
-    setForm((p) => ({
-      ...p,
-      dependentsJson: {
-        ...p.dependentsJson,
-        [optionValue]: selectedFieldIds,
-      },
-    }));
+    setForm((p) => {
+      const current = p.dependentsJson?.[optionValue] || {};
+      const isOldFormat = Array.isArray(current);
+      return {
+        ...p,
+        dependentsJson: {
+          ...p.dependentsJson,
+          [optionValue]: isOldFormat
+            ? { fieldIds: selectedFieldIds, isUniqueTogether: false }
+            : { ...current, fieldIds: selectedFieldIds },
+        },
+      };
+    });
+  };
+
+  const handleUniqueTogetherToggle = (optionValue, isChecked) => {
+    setForm((p) => {
+      const current = p.dependentsJson?.[optionValue] || {};
+      const isOldFormat = Array.isArray(current);
+      return {
+        ...p,
+        dependentsJson: {
+          ...p.dependentsJson,
+          [optionValue]: isOldFormat
+            ? { fieldIds: current, isUniqueTogether: isChecked, areAllRequired: false }
+            : { ...current, isUniqueTogether: isChecked },
+        },
+      };
+    });
+  };
+
+  const handleAreAllRequiredToggle = (optionValue, isChecked) => {
+    setForm((p) => {
+      const current = p.dependentsJson?.[optionValue] || {};
+      const isOldFormat = Array.isArray(current);
+      return {
+        ...p,
+        dependentsJson: {
+          ...p.dependentsJson,
+          [optionValue]: isOldFormat
+            ? { fieldIds: current, isUniqueTogether: false, areAllRequired: isChecked }
+            : { ...current, areAllRequired: isChecked },
+        },
+      };
+    });
   };
 
   const handleSave = async () => {
@@ -216,9 +256,15 @@ export default function CmsFieldsPage() {
     // Only save dependentsJson for select/radio; clear for others
     const dependentsJson = HAS_DEPENDENTS.includes(form.inputType)
       ? Object.fromEntries(
-          Object.entries(form.dependentsJson || {}).filter(
-            ([, ids]) => ids.length > 0
-          )
+          Object.entries(form.dependentsJson || {}).filter(([_, config]) => {
+            const ids = Array.isArray(config) ? config : config.fieldIds;
+            return ids && ids.length > 0;
+          }).map(([opt, config]) => {
+            if (Array.isArray(config)) {
+              return [opt, { fieldIds: config, isUniqueTogether: false, areAllRequired: false }];
+            }
+            return [opt, config];
+          })
         )
       : null;
 
@@ -230,7 +276,6 @@ export default function CmsFieldsPage() {
       isRequired: form.isRequired,
       isActive: form.isActive,
       isUnique: form.isUnique,
-      uniquenessGroup: form.isUnique ? (form.uniquenessGroup?.trim() || null) : null,
       isVipFastTrack: form.isVipFastTrack,
       sortOrder: Number(form.sortOrder) || 99,
       optionsJson,
@@ -389,7 +434,10 @@ export default function CmsFieldsPage() {
                           Triggers
                         </Typography>
                         <Chip
-                          label={`${Object.values(field.dependentsJson).flat().length} child field(s)`}
+                          label={`${Object.values(field.dependentsJson).reduce((acc, config) => {
+                            const ids = Array.isArray(config) ? config : (config?.fieldIds || []);
+                            return acc + ids.length;
+                          }, 0)} child field(s)`}
                           size="small"
                           color="info"
                           variant="tonal"
@@ -433,24 +481,13 @@ export default function CmsFieldsPage() {
                           sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
                         />
                         {field.isUnique && (
-                          <>
-                            <Chip
-                              label="Unique"
-                              size="small"
-                              color="info"
-                              variant="filled"
-                              sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
-                            />
-                            {field.uniquenessGroup && (
-                              <Chip
-                                label={`Group: ${field.uniquenessGroup}`}
-                                size="small"
-                                color="secondary"
-                                variant="tonal"
-                                sx={{ fontWeight: 700, fontSize: "0.6rem", height: 20 }}
-                              />
-                            )}
-                          </>
+                          <Chip
+                            label="Unique"
+                            size="small"
+                            color="info"
+                            variant="filled"
+                            sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
+                          />
                         )}
                         {field.isVipFastTrack && (
                           <Chip
@@ -610,34 +647,144 @@ export default function CmsFieldsPage() {
                   No other fields available yet. Create more fields first.
                 </Alert>
               ) : (
-                <Stack spacing={2}>
-                  {parsedOptions.map((opt) => (
-                    <FormControl key={opt} fullWidth size="small">
-                      <InputLabel>{`When "${opt}" → show`}</InputLabel>
-                      <Select
-                        multiple
-                        value={form.dependentsJson?.[opt] || []}
-                        onChange={(e) => handleDependentsChange(opt, e.target.value)}
-                        input={<OutlinedInput label={`When "${opt}" → show`} />}
-                        renderValue={(selected) =>
-                          selected
-                            .map((id) => dependentCandidates.find((f) => f.id === id)?.label || id)
-                            .join(", ")
-                        }
+                <Stack spacing={1}>
+                  {parsedOptions.map((opt) => {
+                    const config = form.dependentsJson?.[opt] || { fieldIds: [], isUniqueTogether: false };
+                    const selectedIds = Array.isArray(config) ? config : (config.fieldIds || []);
+                    const isUniqueTogether = Array.isArray(config) ? false : !!config.isUniqueTogether;
+
+                    return (
+                      <Accordion
+                        key={opt}
+                        disableGutters
+                        elevation={0}
+                        sx={{
+                          border: "1px solid",
+                          borderColor: "divider",
+                          borderRadius: "8px !important",
+                          overflow: "hidden",
+                          bgcolor: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)",
+                          "&:before": { display: "none" },
+                        }}
                       >
-                        {dependentCandidates.map((f) => (
-                          <MenuItem key={f.id} value={f.id}>
-                            <Box>
-                              <Typography variant="body2">{f.label}</Typography>
-                              <Typography variant="caption" color="text.secondary" fontFamily="monospace">
-                                {f.fieldKey}
-                              </Typography>
-                            </Box>
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ))}
+                        <AccordionSummary
+                          expandIcon={<ICONS.expandMore />}
+                          sx={{ px: 2, minHeight: 48, "& .MuiAccordionSummary-content": { my: 1, alignItems: "center", justifyContent: "space-between" } }}
+                        >
+                          <Typography variant="caption" fontWeight={800} color="primary" sx={{ textTransform: "uppercase" }}>
+                            {opt}
+                          </Typography>
+                          <Stack direction="row" spacing={1} sx={{ mr: 1 }}>
+                            {selectedIds.length > 0 && (
+                              <Chip
+                                label={`${selectedIds.length} field(s)`}
+                                size="small"
+                                variant="outlined"
+                                sx={{ height: 20, fontSize: "0.6rem", fontWeight: 800 }}
+                              />
+                            )}
+                            {isUniqueTogether && (
+                              <Chip
+                                label="Unique Combo"
+                                size="small"
+                                variant="tonal"
+                                color="info"
+                                sx={{ height: 20, fontSize: "0.6rem", fontWeight: 800 }}
+                              />
+                            )}
+                            {config.areAllRequired && (
+                              <Chip
+                                label="Mandatory"
+                                size="small"
+                                variant="tonal"
+                                color="warning"
+                                sx={{ height: 20, fontSize: "0.6rem", fontWeight: 800 }}
+                              />
+                            )}
+                          </Stack>
+                        </AccordionSummary>
+                        <AccordionDetails sx={{ px: 2, pt: 0, pb: 2 }}>
+                          <Stack spacing={1.5}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Show these fields</InputLabel>
+                              <Select
+                                multiple
+                                value={selectedIds}
+                                onChange={(e) => handleDependentsChange(opt, e.target.value)}
+                                input={<OutlinedInput label="Show these fields" />}
+                                renderValue={(selected) =>
+                                  selected
+                                    .map((id) => dependentCandidates.find((f) => f.id === id)?.label || id)
+                                    .join(", ")
+                                }
+                              >
+                                {dependentCandidates.map((f) => (
+                                  <MenuItem key={f.id} value={f.id}>
+                                    <Box>
+                                      <Typography variant="body2">{f.label}</Typography>
+                                      <Typography variant="caption" color="text.secondary" fontFamily="monospace">
+                                        {f.fieldKey}
+                                      </Typography>
+                                    </Box>
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                            <Stack 
+                              direction={{ xs: "column", md: "row" }} 
+                              spacing={2} 
+                              sx={{ mt: 1 }}
+                            >
+                              <FormControlLabel
+                                sx={{ ml: 0, flex: 1, alignItems: "flex-start" }}
+                                control={
+                                  <Switch
+                                    size="small"
+                                    checked={isUniqueTogether}
+                                    onChange={(e) => handleUniqueTogetherToggle(opt, e.target.checked)}
+                                    color="info"
+                                    sx={{ mt: 0.5 }}
+                                  />
+                                }
+                                label={
+                                  <Box>
+                                    <Typography variant="caption" fontWeight={800} color="info.main" sx={{ display: "block", lineHeight: 1.2 }}>
+                                      Prevent duplicate combinations
+                                    </Typography>
+                                    <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: "0.7rem", mt: 0.2, lineHeight: 1.1 }}>
+                                      Ensures this specific set of answers hasn't been registered before.
+                                    </Typography>
+                                  </Box>
+                                }
+                              />
+                              <FormControlLabel
+                                sx={{ ml: 0, flex: 1, alignItems: "flex-start" }}
+                                control={
+                                  <Switch
+                                    size="small"
+                                    checked={!!config.areAllRequired}
+                                    onChange={(e) => handleAreAllRequiredToggle(opt, e.target.checked)}
+                                    color="warning"
+                                    sx={{ mt: 0.5 }}
+                                  />
+                                }
+                                label={
+                                  <Box>
+                                    <Typography variant="caption" fontWeight={800} color="warning.main" sx={{ display: "block", lineHeight: 1.2 }}>
+                                      Force these to be Mandatory
+                                    </Typography>
+                                    <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: "0.7rem", mt: 0.2, lineHeight: 1.1 }}>
+                                      Mark all selected fields as required when this option is chosen.
+                                    </Typography>
+                                  </Box>
+                                }
+                              />
+                            </Stack>
+                          </Stack>
+                        </AccordionDetails>
+                      </Accordion>
+                    );
+                  })}
                 </Stack>
               )}
             </Box>
@@ -687,18 +834,6 @@ export default function CmsFieldsPage() {
             />
           </Box>
 
-          {form.isUnique && (
-            <TextField
-              label="Uniqueness Group"
-              placeholder="e.g. passport"
-              fullWidth
-              size="small"
-              value={form.uniquenessGroup}
-              onChange={(e) => setForm((p) => ({ ...p, uniquenessGroup: e.target.value }))}
-              helperText="Link fields (Passport + Country) for combined uniqueness check."
-              sx={{ mb: 2, mt: 1 }}
-            />
-          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
           <Button

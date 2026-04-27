@@ -156,6 +156,17 @@ export const updateOrderStatus = withApiHandler(
   { showSuccess: true }
 );
 
+export const updateOrderStatusSilent = withApiHandler(
+  async (id, data) => {
+    const res = await api.patch(`/kitchen/orders/${id}/status`, data);
+    return {
+      data: mapOrderToFrontend(res.data?.data || res.data),
+      message: res.data?.message || "Status updated successfully",
+    };
+  },
+  { showSuccess: false }
+);
+
 export const cancelOrder = withApiHandler(
   async (id, notes) => {
     const res = await api.post(`/kitchen/orders/${id}/cancel`, { notes });

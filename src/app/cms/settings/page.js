@@ -68,13 +68,21 @@ export default function SettingsPage() {
   const isDev = user?.role === "dev";
 
   const isKitchenEnabled = hostSettings?.isKitchenModuleEnabled ?? true;
+  
+  const effectiveAdminType = user?.role === "admin" ? (user?.adminType || "departmental") : user?.adminType;
+  const isDepartmentalAdmin = user?.role === "admin" && effectiveAdminType === "departmental";
 
   const visibleCards = [
     ...(isDev ? DEV_CARDS : []),
     ...(!isDev ? SUPERADMIN_CARDS : []),
     ...(!isDev
       ? SHARED_CARDS.filter(
-          (card) => isKitchenEnabled || card.path !== "/cms/settings/kitchen-menu"
+          (card) => {
+            if (card.path === "/cms/settings/kitchen-menu") {
+              return isKitchenEnabled && !isDepartmentalAdmin;
+            }
+            return true;
+          }
         )
       : []),
   ];

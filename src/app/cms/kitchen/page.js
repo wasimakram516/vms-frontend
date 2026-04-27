@@ -424,6 +424,7 @@ function OrderingContent() {
   const isModuleOff = isModuleDisabled || (hostSettings && !hostSettings.isKitchenModuleEnabled);
 
   if (isModuleOff) {
+    const isKitchenAdmin = user?.role === "admin" && (user?.adminType || "departmental") === "kitchen";
     return (
       <Box sx={{ py: 10, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
         <Box
@@ -449,13 +450,15 @@ function OrderingContent() {
           The kitchen and food service module has been disabled system-wide by the administrator. 
           Please contact support if you believe this is an error.
         </Typography>
-        <Button 
-          variant="contained" 
-          onClick={() => window.location.href = "/cms/dashboard"}
-          sx={{ mt: 4, borderRadius: 30, px: 4 }}
-        >
-          Return to Dashboard
-        </Button>
+        {!isKitchenAdmin && (
+          <Button 
+            variant="contained" 
+            onClick={() => window.location.href = "/cms/dashboard"}
+            sx={{ mt: 4, borderRadius: 30, px: 4 }}
+          >
+            Return to Dashboard
+          </Button>
+        )}
       </Box>
     );
   }

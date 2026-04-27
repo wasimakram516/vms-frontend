@@ -211,6 +211,8 @@ export default function Navbar() {
                           router.push(getStaffDestination(user));
                         } else if (user.role === "dev") {
                           router.push("/cms/settings");
+                        } else if (user.role === "admin" && user.adminType === "kitchen") {
+                          router.push("/cms/kitchen");
                         } else {
                           router.push("/cms/dashboard");
                         }

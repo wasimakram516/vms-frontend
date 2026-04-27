@@ -32,6 +32,8 @@ export default function LoginPage() {
         router.replace(getStaffDestination(user));
       } else if (user.role === "dev") {
         router.replace("/cms/settings");
+      } else if (user.role === "admin" && user.adminType === "kitchen") {
+        router.replace("/cms/kitchen");
       } else {
         router.replace("/cms/dashboard");
       }
@@ -74,7 +76,13 @@ export default function LoginPage() {
           await logout("/auth/login");
         } else {
           setUser(response.user);
-          router.push(response.user.role === "dev" ? "/cms/settings" : "/cms/dashboard");
+          if (response.user.role === "dev") {
+            router.push("/cms/settings");
+          } else if (response.user.role === "admin" && response.user.adminType === "kitchen") {
+            router.push("/cms/kitchen");
+          } else {
+            router.push("/cms/dashboard");
+          }
         }
       }
     } finally {
