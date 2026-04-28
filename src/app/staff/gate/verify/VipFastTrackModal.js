@@ -344,7 +344,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
       PaperProps={{ sx: { borderRadius: 4 } }}
     >
       <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
-        <Typography variant="h6" fontWeight={700}>VIP Fast Track</Typography>
+        <Typography variant="h6" fontWeight={700} component="span">VIP Fast Track</Typography>
         <IconButton onClick={handleClose} disabled={submitting || checkingIn} size="small">
           <ICONS.close />
         </IconButton>
