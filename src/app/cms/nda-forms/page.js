@@ -25,6 +25,7 @@ import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ListToolbar from "@/components/ListToolbar";
 import RoleGuard from "@/components/auth/RoleGuard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
+import { useAuth } from "@/contexts/AuthContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { getNdaForms, deleteNdaAcceptance, resendNdaToHost, resendNdaToVisitor } from "@/services/ndaAcceptanceService";
 import { formatDateTimeWithLocale } from "@/utils/dateUtils";
@@ -37,7 +38,10 @@ export default function NdaFormsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
+  const { user } = useAuth();
   const { showMessage } = useMessage();
+
+  const isSuperAdmin = user?.role === "superadmin" || user?.role === "dev";
 
   const fetchForms = async () => {
     setLoading(true);
@@ -92,7 +96,7 @@ export default function NdaFormsPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin", "admin"]} allowedAdminTypes={["departmental"]}>
       <Box>
         {/* Page header */}
         <Box
@@ -247,46 +251,50 @@ export default function NdaFormsPage() {
                           Download
                         </Button>
                       )}
-                      <Tooltip title="Resend to Host">
-                        <span>
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            disabled={!!actionLoading[`${form.id}-resend-host`]}
-                            onClick={() => handleAction(form.id, "resend-host", "Resend to host")}
-                            sx={{ bgcolor: "action.hover" }}
-                          >
-                            {actionLoading[`${form.id}-resend-host`]
-                              ? <CircularProgress size={16} />
-                              : <ICONS.email fontSize="small" />}
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                      <Tooltip title="Resend to Visitor">
-                        <span>
-                          <IconButton
-                            size="small"
-                            color="secondary"
-                            disabled={!!actionLoading[`${form.id}-resend-visitor`]}
-                            onClick={() => handleAction(form.id, "resend-visitor", "Resend to visitor")}
-                            sx={{ bgcolor: "action.hover" }}
-                          >
-                            {actionLoading[`${form.id}-resend-visitor`]
-                              ? <CircularProgress size={16} />
-                              : <ICONS.send fontSize="small" />}
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                      <Tooltip title="Delete NDA Record">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => setDeleteTarget(form)}
-                          sx={{ bgcolor: "action.hover", ml: "auto" }}
-                        >
-                          <ICONS.delete fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      {isSuperAdmin && (
+                        <>
+                          <Tooltip title="Resend to Host">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                disabled={!!actionLoading[`${form.id}-resend-host`]}
+                                onClick={() => handleAction(form.id, "resend-host", "Resend to host")}
+                                sx={{ bgcolor: "action.hover" }}
+                              >
+                                {actionLoading[`${form.id}-resend-host`]
+                                  ? <CircularProgress size={16} />
+                                  : <ICONS.email fontSize="small" />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Resend to Visitor">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="secondary"
+                                disabled={!!actionLoading[`${form.id}-resend-visitor`]}
+                                onClick={() => handleAction(form.id, "resend-visitor", "Resend to visitor")}
+                                sx={{ bgcolor: "action.hover" }}
+                              >
+                                {actionLoading[`${form.id}-resend-visitor`]
+                                  ? <CircularProgress size={16} />
+                                  : <ICONS.send fontSize="small" />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Delete NDA Record">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => setDeleteTarget(form)}
+                              sx={{ bgcolor: "action.hover", ml: "auto" }}
+                            >
+                              <ICONS.delete fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
+                      )}
                     </Box>
                   </AppCard>
                 ))}
