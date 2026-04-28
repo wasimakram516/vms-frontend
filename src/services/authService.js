@@ -80,5 +80,5 @@ export const refreshToken = withApiHandler(async () => {
   const token = res.data?.accessToken || res.data?.data?.accessToken;
   if (token) setStoredAuthData(token, getStoredUser());
   return token;
-});
+}, { silent: true });
 

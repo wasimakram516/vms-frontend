@@ -1,11 +1,11 @@
 import { showGlobalMessage } from "@/contexts/MessageContext";
 
-const withApiHandler = (fn, { showSuccess = false, suppressErrorStatus = [] } = {}) => async (...args) => {
+const withApiHandler = (fn, { showSuccess = false, suppressErrorStatus = [], silent = false } = {}) => async (...args) => {
   try {
     const response = await fn(...args);
 
     if (response?.success === false) {
-      showGlobalMessage(response.message || "Something went wrong", "error");
+      if (!silent) showGlobalMessage(response.message || "Something went wrong", "error");
       return { error: true, message: response.message };
     }
 
@@ -24,7 +24,7 @@ const withApiHandler = (fn, { showSuccess = false, suppressErrorStatus = [] } = 
       "An unknown error occurred";
 
     // Only show global message if not suppressed for this status
-    if (!suppressErrorStatus.includes(status)) {
+    if (!silent && !suppressErrorStatus.includes(status)) {
       showGlobalMessage(message, "error");
     }
     

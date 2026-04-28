@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getStoredToken, setStoredAuthData, clearStoredAuthData } from "@/utils/authStorage";
+import { getStoredToken, getStoredUser, setStoredAuthData, clearStoredAuthData } from "@/utils/authStorage";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
