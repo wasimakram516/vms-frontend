@@ -46,6 +46,21 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    const PUBLIC_URLS = [
+      "/auth/otp/send",
+      "/auth/otp/verify",
+      "/nda-templates/public",
+      "/registrations/form/fields",
+      "/registrations/check-nda",
+    ];
+    const isPublicRoute =
+      PUBLIC_URLS.some((u) => originalRequest.url?.includes(u)) ||
+      (originalRequest.method === "post" && /\/registrations$/.test(originalRequest.url));
+
+    if (isPublicRoute) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
