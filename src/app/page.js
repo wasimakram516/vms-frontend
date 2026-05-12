@@ -55,7 +55,15 @@ export default function HomePage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading="Visitor Portal">
+    <VisitorLayout
+    justifyContent="center"
+    mobileSubheading={
+      <>
+        Sinan Sentry
+        <br />
+        Visitor Portal
+      </>
+    }>
       <Stack spacing={4}>
         <Box 
           textAlign="center"
@@ -64,7 +72,6 @@ export default function HomePage() {
           <Typography
             variant="h4"
             fontWeight={800}
-            sx={{ fontFamily: "'Comfortaa', cursive" }}
           >
             Visitor Portal
           </Typography>
@@ -73,25 +80,67 @@ export default function HomePage() {
           </Typography>
         </Box>
 
-        <Stack spacing={3}>
+        <Stack spacing={{ xs: 2, md: 3 }}>
           <Paper
             elevation={0}
             onClick={() => {
               resetVisitorFlow();
               navigateWithLoader("/register/details");
             }}
-            sx={cardStyle}
+            sx={{
+              ...cardStyle,
+              padding: { xs: 0, md: cardStyle.p },
+              py: { xs: 1.5, md: cardStyle.p },
+              background: { xs: "transparent", md: cardStyle.background },
+              border: "none",
+              boxShadow: { xs: "none", md: cardStyle.boxShadow },
+              borderRadius: { xs: 0, md: cardStyle.borderRadius },
+              backdropFilter: { xs: "none", md: cardStyle.backdropFilter },
+              "&:hover": {
+                ...cardStyle["&:hover"],
+                transform: { xs: "none", md: "-translateY(2px)" },
+              }
+            }}
           >
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={iconBoxStyle}>
+            <Stack 
+              direction={{ xs: "column", md: "row" }} 
+              spacing={{ xs: 1, md: 2 }} 
+              alignItems="center"
+            >
+              <Box sx={{
+                ...iconBoxStyle,
+                width: { xs: 78, md: "auto" },
+                height: { xs: 78, md: "auto" },
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: { xs: "50%", md: iconBoxStyle.borderRadius },
+                border: { xs: `2px solid ${isDark ? "rgba(255,255,255,0.72)" : "rgba(0,0,0,0.1)"}`, md: "none" },
+                bgcolor: { xs: "transparent", md: iconBoxStyle.bgcolor },
+                color: "text.primary",
+                "& svg": { fontSize: { xs: 40, md: "2.1875rem" } }
+              }}>
                 <ICONS.register fontSize="large" />
               </Box>
-              <Box>
-                <Typography variant="h6" fontWeight={800}>
+              <Box textAlign={{ xs: "center", md: "left" }}>
+                <Typography 
+                  variant="h6" 
+                  fontWeight={800} 
+                  sx={{ 
+                    color: "text.primary",
+                    fontSize: { xs: "1.05rem", md: "inherit" }
+                  }}
+                >
                   New Visitor
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  First time visiting? Register now.
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    color: "text.secondary",
+                    fontSize: { xs: "0.92rem", md: "inherit" }
+                  }}
+                >
+                  First time visiting? <Box component="span" sx={{ display: { xs: "block", md: "inline" } }}>Register now.</Box>
                 </Typography>
               </Box>
             </Stack>
@@ -103,18 +152,60 @@ export default function HomePage() {
               resetVisitorFlow();
               navigateWithLoader("/register/returning");
             }}
-            sx={cardStyle}
+            sx={{
+              ...cardStyle,
+              padding: { xs: 0, md: cardStyle.p },
+              py: { xs: 1.5, md: cardStyle.p },
+              background: { xs: "transparent", md: cardStyle.background },
+              border: "none",
+              boxShadow: { xs: "none", md: cardStyle.boxShadow },
+              borderRadius: { xs: 0, md: cardStyle.borderRadius },
+              backdropFilter: { xs: "none", md: cardStyle.backdropFilter },
+              "&:hover": {
+                ...cardStyle["&:hover"],
+                transform: { xs: "none", md: "-translateY(2px)" },
+              }
+            }}
           >
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={iconBoxStyle}>
+            <Stack 
+              direction={{ xs: "column", md: "row" }} 
+              spacing={{ xs: 1, md: 2 }} 
+              alignItems="center"
+            >
+              <Box sx={{
+                ...iconBoxStyle,
+                width: { xs: 78, md: "auto" },
+                height: { xs: 78, md: "auto" },
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: { xs: "50%", md: iconBoxStyle.borderRadius },
+                border: { xs: `2px solid ${isDark ? "rgba(255,255,255,0.72)" : "rgba(0,0,0,0.1)"}`, md: "none" },
+                bgcolor: { xs: "transparent", md: iconBoxStyle.bgcolor },
+                color: "text.primary",
+                "& svg": { fontSize: { xs: 40, md: "2.1875rem" } }
+              }}>
                 <ICONS.replay fontSize="large" />
               </Box>
-              <Box>
-                <Typography variant="h6" fontWeight={800}>
+              <Box textAlign={{ xs: "center", md: "left" }}>
+                <Typography 
+                  variant="h6" 
+                  fontWeight={800} 
+                  sx={{ 
+                    color: "text.primary",
+                    fontSize: { xs: "1.05rem", md: "inherit" }
+                  }}
+                >
                   Returning Visitor
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Already have an account? Login quickly.
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    color: "text.secondary",
+                    fontSize: { xs: "0.92rem", md: "inherit" }
+                  }}
+                >
+                  Already have an account? <Box component="span" sx={{ display: { xs: "block", md: "inline" } }}>Login quickly.</Box>
                 </Typography>
               </Box>
             </Stack>

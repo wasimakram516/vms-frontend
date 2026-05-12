@@ -1,5 +1,5 @@
 "use client";
-
+export const dynamic = "force-dynamic";
 import { useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import {
@@ -137,6 +137,8 @@ export default function SummaryPage() {
   const [registration, setRegistration] = useState(null);
   const [visitorData, setVisitorData] = useState(null);
   const summaryRef = useRef(null);
+  const [qrImageFailed, setQrImageFailed] = useState(false);
+  const [qrImageUrl, setQrImageUrl] = useState(null);
 
   useEffect(() => {
     try {
@@ -154,15 +156,6 @@ export default function SummaryPage() {
     if (!summaryRef.current) return;
     const CARD_WIDTH = 430;
     const el = summaryRef.current;
-
-    // Force the live element to exactly CARD_WIDTH before capture so html2canvas
-    // measures the correct layout regardless of mobile viewport width.
-    const prevWidth = el.style.width;
-    const prevMaxWidth = el.style.maxWidth;
-    const prevMinWidth = el.style.minWidth;
-    el.style.width = `${CARD_WIDTH}px`;
-    el.style.maxWidth = `${CARD_WIDTH}px`;
-    el.style.minWidth = `${CARD_WIDTH}px`;
 
     const canvas = await html2canvas(el, {
       backgroundColor: null,
@@ -185,11 +178,6 @@ export default function SummaryPage() {
         });
       },
     });
-
-    // Restore original styles
-    el.style.width = prevWidth;
-    el.style.maxWidth = prevMaxWidth;
-    el.style.minWidth = prevMinWidth;
     const fileSafe = (v) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const identity = extractVisitorIdentity(registration, visitorData);
     const name = fileSafe(registration?.user?.fullName || visitorData?.fullName || "visitor");
@@ -206,22 +194,53 @@ export default function SummaryPage() {
     router.push("/");
   };
 
-  if (!registration || !visitorData) return null;
-
-  const visitorName = registration.user?.fullName || visitorData.fullName || "Visitor";
-  const visitorEmail = registration.user?.email || visitorData.email;
-  const rawPhone = registration.user?.phone || visitorData.phone;
-  const isoCode = (visitorData.phoneIsoCode || visitorData.iso_code || "").toLowerCase();
+  const visitorName = registration?.user?.fullName || visitorData?.fullName || "Visitor";
+  const visitorEmail = registration?.user?.email || visitorData?.email;
+  const rawPhone = registration?.user?.phone || visitorData?.phone;
+  const isoCode = (visitorData?.phoneIsoCode || visitorData?.iso_code || "").toLowerCase();
   const dialCode = COUNTRY_CODES.find((c) => c.isoCode === isoCode)?.code ?? "";
   const visitorPhone = rawPhone ? `${dialCode} ${rawPhone}`.trim() : null;
 
-  const deptName = registration.department?.name;
-  const purposeText = registration.purposeOfVisit;
-  const fromDate = registration.requestedFrom ? new Date(registration.requestedFrom) : null;
-  const toDate = registration.requestedTo ? new Date(registration.requestedTo) : null;
-  const qrToken = registration.qr_token || registration.qrToken || registration.id;
+  const deptName = registration?.department?.name;
+  const purposeText = registration?.purposeOfVisit;
+  const fromDate = registration?.requestedFrom ? new Date(registration.requestedFrom) : null;
+  const toDate = registration?.requestedTo ? new Date(registration.requestedTo) : null;
+  const qrToken = registration?.qr_token || registration?.qrToken || registration?.id;
   const hostBrandName = registration?.hostName || registration?.host?.name || registration?.hostDetails?.name;
   const visitorIdentity = extractVisitorIdentity(registration, visitorData);
+  const qrImageSrc = `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace(/\/$/, '')}/qr?token=${encodeURIComponent(qrToken || '')}&v=${encodeURIComponent(registration?.updatedAt || registration?.createdAt || registration?.id || '1')}`;
+
+  useEffect(() => {
+    let objectUrl = null;
+    let cancelled = false;
+
+    setQrImageFailed(false);
+    setQrImageUrl(null);
+
+    if (!qrToken) return undefined;
+
+    const loadQr = async () => {
+      try {
+        const response = await fetch(qrImageSrc, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`QR image request failed: ${response.status}`);
+        const blob = await response.blob();
+        if (!blob.size) throw new Error('QR image response was empty');
+        objectUrl = URL.createObjectURL(blob);
+        if (!cancelled) setQrImageUrl(objectUrl);
+      } catch {
+        if (!cancelled) setQrImageFailed(true);
+      }
+    };
+
+    loadQr();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [qrImageSrc, qrToken]);
+
+  if (!registration || !visitorData) return null;
 
   const fmtDate = (d) =>
     d ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(d) : "—";
@@ -379,7 +398,20 @@ export default function SummaryPage() {
                 <Box sx={{ p: 2, borderRadius: "26px", background: SUMMARY_COLORS.panel, border: `1px solid ${summarySectionBorder}`, boxShadow: `0 14px 30px ${alpha(SUMMARY_COLORS.primaryDeep, 0.08)}` }}>
                   <Box sx={{ display: "flex", justifyContent: "center", mb: qrToken ? 1.5 : 0 }}>
                     <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: SUMMARY_COLORS.white, border: "1px solid #e4eef1" }}>
-                      <QRCodeCanvas value={qrToken || "N/A"} size={170} bgColor={SUMMARY_COLORS.white} fgColor={SUMMARY_COLORS.primaryDark} includeMargin={false} />
+                      {/* Server-generated QR with logo (falls back to plain QR on failure) */}
+                      {qrImageFailed ? (
+                        <QRCodeCanvas value={qrToken || 'N/A'} size={170} bgColor={SUMMARY_COLORS.white} fgColor={SUMMARY_COLORS.primaryDark} includeMargin={false} />
+                      ) : qrImageUrl ? (
+                        <img
+                          src={qrImageUrl}
+                          alt="QR Code"
+                          width={170}
+                          height={170}
+                          style={{ display: 'block', objectFit: 'contain', background: SUMMARY_COLORS.white }}
+                        />
+                      ) : (
+                        <QRCodeCanvas value={qrToken || 'N/A'} size={170} bgColor={SUMMARY_COLORS.white} fgColor={SUMMARY_COLORS.primaryDark} includeMargin={false} />
+                      )}
                     </Box>
                   </Box>
                   {qrToken && (

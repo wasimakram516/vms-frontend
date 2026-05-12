@@ -257,7 +257,6 @@ export default function SinanLoader({
                 fontWeight={800}
                 textAlign="center"
                 sx={{
-                  fontFamily: "'Comfortaa', cursive",
                   fontSize: { xs: "1.05rem", sm: "1.2rem" },
                 }}
               >

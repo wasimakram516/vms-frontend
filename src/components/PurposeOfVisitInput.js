@@ -12,7 +12,6 @@ import {
 import { useEffect, useState } from "react";
 
 export const PURPOSE_OPTIONS = [
-  "Meeting",
   "Vendor Visit",
   "Contractor Work",
   "Audit / Inspection",

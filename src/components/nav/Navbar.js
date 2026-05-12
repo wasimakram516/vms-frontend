@@ -95,24 +95,13 @@ export default function Navbar() {
               spacing={1}
               sx={{ cursor: "pointer", width: { xs: 180, sm: "auto" } }}
             >
-              <Box
-                component="img"
-                src={brandLogo}
-                alt="Sinan Sentry logo mark"
-                sx={{
-                  width: { xs: 30, sm: 34 },
-                  height: { xs: 30, sm: 34 },
-                  objectFit: "contain",
-                  flexShrink: 0,
-                }}
-              />
               <Typography
                 variant="body1"
                 color="text.primary"
                 noWrap
                 sx={{ display: { xs: "block", sm: "none" } }}
               >
-                {"Sinan Sentry"}
+                {"Sentry Visitor Portal"}
               </Typography>
 
               <Typography
@@ -122,7 +111,7 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "none", sm: "block" } }}
               >
-                {"Sinan Sentry"}
+                {"Sentry Visitor Portal"}
               </Typography>
             </Stack>
           </Link>

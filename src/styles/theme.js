@@ -6,6 +6,7 @@ export const getTheme = (mode) => {
   const darkSurface = "rgba(23, 30, 39, 0.82)";
   const darkSurfaceStrong = "rgba(28, 36, 47, 0.9)";
   const darkBorder = "rgba(255, 255, 255, 0.1)";
+  const fontFamily = '"DINNextLTArabic", "Segoe UI", Arial, sans-serif';
 
   return createTheme({
     palette: {
@@ -30,7 +31,7 @@ export const getTheme = (mode) => {
     },
 
     typography: {
-      fontFamily: "'Comfortaa', cursive, sans-serif",
+      fontFamily,
       h1: { fontWeight: 700 },
       h2: { fontWeight: 700 },
       h3: { fontWeight: 700 },
@@ -48,6 +49,10 @@ export const getTheme = (mode) => {
           body: {
             transition: "background-color 0.3s ease, color 0.3s ease",
             backgroundColor: isDark ? darkBackground : "#f8f9fa",
+            fontFamily,
+          },
+          html: {
+            fontFamily,
           },
         },
       },

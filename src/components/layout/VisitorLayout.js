@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Typography, GlobalStyles } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { motion } from "framer-motion";
 import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
@@ -10,14 +10,6 @@ const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
 const bgPortrait  = "/bg-portrait.webp";
 const bgLandscape = "/bg-landscape.webp";
 const brandLogoSrc = "/logo-light.png";
-
-const fontStyles = (
-  <GlobalStyles
-    styles={`
-      @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap');
-    `}
-  />
-);
 
 export default function VisitorLayout({ 
   children, 
@@ -34,7 +26,6 @@ export default function VisitorLayout({
 
   return (
     <>
-      {fontStyles}
       <Box
         sx={{
           height: "100%",
@@ -129,7 +120,6 @@ export default function VisitorLayout({
               >
                 <Typography
                   sx={{
-                    fontFamily: "'Comfortaa', cursive",
                     fontSize: { xs: "1.45rem", sm: "1.7rem", md: "3rem" },
                     fontWeight: 800,
                     color: "#fff",
@@ -236,7 +226,6 @@ export default function VisitorLayout({
                     <Typography
                       variant="subtitle2"
                       sx={{
-                        fontFamily: "'Comfortaa', cursive",
                         fontWeight: 800,
                         color: isDark ? "#ffffff" : "text.primary",
                         mb: 1,
