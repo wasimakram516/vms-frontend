@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Typography } from "@mui/material";
+import { Box, GlobalStyles, Typography } from "@mui/material";
 import { motion } from "framer-motion";
 import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";

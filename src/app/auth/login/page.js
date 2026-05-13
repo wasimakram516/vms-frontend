@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   CircularProgress,
-  GlobalStyles,
   IconButton,
   InputAdornment,
   TextField,
