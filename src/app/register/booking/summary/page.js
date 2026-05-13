@@ -157,6 +157,13 @@ export default function SummaryPage() {
     const CARD_WIDTH = 430;
     const el = summaryRef.current;
 
+    const prevWidth = el.style.width;
+    const prevMaxWidth = el.style.maxWidth;
+    const prevMinWidth = el.style.minWidth;
+    el.style.width = `${CARD_WIDTH}px`;
+    el.style.maxWidth = `${CARD_WIDTH}px`;
+    el.style.minWidth = `${CARD_WIDTH}px`;
+
     const canvas = await html2canvas(el, {
       backgroundColor: null,
       useCORS: true,
@@ -167,7 +174,6 @@ export default function SummaryPage() {
         clonedEl.style.width = `${CARD_WIDTH}px`;
         clonedEl.style.maxWidth = `${CARD_WIDTH}px`;
         clonedEl.style.minWidth = `${CARD_WIDTH}px`;
-        // Replace SVG icons with unicode chars (html2canvas SVG rendering is unreliable)
         clonedEl.querySelectorAll("[data-contact-icon]").forEach((node) => {
           const type = node.getAttribute("data-contact-icon");
           const span = _doc.createElement("span");
@@ -178,6 +184,10 @@ export default function SummaryPage() {
         });
       },
     });
+
+    el.style.width = prevWidth;
+    el.style.maxWidth = prevMaxWidth;
+    el.style.minWidth = prevMinWidth;
     const fileSafe = (v) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const identity = extractVisitorIdentity(registration, visitorData);
     const name = fileSafe(registration?.user?.fullName || visitorData?.fullName || "visitor");
@@ -303,7 +313,6 @@ export default function SummaryPage() {
             <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 360 }}>
               Application submitted successfully. Save your summary card below.
             </Typography>
-            {/* Status chip */}
             <Box
               sx={{
                 mt: 0.5,
@@ -334,7 +343,6 @@ export default function SummaryPage() {
                 boxShadow: `0 28px 70px ${alpha(SUMMARY_COLORS.primaryDeep, 0.24)}`,
               }}
             >
-              {/* Header */}
               <Box
                 sx={{
                   position: "relative",
@@ -387,7 +395,6 @@ export default function SummaryPage() {
                 </Box>
               </Box>
 
-              {/* Body */}
               <Box sx={{ px: { xs: 2.5, sm: 3 }, py: 3 }}>
                 <Box sx={{ mb: 2.25, borderRadius: 4, overflow: "hidden", bgcolor: SUMMARY_COLORS.panel, border: `1px solid ${summarySectionBorder}` }}>
                   {summaryRows.map((row, index) => (
@@ -431,7 +438,6 @@ export default function SummaryPage() {
             </Paper>
           </Box>
 
-          {/* Buttons — Home is CTA, Download is secondary */}
           <Stack spacing={1.25}>
             <Button
               variant="contained"

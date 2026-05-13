@@ -9,6 +9,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useEffect } from "react";
 import { VisitorProvider } from "@/contexts/VisitorContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { KitchenNotificationProvider } from "@/contexts/KitchenNotificationContext";
 
@@ -130,6 +131,7 @@ export default function ClientRoot({ children }) {
 
   return (
     <>
+      <LanguageProvider>
       <MessageProvider>
         <SocketProvider>
           <ThemeRegistry>
@@ -147,6 +149,7 @@ export default function ClientRoot({ children }) {
           </ThemeRegistry>
         </SocketProvider>
       </MessageProvider>
+      </LanguageProvider>
     </>
   );
 }

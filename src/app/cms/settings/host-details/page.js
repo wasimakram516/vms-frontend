@@ -54,6 +54,11 @@ const emptyForm = () => ({
   contactPersonPhone: "",
   isKitchenModuleEnabled: true,
   ndaNotificationEmail: "",
+  exitTimeoutEnabled: false,
+  exitTimeoutMinutes: 60,
+  workingHoursEnabled: false,
+  workingHoursStart: 8,
+  workingHoursEnd: 17,
 });
 
 const emptyIsoCodes = () => ({
@@ -154,6 +159,11 @@ export default function HostDetailsPage() {
       contactPersonPhone: cpPhoneNo,
       isKitchenModuleEnabled: host.isKitchenModuleEnabled ?? true,
       ndaNotificationEmail: host.ndaNotificationEmail || "",
+      exitTimeoutEnabled: host.exitTimeoutEnabled ?? false,
+      exitTimeoutMinutes: host.exitTimeoutMinutes ?? 60,
+      workingHoursEnabled: host.workingHoursEnabled ?? false,
+      workingHoursStart: host.workingHoursStart ?? 8,
+      workingHoursEnd: host.workingHoursEnd ?? 17,
     });
     setLogoFile(null);
     setLogoPreview(host.logoUrl || "");
@@ -273,6 +283,11 @@ export default function HostDetailsPage() {
         contactPersonPhone: buildPhone(form.contactPersonPhone, "contactPersonPhone"),
         isKitchenModuleEnabled: form.isKitchenModuleEnabled,
         ndaNotificationEmail: form.ndaNotificationEmail.trim() || undefined,
+        exitTimeoutEnabled: form.exitTimeoutEnabled,
+        exitTimeoutMinutes: form.exitTimeoutEnabled ? Number(form.exitTimeoutMinutes) : undefined,
+        workingHoursEnabled: form.workingHoursEnabled,
+        workingHoursStart: form.workingHoursEnabled ? Number(form.workingHoursStart) : undefined,
+        workingHoursEnd: form.workingHoursEnabled ? Number(form.workingHoursEnd) : undefined,
       };
 
       if (isEdit) {
@@ -426,6 +441,36 @@ export default function HostDetailsPage() {
                           variant="outlined"
                           sx={{ mt: 0.5, fontWeight: 600, fontSize: "0.72rem" }}
                         />
+                      }
+                    />
+                  </ListItem>
+                  <ListItem disablePadding sx={{ py: 0.6 }}>
+                    <ListItemIcon sx={{ minWidth: 36, color: "text.secondary" }}>
+                      <ICONS.time fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Exit Timeout"
+                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}
+                      secondaryTypographyProps={{ component: "div" }}
+                      secondary={
+                        host.exitTimeoutEnabled
+                          ? <Chip label={`Enabled — ${host.exitTimeoutMinutes ?? 60} min grace`} size="small" color="warning" variant="outlined" sx={{ mt: 0.5, fontWeight: 600, fontSize: "0.72rem" }} />
+                          : <Chip label="Disabled" size="small" color="default" variant="outlined" sx={{ mt: 0.5, fontWeight: 600, fontSize: "0.72rem" }} />
+                      }
+                    />
+                  </ListItem>
+                  <ListItem disablePadding sx={{ py: 0.6 }}>
+                    <ListItemIcon sx={{ minWidth: 36, color: "text.secondary" }}>
+                      <ICONS.time fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Working Hours"
+                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}
+                      secondaryTypographyProps={{ component: "div" }}
+                      secondary={
+                        host.workingHoursEnabled
+                          ? <Chip label={`Enabled — ${String(host.workingHoursStart ?? 8).padStart(2,"0")}:00 – ${String(host.workingHoursEnd ?? 17).padStart(2,"0")}:00`} size="small" color="info" variant="outlined" sx={{ mt: 0.5, fontWeight: 600, fontSize: "0.72rem" }} />
+                          : <Chip label="Disabled" size="small" color="default" variant="outlined" sx={{ mt: 0.5, fontWeight: 600, fontSize: "0.72rem" }} />
                       }
                     />
                   </ListItem>
@@ -652,6 +697,80 @@ export default function HostDetailsPage() {
                 </Box>
               }
             />
+            <FormControlLabel
+              sx={{ mt: 1 }}
+              control={
+                <Switch
+                  checked={form.exitTimeoutEnabled}
+                  onChange={(e) => setForm((p) => ({ ...p, exitTimeoutEnabled: e.target.checked }))}
+                  color="warning"
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>Exit Timeout Alerts</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Notify SuperAdmins when a checked-in visitor has not scanned out within the grace period after their approved departure time.
+                  </Typography>
+                </Box>
+              }
+            />
+            {form.exitTimeoutEnabled && (
+              <TextField
+                label="Grace period (minutes)"
+                type="number"
+                size="small"
+                value={form.exitTimeoutMinutes}
+                onChange={(e) => setForm((p) => ({ ...p, exitTimeoutMinutes: e.target.value }))}
+                onBlur={(e) => {
+                  const v = Math.max(1, Math.min(1440, Number(e.target.value) || 60));
+                  setForm((p) => ({ ...p, exitTimeoutMinutes: v }));
+                }}
+                inputProps={{ min: 1, max: 1440 }}
+                helperText="Time after approvedTo before the alert fires. Min 1, max 1440 (24h)."
+                sx={{ mt: 1.5, maxWidth: 260 }}
+              />
+            )}
+            <FormControlLabel
+              sx={{ mt: 1 }}
+              control={
+                <Switch
+                  checked={form.workingHoursEnabled}
+                  onChange={(e) => setForm((p) => ({ ...p, workingHoursEnabled: e.target.checked }))}
+                  color="info"
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>Working Hours Enforcement</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Flag and notify SuperAdmins when check-ins or check-outs happen outside the configured window (client timezone).
+                  </Typography>
+                </Box>
+              }
+            />
+            {form.workingHoursEnabled && (
+              <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
+                <TextField
+                  label="Start hour (0–23)"
+                  type="number"
+                  size="small"
+                  value={form.workingHoursStart}
+                  onChange={(e) => setForm((p) => ({ ...p, workingHoursStart: e.target.value }))}
+                  helperText={form.workingHoursStart !== "" ? `${String(Number(form.workingHoursStart)).padStart(2, "0")}:00` : ""}
+                  sx={{ minWidth: 190 }}
+                />
+                <TextField
+                  label="End hour (1–24)"
+                  type="number"
+                  size="small"
+                  value={form.workingHoursEnd}
+                  onChange={(e) => setForm((p) => ({ ...p, workingHoursEnd: e.target.value }))}
+                  helperText={form.workingHoursEnd !== "" ? `${String(Number(form.workingHoursEnd) === 24 ? 0 : Number(form.workingHoursEnd)).padStart(2, "0")}:00` : ""}
+                  sx={{ minWidth: 190 }}
+                />
+              </Stack>
+            )}
           </DialogContent>
 
           <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>

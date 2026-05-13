@@ -46,6 +46,11 @@ export const verifyOtp = withApiHandler(async (target, code) => {
   return data;
 });
 
+export const visitorEditRegistration = withApiHandler(async (id, payload) => {
+  const { data } = await api.patch(`/registrations/${id}/visitor-edit`, payload);
+  return data?.data ?? data;
+});
+
 export const createRegistration = withApiHandler(
   async (payload) => {
     const { data } = await api.post("/registrations", payload);
@@ -78,6 +83,10 @@ export const mapRegistration = (r) => {
     department_id: r.departmentId,
     access_level: r.accessLevel,
     access_level_id: r.accessLevelId,
+    access_levels: r.accessLevels ?? [],
+    vehicle_plate: r.vehiclePlate ?? null,
+    approval_note: r.approvalNote ?? null,
+    vip_reason: r.vipReason ?? null,
     admin_approved_at: r.adminApprovedAt,
     admin_approved_by_user_id: r.adminApprovedByUserId,
     admin_rejection_reason: r.adminRejectionReason,
@@ -219,3 +228,30 @@ export const verifyRegistrationById = withApiHandler(async (idNumber) => {
     visitEnded: result.visitEnded,
   }));
 });
+
+export const getCurrentlyInside = withApiHandler(async () => {
+  const res = await api.get('/registrations/currently-inside');
+  const payload = res.data?.data ?? res.data ?? [];
+  return Array.isArray(payload) ? payload.map(mapRegistration) : [];
+});
+
+export async function exportRegistrationsXlsx(ids) {
+  const res = await api.post(
+    '/registrations/export-registrations',
+    {
+      ids,
+      tzOffset: new Date().getTimezoneOffset(),
+      tzName: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    { responseType: 'blob' },
+  );
+  const date = new Date().toISOString().slice(0, 10);
+  const url = URL.createObjectURL(new Blob([res.data]));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `registrations-${date}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

@@ -55,17 +55,9 @@ export default function HomePage() {
   };
 
   return (
-    <VisitorLayout
-    justifyContent="center"
-    mobileSubheading={
-      <>
-        Sinan Sentry
-        <br />
-        Visitor Portal
-      </>
-    }>
+    <VisitorLayout justifyContent="center" mobileSubheading="Visitor Gateway">
       <Stack spacing={4}>
-        <Box 
+        <Box
           textAlign="center"
           sx={{ display: { xs: "none", md: "block" } }}
         >
@@ -73,10 +65,10 @@ export default function HomePage() {
             variant="h4"
             fontWeight={800}
           >
-            Visitor Portal
+            Visitor Gateway
           </Typography>
           <Typography color="text.secondary" mt={1}>
-            Choose how you would like to proceed
+            Experience a seamless visitor journey at Sinan. Please select your visit type to proceed.
           </Typography>
         </Box>
 
@@ -133,14 +125,8 @@ export default function HomePage() {
                 >
                   New Visitor
                 </Typography>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    color: "text.secondary",
-                    fontSize: { xs: "0.92rem", md: "inherit" }
-                  }}
-                >
-                  First time visiting? <Box component="span" sx={{ display: { xs: "block", md: "inline" } }}>Register now.</Box>
+                <Typography variant="body2" color="text.secondary">
+                  Visiting for the first time? Register now.
                 </Typography>
               </Box>
             </Stack>
@@ -198,14 +184,8 @@ export default function HomePage() {
                 >
                   Returning Visitor
                 </Typography>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    color: "text.secondary",
-                    fontSize: { xs: "0.92rem", md: "inherit" }
-                  }}
-                >
-                  Already have an account? <Box component="span" sx={{ display: { xs: "block", md: "inline" } }}>Login quickly.</Box>
+                <Typography variant="body2" color="text.secondary">
+                  Already have an account? Sign in quickly.
                 </Typography>
               </Box>
             </Stack>

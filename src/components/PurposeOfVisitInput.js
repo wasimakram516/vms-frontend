@@ -10,6 +10,7 @@ import {
   FormHelperText,
 } from "@mui/material";
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export const PURPOSE_OPTIONS = [
   "Vendor Visit",
@@ -24,6 +25,21 @@ export const PURPOSE_OPTIONS = [
   "Other",
 ];
 
+// Map from English option value to translation key
+const PURPOSE_KEY_MAP = {
+  "Meeting": "purposeMeeting",
+  "Vendor Visit": "purposeVendorVisit",
+  "Contractor Work": "purposeContractorWork",
+  "Audit / Inspection": "purposeAuditInspection",
+  "Delivery": "purposeDelivery",
+  "Interview": "purposeInterview",
+  "Training": "purposeTraining",
+  "Maintenance": "purposeMaintenance",
+  "Government Visit": "purposeGovernmentVisit",
+  "VIP Visit": "purposeVipVisit",
+  "Other": "purposeOther",
+};
+
 const PRESET_VALUES = PURPOSE_OPTIONS.filter((o) => o !== "Other");
 
 function resolveSelect(value) {
@@ -36,18 +52,6 @@ function resolveCustom(value) {
   return value;
 }
 
-/**
- * PurposeOfVisitInput
- *
- * Props:
- *   value      – the resolved purpose string (e.g. "Meeting" or a custom text)
- *   onChange   – called with the resolved string whenever the user changes anything
- *   error      – boolean (show error state)
- *   helperText – error message to display
- *   disabled   – disable all inputs
- *   required   – mark fields required
- *   rounded    – use borderRadius: 30 (visitor form style) instead of 2
- */
 export default function PurposeOfVisitInput({
   value = "",
   onChange,
@@ -58,11 +62,11 @@ export default function PurposeOfVisitInput({
   rounded = false,
 }) {
   const radius = rounded ? 30 : 2;
+  const { t } = useLanguage();
 
   const [select, setSelect] = useState(() => resolveSelect(value));
   const [custom, setCustom] = useState(() => resolveCustom(value));
 
-  // Sync when parent resets or pre-fills the value (e.g. edit mode, returning visitor)
   useEffect(() => {
     setSelect(resolveSelect(value));
     setCustom(resolveCustom(value));
@@ -89,17 +93,17 @@ export default function PurposeOfVisitInput({
   return (
     <Stack spacing={1.5}>
       <FormControl fullWidth required={required} error={selectError}>
-        <InputLabel>Purpose of Visit</InputLabel>
+        <InputLabel>{t("purposeOfVisit")}</InputLabel>
         <Select
           value={select}
-          label="Purpose of Visit"
+          label={t("purposeOfVisit")}
           onChange={(e) => handleSelectChange(e.target.value)}
           disabled={disabled}
           sx={{ borderRadius: radius }}
         >
           {PURPOSE_OPTIONS.map((opt) => (
             <MenuItem key={opt} value={opt}>
-              {opt}
+              {t(PURPOSE_KEY_MAP[opt]) || opt}
             </MenuItem>
           ))}
         </Select>
@@ -108,7 +112,7 @@ export default function PurposeOfVisitInput({
 
       {select === "Other" && (
         <TextField
-          label="Please specify"
+          label={t("pleaseSpecify")}
           fullWidth
           required={required}
           value={custom}

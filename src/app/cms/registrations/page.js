@@ -72,6 +72,7 @@ import {
   getRegistrationActivityLogs,
   mapRegistration,
   exportVisitorHistoryCsv,
+  exportRegistrationsXlsx,
 } from "@/services/registrationService";
 import { getAccessLevels } from "@/services/accessLevelService";
 import { getDepartments } from "@/services/departmentService";
@@ -271,9 +272,12 @@ export default function CmsRegistrationsPage() {
   const [isListRefreshing, setIsListRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [requestDateFilter, setRequestDateFilter] = useState("");
+  const [vipFastTrackOnly, setVipFastTrackOnly] = useState(false);
+  const [requestDateFrom, setRequestDateFrom] = useState("");
+  const [requestDateTo, setRequestDateTo] = useState("");
   const [requestTimeFilter, setRequestTimeFilter] = useState({ hour12: "", minute: "00", ampm: "AM", enabled: false });
-  const [approvedDateFilter, setApprovedDateFilter] = useState("");
+  const [approvedDateFrom, setApprovedDateFrom] = useState("");
+  const [approvedDateTo, setApprovedDateTo] = useState("");
   const [approvedTimeFilter, setApprovedTimeFilter] = useState({ hour12: "", minute: "00", ampm: "AM", enabled: false });
 
   // Preset date range filter (sent to backend as createdAt range)
@@ -610,6 +614,23 @@ export default function CmsRegistrationsPage() {
     }
   };
 
+  // ── Bulk XLSX export ─────────────────────────────────────────────────────
+
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+
+  const handleExportCsvBulk = async () => {
+    const ids = filtered.map((r) => r.id).filter(Boolean);
+    if (!ids.length) return;
+    setExportingXlsx(true);
+    try {
+      await exportRegistrationsXlsx(ids);
+    } catch {
+      showMessage("Export failed. Please try again.", "error");
+    } finally {
+      setExportingXlsx(false);
+    }
+  };
+
   // ── Timeline ──────────────────────────────────────────────────────────────
 
   const openTimeline = async (registrationId, visitorName) => {
@@ -796,33 +817,31 @@ export default function CmsRegistrationsPage() {
     const matched = Array.isArray(data) ? data.filter((r) => {
       const matchSearch = [r.full_name, r.email, r.purpose_of_visit].join(" ").toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" || r.status === statusFilter;
+      const matchVipFastTrack = !vipFastTrackOnly || !!(r.is_vip_fast_track || r.isVipFastTrack);
 
-      const filterBySchedule = (filterDate, filterTime, fromField, toField) => {
-        if (!filterDate && !filterTime.enabled) return true;
-        const fromDateStr = getLocalDate(fromField);
-        const toDateStr = getLocalDate(toField);
-        if (filterDate) {
-          const fDate = typeof filterDate === "string" ? filterDate : getLocalDate(filterDate);
-          if (fDate < fromDateStr || fDate > toDateStr) return false;
-        }
+      const filterBySchedule = (dateFrom, dateTo, filterTime, fromField, toField) => {
+        if (!dateFrom && !dateTo && !filterTime.enabled) return true;
+        const visitFromDate = getLocalDate(fromField);
+        const visitToDate   = getLocalDate(toField);
+        if (dateFrom && visitFromDate < dateFrom) return false;
+        if (dateTo   && visitFromDate > dateTo)   return false;
         if (filterTime.enabled && filterTime.hour12) {
           const fTime24 = `${String(filterTime.ampm === "PM" ? (parseInt(filterTime.hour12) % 12) + 12 : parseInt(filterTime.hour12) % 12).padStart(2, "0")}:${filterTime.minute}:00`;
           const fromTime = getLocalTime(fromField) + ":00";
-          const toTime = getLocalTime(toField) + ":00";
-          if (fromDateStr === toDateStr) {
+          const toTime   = getLocalTime(toField)   + ":00";
+          if (visitFromDate === visitToDate) {
             if (fTime24 < fromTime || fTime24 > toTime) return false;
           } else {
-            const fDate = typeof filterDate === "string" ? filterDate : getLocalDate(filterDate);
-            if (fDate === fromDateStr && fTime24 < fromTime) return false;
-            if (fDate === toDateStr && fTime24 > toTime) return false;
+            if (dateFrom && visitFromDate === dateFrom && fTime24 < fromTime) return false;
+            if (dateTo   && visitToDate   === dateTo   && fTime24 > toTime)   return false;
           }
         }
         return true;
       };
 
-      const matchRequest = filterBySchedule(requestDateFilter, requestTimeFilter, r.requested_from, r.requested_to);
-      const matchApproved = filterBySchedule(approvedDateFilter, approvedTimeFilter, r.approved_from, r.approved_to);
-      return matchSearch && matchStatus && matchRequest && matchApproved;
+      const matchRequest  = filterBySchedule(requestDateFrom, requestDateTo, requestTimeFilter, r.requested_from, r.requested_to);
+      const matchApproved = filterBySchedule(approvedDateFrom, approvedDateTo, approvedTimeFilter, r.approved_from, r.approved_to);
+      return matchSearch && matchStatus && matchVipFastTrack && matchRequest && matchApproved;
     }) : [];
 
     const uniqueByVisitor = [];
@@ -836,7 +855,7 @@ export default function CmsRegistrationsPage() {
       }
     }
     return uniqueByVisitor;
-  }, [data, search, statusFilter, requestDateFilter, requestTimeFilter, approvedDateFilter, approvedTimeFilter]);
+  }, [data, search, statusFilter, vipFastTrackOnly, requestDateFrom, requestDateTo, requestTimeFilter, approvedDateFrom, approvedDateTo, approvedTimeFilter]);
 
   const pagedRows = useMemo(() => filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage), [filtered, page, rowsPerPage]);
 
@@ -866,10 +885,11 @@ export default function CmsRegistrationsPage() {
 
   const activeFiltersCount =
     (statusFilter !== "all" ? 1 : 0) +
+    (vipFastTrackOnly ? 1 : 0) +
     (datePreset !== "all" ? 1 : 0) +
-    (requestDateFilter ? 1 : 0) +
+    ((requestDateFrom || requestDateTo) ? 1 : 0) +
     (requestTimeFilter.enabled ? 1 : 0) +
-    (approvedDateFilter ? 1 : 0) +
+    ((approvedDateFrom || approvedDateTo) ? 1 : 0) +
     (approvedTimeFilter.enabled ? 1 : 0);
 
   const handleChangeRowsPerPage = (event) => {
@@ -951,30 +971,21 @@ export default function CmsRegistrationsPage() {
         )}
       </Stack>
 
+      <TextField
+        fullWidth
+        size="small"
+        variant="outlined"
+        placeholder="Search name, email, purpose..."
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+        InputProps={{ startAdornment: <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} /> }}
+        sx={{ mb: 2 }}
+      />
+
       <ListToolbar
         selectedCount={0}
         showingCount={pagedRows.length}
         totalCount={filtered.length}
-        sx={{
-          gridTemplateColumns: {
-            xs: "1fr",
-            md: (search || statusFilter !== "all" || requestDateFilter || approvedDateFilter || requestTimeFilter.enabled || approvedTimeFilter.enabled)
-              ? "minmax(0, 0.6fr) minmax(280px, 400px) minmax(0, 1.4fr)"
-              : "minmax(0, 1fr) minmax(280px, 420px) minmax(0, 1fr)",
-          },
-        }}
-        searchSlot={
-          <TextField
-            fullWidth
-            size="small"
-            variant="outlined"
-            placeholder="Search name, email, purpose..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-            InputProps={{ startAdornment: <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} /> }}
-            sx={{ maxWidth: { md: 380 } }}
-          />
-        }
         actionsSlot={
           <>
             <Button variant="outlined" startIcon={<ICONS.filter />} onClick={() => setFilterModalOpen(true)} sx={{ minWidth: { md: 120 }, whiteSpace: "nowrap", height: 40 }}>
@@ -992,18 +1003,31 @@ export default function CmsRegistrationsPage() {
                 {exportingBadges ? "Exporting..." : "Export Badges"}
               </Button>
             )}
-            {(search || statusFilter !== "all" || requestDateFilter || approvedDateFilter) && (
+            <Button
+              variant="outlined"
+              color="success"
+              startIcon={exportingXlsx ? <CircularProgress size={18} color="inherit" /> : <ICONS.download />}
+              onClick={handleExportCsvBulk}
+              disabled={data.length === 0 || exportingXlsx}
+              sx={{ whiteSpace: "nowrap" }}
+            >
+              {exportingXlsx ? "Exporting…" : (search || statusFilter !== "all" || vipFastTrackOnly || customFrom || customTo || requestDateFrom || requestDateTo || requestTimeFilter.enabled || approvedDateFrom || approvedDateTo || approvedTimeFilter.enabled)
+                ? "Export Filtered"
+                : "Export All"}
+            </Button>
+            {(search || statusFilter !== "all" || vipFastTrackOnly || requestDateFrom || requestDateTo || approvedDateFrom || approvedDateTo) && (
               <Tooltip title="Clear All Filters">
                 <Button
                   size="small"
                   color="secondary"
                   startIcon={<ICONS.close />}
                   onClick={() => {
-                    setSearch(""); setStatusFilter("all"); setDatePreset("all");
+                    setSearch(""); setStatusFilter("all"); setVipFastTrackOnly(false); setDatePreset("all");
                     setCustomFrom(""); setCustomTo("");
-                    setRequestDateFilter("");
+                    setRequestDateFrom(""); setRequestDateTo("");
                     setRequestTimeFilter({ ...requestTimeFilter, enabled: false });
-                    setApprovedDateFilter(""); setApprovedTimeFilter({ ...approvedTimeFilter, enabled: false });
+                    setApprovedDateFrom(""); setApprovedDateTo("");
+                    setApprovedTimeFilter({ ...approvedTimeFilter, enabled: false });
                     setPage(0);
                   }}
                 >
@@ -1183,8 +1207,65 @@ export default function CmsRegistrationsPage() {
             </TextField>
           </Box>
           <Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={vipFastTrackOnly}
+                  onChange={(e) => { setVipFastTrackOnly(e.target.checked); setPage(0); }}
+                  color="warning"
+                />
+              }
+              label={
+                <Typography variant="subtitle2" fontWeight={700}>
+                  VIP Fast Track Only
+                </Typography>
+              }
+            />
+          </Box>
+          <Box>
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, ml: 1 }}>Registration Date Range</Typography>
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                label="From"
+                type="date"
+                size="small"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={customFrom}
+                onChange={(e) => { setCustomFrom(e.target.value); setDatePreset("custom"); setPage(0); }}
+                inputProps={{ max: customTo || undefined }}
+              />
+              <TextField
+                label="To"
+                type="date"
+                size="small"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={customTo}
+                onChange={(e) => { setCustomTo(e.target.value); setDatePreset("custom"); setPage(0); }}
+                inputProps={{ min: customFrom || undefined }}
+              />
+            </Stack>
+          </Box>
+          <Divider />
+          <Box>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, ml: 1 }}>Requested Visit Date</Typography>
-            <DateTimeFieldFlatpickr placeholder="Select Date" value={requestDateFilter} onChange={(val) => { setRequestDateFilter(val); setPage(0); }} enableTime={false} />
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                label="From" type="date" size="small" fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={requestDateFrom}
+                onChange={(e) => { setRequestDateFrom(e.target.value); setPage(0); }}
+                inputProps={{ max: requestDateTo || undefined }}
+              />
+              <TextField
+                label="To" type="date" size="small" fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={requestDateTo}
+                onChange={(e) => { setRequestDateTo(e.target.value); setPage(0); }}
+                inputProps={{ min: requestDateFrom || undefined }}
+              />
+            </Stack>
           </Box>
           <Box>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1, ml: 1 }}>
@@ -1206,7 +1287,22 @@ export default function CmsRegistrationsPage() {
           <Divider />
           <Box>
             <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, ml: 1 }}>Approved Visit Date</Typography>
-            <DateTimeFieldFlatpickr placeholder="Select Date" value={approvedDateFilter} onChange={(val) => { setApprovedDateFilter(val); setPage(0); }} enableTime={false} />
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                label="From" type="date" size="small" fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={approvedDateFrom}
+                onChange={(e) => { setApprovedDateFrom(e.target.value); setPage(0); }}
+                inputProps={{ max: approvedDateTo || undefined }}
+              />
+              <TextField
+                label="To" type="date" size="small" fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={approvedDateTo}
+                onChange={(e) => { setApprovedDateTo(e.target.value); setPage(0); }}
+                inputProps={{ min: approvedDateFrom || undefined }}
+              />
+            </Stack>
           </Box>
           <Box>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1, ml: 1 }}>
@@ -1226,7 +1322,7 @@ export default function CmsRegistrationsPage() {
             </Stack>
           </Box>
           <Button variant="contained" fullWidth startIcon={<ICONS.filter />} onClick={() => setFilterModalOpen(false)} sx={{ mt: 2, height: 48, borderRadius: 3, fontWeight: 800 }}>Apply</Button>
-          <Button variant="text" fullWidth color="inherit" startIcon={<ICONS.clear />} onClick={() => { setStatusFilter("all"); setDatePreset("all"); setCustomFrom(""); setCustomTo(""); setRequestDateFilter(""); setRequestTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false }); setApprovedDateFilter(""); setApprovedTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false }); setFilterModalOpen(false); setPage(0); }} sx={{ fontWeight: 700, opacity: 0.6 }}>Clear</Button>
+          <Button variant="text" fullWidth color="inherit" startIcon={<ICONS.clear />} onClick={() => { setStatusFilter("all"); setVipFastTrackOnly(false); setDatePreset("all"); setCustomFrom(""); setCustomTo(""); setRequestDateFrom(""); setRequestDateTo(""); setRequestTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false }); setApprovedDateFrom(""); setApprovedDateTo(""); setApprovedTimeFilter({ hour12: "", minute: "00", ampm: "AM", enabled: false }); setFilterModalOpen(false); setPage(0); }} sx={{ fontWeight: 700, opacity: 0.6 }}>Clear</Button>
         </Stack>
       </FilterModal>
 
@@ -1328,6 +1424,12 @@ export default function CmsRegistrationsPage() {
                         {selected.access_level?.name || selected.accessLevel?.name ? (
                           <InfoItem label="Access Level" value={selected.access_level?.name || selected.accessLevel?.name} icon={<ICONS.key fontSize="small" />} />
                         ) : null}
+                        {selected.vehicle_plate && (
+                          <InfoItem label="Vehicle Plate" value={selected.vehicle_plate} icon={<ICONS.parking fontSize="small" />} />
+                        )}
+                        {selected.vip_reason && (
+                          <InfoItem label="VIP Reason" value={selected.vip_reason} icon={<ICONS.star fontSize="small" />} />
+                        )}
                       </Box>
                     </Box>
 
@@ -1356,6 +1458,13 @@ export default function CmsRegistrationsPage() {
                       <Alert severity="error" variant="outlined" sx={{ borderRadius: 2.5 }}>
                         <Typography variant="caption" fontWeight={700} display="block">REJECTION REASON</Typography>
                         <Typography variant="body2">{selected.rejection_reason || selected.adminRejectionReason}</Typography>
+                      </Alert>
+                    )}
+
+                    {selected.approval_note && (
+                      <Alert severity="info" variant="outlined" sx={{ borderRadius: 2.5 }}>
+                        <Typography variant="caption" fontWeight={700} display="block">APPROVER NOTE</Typography>
+                        <Typography variant="body2">{selected.approval_note}</Typography>
                       </Alert>
                     )}
 
@@ -1419,6 +1528,10 @@ export default function CmsRegistrationsPage() {
                       checked_out: "warning",
                       visit_ended: "error",
                     };
+                    const actionLabels = {
+                      checked_in: "Check In",
+                      checked_out: "Check Out",
+                    };
                     return (
                       <Button
                         key={targetStatus}
@@ -1430,7 +1543,7 @@ export default function CmsRegistrationsPage() {
                         onClick={() => openStatusTransition(targetStatus)}
                         sx={{ borderRadius: 30, fontWeight: 700, whiteSpace: "nowrap" }}
                       >
-                        {cfg.label}
+                        {actionLabels[targetStatus] ?? cfg.label}
                       </Button>
                     );
                   })
@@ -2022,6 +2135,9 @@ function PreviousVisitCard({ visit, onViewTimeline }) {
         <InfoItem label="Access Level" value={accessLevelName || "-"} icon={<ICONS.key fontSize="small" />} />
         {visit.rejection_reason ? (
           <InfoItem label="Rejection Reason" value={visit.rejection_reason} icon={<ICONS.close fontSize="small" />} sx={{ gridColumn: { md: "1 / -1" } }} />
+        ) : null}
+        {visit.approval_note ? (
+          <InfoItem label="Approver Note" value={visit.approval_note} icon={<ICONS.info fontSize="small" />} sx={{ gridColumn: { md: "1 / -1" } }} />
         ) : null}
       </Box>
 

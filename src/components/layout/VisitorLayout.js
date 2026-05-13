@@ -11,6 +11,35 @@ const bgPortrait  = "/bg-portrait.webp";
 const bgLandscape = "/bg-landscape.webp";
 const brandLogoSrc = "/logo-light.png";
 
+const fontStyles = (
+  <GlobalStyles
+    styles={`
+      @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap');
+
+      @font-face {
+        font-family: 'DINNextLTArabic';
+        src: url('/DINNextLTArabic-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      [dir="rtl"] body,
+      [dir="rtl"] .MuiTypography-root,
+      [dir="rtl"] .MuiInputBase-input,
+      [dir="rtl"] .MuiButton-root,
+      [dir="rtl"] .MuiMenuItem-root,
+      [dir="rtl"] .MuiInputLabel-root,
+      [dir="rtl"] .MuiFormHelperText-root,
+      [dir="rtl"] .MuiFormLabel-root,
+      [dir="rtl"] .MuiTab-root,
+      [dir="rtl"] .MuiSelect-select {
+        font-family: 'DINNextLTArabic', sans-serif !important;
+      }
+    `}
+  />
+);
+
 export default function VisitorLayout({ 
   children, 
   title = "Sinan Sentry",
@@ -24,8 +53,27 @@ export default function VisitorLayout({
   const [isMobileCardExpanded, setIsMobileCardExpanded] = useState(true);
   const MobileCardToggleIcon = isMobileCardExpanded ? ICONS.expandMore : ICONS.expandLess;
 
+  const rtlInputStyles = (
+    <GlobalStyles
+      styles={{
+        '[dir="rtl"] .MuiOutlinedInput-notchedOutline': {
+          borderColor: isDark ? 'rgba(255,255,255,0.1) !important' : 'rgba(0,0,0,0.1) !important',
+        },
+        '[dir="rtl"] .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': {
+          borderColor: isDark ? 'rgba(255,255,255,0.3) !important' : 'rgba(0,0,0,0.3) !important',
+        },
+        '[dir="rtl"] .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+          borderColor: isDark ? '#ffffff !important' : '#000000 !important',
+          borderWidth: '1px !important',
+        },
+      }}
+    />
+  );
+
   return (
     <>
+      {fontStyles}
+      {rtlInputStyles}
       <Box
         sx={{
           height: "100%",
@@ -119,6 +167,7 @@ export default function VisitorLayout({
                 }}
               >
                 <Typography
+                  dir="ltr"
                   sx={{
                     fontSize: { xs: "1.45rem", sm: "1.7rem", md: "3rem" },
                     fontWeight: 800,
@@ -131,6 +180,7 @@ export default function VisitorLayout({
                   {title}
                 </Typography>
                 <Typography
+                  dir="ltr"
                   sx={{
                     color: "rgba(255,255,255,0.8)",
                     maxWidth: 320,
@@ -175,7 +225,7 @@ export default function VisitorLayout({
               zIndex: 1,
             }}
           >
-            <motion.div
+              <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={transition}

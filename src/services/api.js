@@ -52,6 +52,7 @@ api.interceptors.response.use(
       "/nda-templates/public",
       "/registrations/form/fields",
       "/registrations/check-nda",
+      "/translate/batch",
     ];
     const isPublicRoute =
       PUBLIC_URLS.some((u) => originalRequest.url?.includes(u)) ||

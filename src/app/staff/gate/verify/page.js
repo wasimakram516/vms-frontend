@@ -19,6 +19,7 @@ import {
   IconButton,
   CircularProgress,
   Tooltip,
+  LinearProgress,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
@@ -34,7 +35,8 @@ import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useSocket } from "@/contexts/SocketContext";
-import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration, verifyRegistrationById, createVipRevisit } from "@/services/registrationService";
+import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration, verifyRegistrationById, createVipRevisit, getCurrentlyInside } from "@/services/registrationService";
+import { getWorkingHours } from "@/services/hostService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
 import VipFastTrackModal from "./VipFastTrackModal";
 
@@ -56,9 +58,11 @@ export default function StaffVerifyPage() {
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const [showScanner, setShowScanner] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
   const [vipModalOpen, setVipModalOpen] = useState(false);
-  const [token, setToken] = useState("");
+  const [isOnline, setIsOnline] = useState(() => typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [scannerFailed, setScannerFailed] = useState(false);
+  const [workingHours, setWorkingHours] = useState(null);
+  const [outsideHoursWarning, setOutsideHoursWarning] = useState(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -68,10 +72,56 @@ export default function StaffVerifyPage() {
   const [idSearch, setIdSearch] = useState("");
   const [isSearchingById, setIsSearchingById] = useState(false);
   const scanningRef = useRef(false);
+  const idSearchRef = useRef(null);
   const [badgeTemplate, setBadgeTemplate] = useState(null);
+
+  // Assembly mode
+  const [assemblyMode, setAssemblyMode] = useState(false);
+  const [assemblyVisitors, setAssemblyVisitors] = useState([]);
+  const [assemblyLoading, setAssemblyLoading] = useState(false);
+  const [accountedIds, setAccountedIds] = useState(new Set());
+
+  const enterAssemblyMode = async () => {
+    setAssemblyMode(true);
+    setAssemblyLoading(true);
+    setAccountedIds(new Set());
+    try {
+      const visitors = await getCurrentlyInside();
+      setAssemblyVisitors(visitors || []);
+    } finally {
+      setAssemblyLoading(false);
+    }
+  };
+
+  const exitAssemblyMode = () => {
+    setAssemblyMode(false);
+    setAssemblyVisitors([]);
+    setAccountedIds(new Set());
+  };
+
+  const toggleAccounted = (id) => {
+    setAccountedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     fetchDefaultBadgeTemplate();
+    getWorkingHours().then((wh) => { if (wh) setWorkingHours(wh); });
+  }, []);
+
+  useEffect(() => {
+    const goOnline  = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener("online",  goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online",  goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
   }, []);
 
   const fetchDefaultBadgeTemplate = async () => {
@@ -174,6 +224,7 @@ export default function StaffVerifyPage() {
         setResult(prev => ({ ...prev, status: updated?.status || "checked_in" }));
         const logs = await getRegistrationActivityLogs(result.id);
         setActivityLogs(logs || []);
+        flagIfOutsideHours("check_in");
       }
     } finally {
       setActionLoading(false);
@@ -203,11 +254,12 @@ export default function StaffVerifyPage() {
     setActionLoading(true);
     selfInitiatedRef.current = { id: result.id, status: "checked_out" };
     try {
-      const updated = await updateStatus(result.id, { status: "checked_out" });
+      const updated = await updateStatus(result.id, { status: "checked_out", clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
       if (!updated?.error) {
         setResult(prev => ({ ...prev, status: updated?.status || "checked_out" }));
         const logs = await getRegistrationActivityLogs(result.id);
         setActivityLogs(logs || []);
+        flagIfOutsideHours("check_out");
       }
     } finally {
       setActionLoading(false);
@@ -327,12 +379,20 @@ export default function StaffVerifyPage() {
     }
   };
 
+  const flagIfOutsideHours = (type) => {
+    if (!workingHours?.enabled) return;
+    const localHour = new Date().getHours();
+    if (localHour < workingHours.start || localHour >= workingHours.end) {
+      setOutsideHoursWarning(type);
+    }
+  };
+
   const reset = () => {
-    setToken("");
     setResult(null);
     setError(null);
     setShowScanner(false);
-    setManualMode(false);
+    setScannerFailed(false);
+    setOutsideHoursWarning(null);
   };
 
   const { on } = useSocket();
@@ -378,6 +438,158 @@ export default function StaffVerifyPage() {
 
   const sc = result ? (STATUS_CONFIG[result.status] || { label: result.status, color: "default" }) : null;
 
+  if (assemblyMode) {
+    const total = assemblyVisitors.length;
+    const accounted = accountedIds.size;
+    const progress = total > 0 ? Math.round((accounted / total) * 100) : 0;
+    const allAccounted = total > 0 && accounted === total;
+
+    return (
+      <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
+        <Box sx={{
+          position: "fixed",
+          top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 1300,
+          bgcolor: "background.default",
+          overflow: "auto",
+          py: 3,
+          px: 3,
+        }}>
+            {/* Header */}
+            <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: 3, bgcolor: "error.main", color: "#fff", textAlign: "center" }}>
+              <Stack direction="row" alignItems="center" justifyContent="center" spacing={1} mb={0.5}>
+                <ICONS.warning sx={{ fontSize: 22 }} />
+                <Typography variant="h6" fontWeight={800} sx={{ letterSpacing: 1 }}>
+                  ASSEMBLY MODE
+                </Typography>
+              </Stack>
+              <Typography variant="caption" sx={{ opacity: 0.85 }}>
+                Evacuation Roll-Call — mark each visitor as accounted for
+              </Typography>
+            </Paper>
+
+            {/* Counter */}
+            <Paper elevation={0} variant="frosted" sx={{ p: 2.5, mb: 3, borderRadius: 3 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
+                <Typography variant="body2" color="text.secondary" fontWeight={600}>
+                  Accounted For
+                </Typography>
+                <Chip
+                  label={`${accounted} / ${total}`}
+                  color={allAccounted ? "success" : accounted > 0 ? "warning" : "default"}
+                  sx={{ fontWeight: 800, fontSize: "0.95rem", px: 1 }}
+                />
+              </Stack>
+              <LinearProgress
+                variant="determinate"
+                value={progress}
+                color={allAccounted ? "success" : "warning"}
+                sx={{ borderRadius: 2, height: 8 }}
+              />
+              {allAccounted && (
+                <Typography variant="caption" color="success.main" fontWeight={700} sx={{ mt: 1, display: "block" }}>
+                  All visitors accounted for
+                </Typography>
+              )}
+            </Paper>
+
+            {/* Visitor list */}
+            {assemblyLoading ? (
+              <Box sx={{ textAlign: "center", py: 6 }}>
+                <CircularProgress color="error" />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  Loading checked-in visitors…
+                </Typography>
+              </Box>
+            ) : total === 0 ? (
+              <Paper elevation={0} variant="frosted" sx={{ p: 4, borderRadius: 3, textAlign: "center" }}>
+                <ICONS.checkCircle sx={{ fontSize: 48, color: "success.main", mb: 1 }} />
+                <Typography fontWeight={700} color="success.main">No visitors currently inside</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  The facility is clear.
+                </Typography>
+              </Paper>
+            ) : (
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                  gap: 1.5,
+                  mb: 3,
+                }}
+              >
+                {assemblyVisitors.map((v) => {
+                  const isAccounted = accountedIds.has(v.id);
+                  const name = v.full_name || v.visitor?.fullName || "Visitor";
+                  const company = v.organisation || v.visitor?.organisation || v.visitor?.companyName || null;
+                  const dept = v.department?.name || v.visitor?.department || null;
+                  const accessZones = v.access_levels?.length
+                    ? v.access_levels.map((al) => al.name).filter(Boolean).join(", ")
+                    : (v.access_level?.name || v.visitor?.accessLevel || null);
+                  const subtitle = [company, dept, accessZones].filter(Boolean).join(" · ") || "No details";
+
+                  return (
+                    <Paper
+                      key={v.id}
+                      elevation={0}
+                      variant="frosted"
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 3,
+                        border: "1px solid",
+                        borderColor: isAccounted
+                          ? "success.main"
+                          : isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)",
+                        bgcolor: isAccounted
+                          ? (isDark ? "rgba(46,125,50,0.15)" : "rgba(46,125,50,0.06)")
+                          : "background.paper",
+                        transition: "all 0.2s",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1,
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={700} fontSize="0.875rem" noWrap>
+                          {name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.4 }}>
+                          {subtitle}
+                        </Typography>
+                      </Box>
+                      <Button
+                        fullWidth
+                        variant={isAccounted ? "contained" : "outlined"}
+                        color={isAccounted ? "success" : "inherit"}
+                        size="small"
+                        startIcon={isAccounted ? <ICONS.checkCircle /> : <ICONS.checkCircleOutline />}
+                        onClick={() => toggleAccounted(v.id)}
+                        sx={{ borderRadius: 2, fontSize: "0.78rem", mt: "auto" }}
+                      >
+                        {isAccounted ? "Accounted" : "Mark Safe"}
+                      </Button>
+                    </Paper>
+                  );
+                })}
+              </Box>
+            )}
+
+            {/* Exit button */}
+            <Button
+              fullWidth
+              variant="outlined"
+              color="error"
+              startIcon={<ICONS.close />}
+              onClick={exitAssemblyMode}
+              sx={{ borderRadius: 3, py: 1.5 }}
+            >
+              Exit Assembly Mode
+            </Button>
+        </Box>
+      </RoleGuard>
+    );
+  }
+
   return (
     <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
       <Container maxWidth="sm">
@@ -389,8 +601,28 @@ export default function StaffVerifyPage() {
             Scan visitor QR or enter token manually to grant access.
           </Typography>
 
+          {/* Offline banner */}
+          {!isOnline && (
+            <Alert
+              severity="error"
+              icon={<ICONS.wifiOff />}
+              sx={{ mb: 3, borderRadius: 2, fontWeight: 600 }}
+            >
+              No internet connection — QR verification unavailable. Use ID search or contact administration.
+            </Alert>
+          )}
+
           {/* Search by ID functionality */}
           <Box component="form" onSubmit={handleIdSearch} sx={{ mb: 4 }}>
+            {scannerFailed && (
+              <Alert
+                severity="warning"
+                onClose={() => setScannerFailed(false)}
+                sx={{ mb: 1.5, borderRadius: 2 }}
+              >
+                Scanner unavailable — use ID number search below.
+              </Alert>
+            )}
             <Stack direction="row" spacing={1}>
               <TextField
                 fullWidth
@@ -399,6 +631,7 @@ export default function StaffVerifyPage() {
                 value={idSearch}
                 onChange={(e) => setIdSearch(e.target.value)}
                 inputProps={{ inputMode: "text" }}
+                inputRef={idSearchRef}
                 disabled={loading}
                 sx={{
                   '& .MuiOutlinedInput-root': {
@@ -505,6 +738,7 @@ export default function StaffVerifyPage() {
                 fullWidth
                 startIcon={<ICONS.qrCodeScanner />}
                 onClick={() => setShowScanner(true)}
+                disabled={!isOnline}
                 sx={{ py: 1.8, borderRadius: 3, fontSize: "1.1rem" }}
               >
                 QR Check-in
@@ -518,6 +752,16 @@ export default function StaffVerifyPage() {
               >
                 VIP Fast Track
               </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                color="error"
+                startIcon={<ICONS.warning />}
+                onClick={enterAssemblyMode}
+                sx={{ py: 1.5, borderRadius: 3 }}
+              >
+                Assembly Mode
+              </Button>
             </Stack>
           </Paper>
         )}
@@ -526,7 +770,12 @@ export default function StaffVerifyPage() {
           <QrScanner
             onScanSuccess={handleScanSuccess}
             onCancel={() => setShowScanner(false)}
-            onError={(err) => { showMessage(err, "error"); setShowScanner(false); }}
+            onError={(err) => {
+              showMessage(err, "error");
+              setShowScanner(false);
+              setScannerFailed(true);
+              setTimeout(() => idSearchRef.current?.focus(), 100);
+            }}
           />
         )}
 
@@ -582,6 +831,11 @@ export default function StaffVerifyPage() {
 
             <Divider sx={{ mb: 2 }} />
 
+            {outsideHoursWarning && (
+              <Alert severity="warning" icon={<ICONS.time fontSize="small" />} sx={{ mb: 2, borderRadius: 2, fontWeight: 600 }}>
+                This {outsideHoursWarning === "check_in" ? "check-in" : "check-out"} was performed outside working hours and has been flagged for review.
+              </Alert>
+            )}
             {["pending", "admin_approved"].includes(result.status) && (
               <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
                 Not yet approved
@@ -808,6 +1062,8 @@ export default function StaffVerifyPage() {
                   if (checkInTime) pushField("Check-in Time", `${formatDate(checkInTime)} ${formatTime(checkInTime)}`, ICONS.login);
                   pushField("Expected Checkout", expectedCheckout, ICONS.logout);
                 }
+
+                pushField("Vehicle Plate", result.vehicle_plate || result.vehiclePlate, ICONS.parking);
 
                 return fields.map((item, idx) => (
                   <ListItem key={`${item.label}-${idx}`} disablePadding sx={{ py: 0.8 }}>

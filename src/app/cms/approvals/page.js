@@ -110,10 +110,15 @@ export default function CmsApprovalsPage() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
   const [accessLevels, setAccessLevels] = useState([]);
-  const [selectedAccessLevelId, setSelectedAccessLevelId] = useState("");
+  const [selectedAccessLevelIds, setSelectedAccessLevelIds] = useState([]);
   const [allowMultiCheckin, setAllowMultiCheckin] = useState(false);
   const [allowParking, setAllowParking] = useState(false);
+  const [vehiclePlate, setVehiclePlate] = useState("");
+  const [vehiclePlateError, setVehiclePlateError] = useState("");
+  const [approvalNote, setApprovalNote] = useState("");
   const [isVip, setIsVip] = useState(false);
+  const [vipReason, setVipReason] = useState("");
+  const [vipReasonError, setVipReasonError] = useState("");
   const [accessLevelError, setAccessLevelError] = useState("");
 
   const canSeeRegistration = useCallback((registration) => {
@@ -286,10 +291,27 @@ export default function CmsApprovalsPage() {
         setScheduledTo("18:00");
       }
 
-      setSelectedAccessLevelId(isAdminApproved ? (fullReg.access_level_id || fullReg.accessLevelId || "") : "");
+      // Prefill access zones from the existing multi or single selection
+      const prefillIds = isAdminApproved
+        ? (fullReg.access_levels?.length
+            ? fullReg.access_levels.map((al) => al.id)
+            : fullReg.accessLevels?.length
+              ? fullReg.accessLevels.map((al) => al.id)
+              : (fullReg.access_level_id || fullReg.accessLevelId)
+                ? [fullReg.access_level_id || fullReg.accessLevelId]
+                : [])
+        : [];
+      setSelectedAccessLevelIds(prefillIds);
       setAllowMultiCheckin(isAdminApproved ? (fullReg.allow_multi_checkin ?? false) : false);
-      setAllowParking(isAdminApproved ? (fullReg.allow_parking ?? false) : false);
-      setIsVip(isAdminApproved ? (fullReg.is_vip ?? false) : false);
+      const prefillParking = isAdminApproved ? (fullReg.allow_parking ?? false) : false;
+      setAllowParking(prefillParking);
+      setVehiclePlate(prefillParking ? (fullReg.vehicle_plate ?? "") : "");
+      setVehiclePlateError("");
+      setApprovalNote(isAdminApproved ? (fullReg.approval_note ?? "") : "");
+      const prefillVip = isAdminApproved ? (fullReg.is_vip ?? false) : false;
+      setIsVip(prefillVip);
+      setVipReason(prefillVip ? (fullReg.vip_reason ?? "") : "");
+      setVipReasonError("");
       setAccessLevelError("");
     } finally {
       setFetchingProfile(false);
@@ -468,8 +490,16 @@ export default function CmsApprovalsPage() {
       showMessage("Please select a date.", "warning");
       return;
     }
-    if (!selectedAccessLevelId) {
-      setAccessLevelError("Access level is required");
+    if (!selectedAccessLevelIds.length) {
+      setAccessLevelError("At least one access zone is required");
+      return;
+    }
+    if (allowParking && !vehiclePlate.trim()) {
+      setVehiclePlateError("Vehicle plate number is required when parking is enabled");
+      return;
+    }
+    if (isVip && !vipReason.trim()) {
+      setVipReasonError("A reason is required when marking a visitor as VIP");
       return;
     }
     setSubmitting(true);
@@ -499,10 +529,14 @@ export default function CmsApprovalsPage() {
       const payload = {
         approvedFrom: dayjs(`${fromDate}T${scheduledFrom}`).toISOString(),
         approvedTo: dayjs(`${toDate}T${scheduleType === "preset" && selectedPreset === "fullDay" ? scheduledFrom : scheduledTo}`).toISOString(),
-        accessLevelId: selectedAccessLevelId,
+        accessLevelIds: selectedAccessLevelIds,
+        accessLevelId: selectedAccessLevelIds[0],
         allowMultiCheckin,
         allowParking,
+        vehiclePlate: allowParking ? vehiclePlate.trim() : null,
         isVip,
+        vipReason: isVip ? vipReason.trim() : undefined,
+        approvalNote: approvalNote.trim() || undefined,
       };
 
       await updateStatus(approveTarget.id, { status: isSuperAdmin ? "approved" : "admin_approved", ...payload });
@@ -820,7 +854,7 @@ export default function CmsApprovalsPage() {
                         </Typography>
                       </Box>
                     )}
-                    {isSuperAdmin && row.status === "admin_approved" && row.access_level?.name && (
+                    {isSuperAdmin && row.status === "admin_approved" && (row.access_levels?.length || row.access_level?.name) && (
                       <Box
                         sx={{
                           display: "flex",
@@ -832,11 +866,16 @@ export default function CmsApprovalsPage() {
                         }}
                       >
                         <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.6, color: "text.secondary" }}>
-                          <ICONS.key fontSize="small" sx={{ opacity: 0.6 }} /> Access Level
+                          <ICONS.key fontSize="small" sx={{ opacity: 0.6 }} /> Access Zones
                         </Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 600, ml: 2, flex: 1, textAlign: "right", color: "text.primary" }}>
-                          {row.access_level.name}
-                        </Typography>
+                        <Box sx={{ ml: 2, flex: 1, display: "flex", flexWrap: "wrap", gap: 0.5, justifyContent: "flex-end" }}>
+                          {(row.access_levels?.length
+                            ? row.access_levels
+                            : row.access_level ? [row.access_level] : []
+                          ).map((al) => (
+                            <Chip key={al.id} label={al.name} size="small" variant="outlined" sx={{ fontWeight: 600, fontSize: "0.65rem", height: 20 }} />
+                          ))}
+                        </Box>
                       </Box>
                     )}
                     {isSuperAdmin && row.status === "admin_approved" && (
@@ -1050,14 +1089,20 @@ export default function CmsApprovalsPage() {
                     </Typography>
                   </Box>
                 )}
-                {isSuperAdmin && approveTarget?.status === "admin_approved" && approveTarget?.access_level?.name && (
+                {isSuperAdmin && approveTarget?.status === "admin_approved" &&
+                  (approveTarget?.access_levels?.length || approveTarget?.access_level?.name) && (
                   <Box>
                     <Typography variant="caption" color="text.secondary">
-                      Access Level
+                      Access Zones
                     </Typography>
-                    <Typography variant="body2" fontWeight={500} sx={{ mt: 0.25 }}>
-                      {approveTarget.access_level.name}
-                    </Typography>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
+                      {(approveTarget.access_levels?.length
+                        ? approveTarget.access_levels
+                        : approveTarget.access_level ? [approveTarget.access_level] : []
+                      ).map((al) => (
+                        <Chip key={al.id} label={al.name} size="small" variant="outlined" sx={{ fontWeight: 600, fontSize: "0.65rem", height: 20 }} />
+                      ))}
+                    </Box>
                   </Box>
                 )}
                 {isSuperAdmin && approveTarget?.status === "admin_approved" && (
@@ -1095,14 +1140,23 @@ export default function CmsApprovalsPage() {
             </Stack>
           </Box>
 
-          {/* Access Level + Multi-Checkin */}
+          {/* Access Zones + Multi-Checkin */}
           <Stack spacing={2}>
             <FormControl fullWidth required error={Boolean(accessLevelError)}>
-              <InputLabel>Access Level</InputLabel>
+              <InputLabel>Access Zones</InputLabel>
               <Select
-                value={selectedAccessLevelId}
-                label="Access Level"
-                onChange={(e) => { setSelectedAccessLevelId(e.target.value); setAccessLevelError(""); }}
+                multiple
+                value={selectedAccessLevelIds}
+                label="Access Zones"
+                onChange={(e) => { setSelectedAccessLevelIds(e.target.value); setAccessLevelError(""); }}
+                renderValue={(selected) => (
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                    {selected.map((id) => {
+                      const al = accessLevels.find((a) => a.id === id);
+                      return <Chip key={id} label={al?.name || id} size="small" />;
+                    })}
+                  </Box>
+                )}
                 sx={{ borderRadius: 2 }}
               >
                 {accessLevels.map((al) => (
@@ -1136,11 +1190,17 @@ export default function CmsApprovalsPage() {
               }
             />
             <FormControlLabel
-              sx={{ mb: 1 }}
+              sx={{ mb: allowParking ? 0.5 : 1 }}
               control={
                 <Switch
                   checked={allowParking}
-                  onChange={(e) => setAllowParking(e.target.checked)}
+                  onChange={(e) => {
+                    setAllowParking(e.target.checked);
+                    if (!e.target.checked) {
+                      setVehiclePlate("");
+                      setVehiclePlateError("");
+                    }
+                  }}
                   color="success"
                 />
               }
@@ -1156,12 +1216,30 @@ export default function CmsApprovalsPage() {
                 </Stack>
               }
             />
+            {allowParking && (
+              <TextField
+                fullWidth
+                required
+                size="small"
+                label="Vehicle Plate Number"
+                placeholder="e.g. A 12345"
+                value={vehiclePlate}
+                onChange={(e) => { setVehiclePlate(e.target.value.toUpperCase()); setVehiclePlateError(""); }}
+                error={Boolean(vehiclePlateError)}
+                helperText={vehiclePlateError}
+                sx={{ mb: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                inputProps={{ maxLength: 20 }}
+              />
+            )}
             <FormControlLabel
-              sx={{ mb: 1 }}
+              sx={{ mb: isVip ? 0.5 : 1 }}
               control={
                 <Switch
                   checked={isVip}
-                  onChange={(e) => setIsVip(e.target.checked)}
+                  onChange={(e) => {
+                    setIsVip(e.target.checked);
+                    if (!e.target.checked) { setVipReason(""); setVipReasonError(""); }
+                  }}
                   color="success"
                 />
               }
@@ -1177,6 +1255,21 @@ export default function CmsApprovalsPage() {
                 </Stack>
               }
             />
+            {isVip && (
+              <TextField
+                fullWidth
+                required
+                size="small"
+                label="VIP Reason"
+                placeholder="Enter the reason for VIP status…"
+                value={vipReason}
+                onChange={(e) => { setVipReason(e.target.value); setVipReasonError(""); }}
+                error={Boolean(vipReasonError)}
+                helperText={vipReasonError}
+                sx={{ mb: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                inputProps={{ maxLength: 300 }}
+              />
+            )}
           </Stack>
 
           <Divider sx={{ my: 1 }} />
@@ -1351,6 +1444,28 @@ export default function CmsApprovalsPage() {
               </Grid>
             </Grid>
 
+          </Box>
+
+          <Divider sx={{ my: 1 }} />
+          <Box>
+            <Typography
+              variant="subtitle2"
+              sx={{ mb: 1, fontWeight: 700, color: "text.primary" }}
+            >
+              Note <Typography component="span" variant="caption" color="text.secondary">(optional)</Typography>
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              maxRows={5}
+              size="small"
+              placeholder="Add a note for the visitor (will appear in their approval email)…"
+              value={approvalNote}
+              onChange={(e) => setApprovalNote(e.target.value)}
+              inputProps={{ maxLength: 500 }}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            />
           </Box>
         </DialogContent>
         <Divider />

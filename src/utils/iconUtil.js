@@ -170,6 +170,7 @@ import {
   Inbox as InboxIcon,
   Restaurant as RestaurantIcon,
   RoomService as RoomServiceIcon,
+  WifiOff as WifiOffIcon,
 } from "@mui/icons-material";
 
 const ICONS = {
@@ -331,6 +332,7 @@ const ICONS = {
   send: SendIcon,
   thumb: ThumbUpIcon,
   thumbOff: ThumbUpOffAltIcon,
+  wifiOff: WifiOffIcon,
 };
 
 export default ICONS;

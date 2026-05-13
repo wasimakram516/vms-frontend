@@ -62,7 +62,7 @@ export default function ReturningVisitorPage() {
       setLoading(false);
     }
   };
-  
+
   return (
     <VisitorLayout justifyContent="center" mobileSubheading="Welcome Back">
       <Stack spacing={3}>

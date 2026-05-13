@@ -118,7 +118,6 @@ export default function RegisterOtpPage() {
     try {
       const res = await verifyOtp(visitorData.identity, code);
       if (!res.error && res.success) {
-        // Check if returning visitor's NDA has expired and needs re-acceptance
         const visitorEmail = res.user?.email || visitorData.identity;
         let ndaStillValid = true;
         if (visitorEmail) {
@@ -126,11 +125,15 @@ export default function RegisterOtpPage() {
           if (validityRes?.ndaRequired) ndaStillValid = false;
         }
 
+        const activeReg = res.activeRegistration ?? null;
+
         setFlowState((prev) => ({
           ...prev,
           otpVerified: true,
           ndaAccepted: ndaStillValid,
           isReturning: true,
+          isEditMode: Boolean(activeReg),
+          activeRegistration: activeReg,
           currentStep: ndaStillValid ? "booking" : "nda"
         }));
 
@@ -150,7 +153,6 @@ export default function RegisterOtpPage() {
               ...res.lastFieldValues
             };
 
-            // Extract phoneIsoCode from returning visitor's last registration
             const isoCode = res.phoneIsoCode || res.phone_iso_code || res.isoCode || res.iso_code;
             if (isoCode) {
               newData.phoneIsoCode = isoCode;
@@ -188,7 +190,10 @@ export default function RegisterOtpPage() {
             Verify Identity
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>
-            We've sent a 4-digit code to <Typography component="span" fontWeight={700} color="text.primary">{visitorData.identity || "your device"}</Typography>
+            We've sent a 4-digit code to{" "}
+            <Typography component="span" fontWeight={700} color="text.primary">
+              {visitorData.identity || "your device"}
+            </Typography>
           </Typography>
         </Box>
 
@@ -247,19 +252,22 @@ export default function RegisterOtpPage() {
 
         <Typography variant="caption" color="text.secondary" align="center">
           Didn't receive code?{" "}
-          <Typography 
-            component="span" 
-            variant="caption" 
+          <Typography
+            component="span"
+            variant="caption"
             onClick={handleResend}
-            sx={{ 
-              color: resendTimer > 0 || resending ? "text.disabled" : "primary.main", 
-              cursor: resendTimer > 0 || resending ? "default" : "pointer", 
+            sx={{
+              color: resendTimer > 0 || resending ? "text.disabled" : "primary.main",
+              cursor: resendTimer > 0 || resending ? "default" : "pointer",
               fontWeight: 700,
-              textDecoration: resendTimer > 0 || resending ? "none" : "hover",
               "&:hover": { textDecoration: resendTimer > 0 || resending ? "none" : "underline" }
             }}
           >
-            {resending ? "Sending..." : resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend"}
+            {resending
+              ? "Sending..."
+              : resendTimer > 0
+                ? `Resend in ${resendTimer}s`
+                : "Resend"}
           </Typography>
         </Typography>
 

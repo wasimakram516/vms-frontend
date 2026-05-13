@@ -15,6 +15,11 @@ const mapHostToFrontend = (host) => ({
   contactPersonPhone: host.contactPersonPhone,
   isKitchenModuleEnabled: host.isKitchenModuleEnabled,
   ndaNotificationEmail: host.ndaNotificationEmail || "",
+  exitTimeoutEnabled: host.exitTimeoutEnabled ?? false,
+  exitTimeoutMinutes: host.exitTimeoutMinutes ?? 60,
+  workingHoursEnabled: host.workingHoursEnabled ?? false,
+  workingHoursStart: host.workingHoursStart ?? 8,
+  workingHoursEnd: host.workingHoursEnd ?? 17,
   created_at: host.createdAt,
   updated_at: host.updatedAt,
   created_by: host.createdBy?.fullName || host.createdById || null,
@@ -53,6 +58,15 @@ export const updateHost = withApiHandler(
   },
   { showSuccess: true }
 );
+
+export const getWorkingHours = async () => {
+  try {
+    const res = await api.get("/host/working-hours");
+    return res.data?.data ?? res.data ?? null;
+  } catch {
+    return null;
+  }
+};
 
 export const deleteHost = withApiHandler(
   async () => {
