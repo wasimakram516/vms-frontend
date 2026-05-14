@@ -79,7 +79,7 @@ export default function BookingPage() {
   const [ndaLoading, setNdaLoading] = useState(false);
   const [translatedNda, setTranslatedNda] = useState(null);
 
-  const [bookingType, setBookingType] = useState("custom");
+  const [bookingType, setBookingType] = useState("preset");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
   const bookingDate = bookingData.date ? dayjs(bookingData.date) : null;
   const hasValidBookingDate = bookingDate?.isValid?.() === true;
@@ -121,15 +121,14 @@ export default function BookingPage() {
     if (!ndaRequired) return;
     setNdaLoading(true);
     getPublicActiveNdaTemplate()
-      .then((res) => {
+      .then(async (res) => {
         const resolved = res || null;
         setNdaTemplate(resolved);
         if (resolved) {
           const preambleHtml = Array.isArray(resolved.preamble) ? ndaDocToHtml(resolved.preamble) : (resolved.preamble || "");
           const bodyHtml = Array.isArray(resolved.body) ? ndaDocToHtml(resolved.body) : (resolved.body || "");
-          translateBatch([resolved.name || "", preambleHtml, bodyHtml], "ar", "html").then(([arName, arPreamble, arBody]) => {
-            setTranslatedNda({ ...resolved, name: arName, preamble: arPreamble, body: arBody });
-          });
+          const [arName, arPreamble, arBody] = await translateBatch([resolved.name || "", preambleHtml, bodyHtml], "ar", "html");
+          setTranslatedNda({ ...resolved, name: arName, preamble: arPreamble, body: arBody });
         }
       })
       .catch(() => setNdaTemplate(null))
@@ -406,8 +405,8 @@ export default function BookingPage() {
                     variant="fullWidth"
                     sx={{ minHeight: 46, bgcolor: (theme) => alpha(theme.palette.text.primary, isDark ? 0.06 : 0.04), borderRadius: 999, p: 0.5, "& .MuiTabs-indicator": { display: "none" }, "& .MuiTab-iconWrapper": { marginRight: isRtl ? 0 : "8px", marginLeft: isRtl ? "8px" : 0 } }}
                   >
-                    <Tab value="custom" icon={<ICONS.time fontSize="small" />} iconPosition="start" label={t("bookingCustomTab")} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
                     <Tab value="preset" icon={<ICONS.event fontSize="small" />} iconPosition="start" label={t("bookingPresetTab")} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
+                    <Tab value="custom" icon={<ICONS.time fontSize="small" />} iconPosition="start" label={t("bookingCustomTab")} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
                   </Tabs>
 
                   {bookingType === "custom" && (

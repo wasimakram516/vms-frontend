@@ -139,25 +139,28 @@ export default function DetailsPage() {
   useEffect(() => {
     const fetchNdaTemplate = async () => {
       setNdaLoading(true);
-      const template = await getPublicActiveNdaTemplate();
-      const resolved = template?.error ? null : template || null;
-      setNdaTemplate(resolved);
-      setNdaLoading(false);
+      try {
+        const template = await getPublicActiveNdaTemplate();
+        const resolved = template?.error ? null : template || null;
+        setNdaTemplate(resolved);
 
-      if (resolved) {
-        const preambleHtml = Array.isArray(resolved.preamble)
-          ? ndaDocToHtml(resolved.preamble)
-          : (resolved.preamble || "");
-        const bodyHtml = Array.isArray(resolved.body)
-          ? ndaDocToHtml(resolved.body)
-          : (resolved.body || "");
+        if (resolved) {
+          const preambleHtml = Array.isArray(resolved.preamble)
+            ? ndaDocToHtml(resolved.preamble)
+            : (resolved.preamble || "");
+          const bodyHtml = Array.isArray(resolved.body)
+            ? ndaDocToHtml(resolved.body)
+            : (resolved.body || "");
 
-        const [arName, arPreamble, arBody] = await translateBatch(
-          [resolved.name || "", preambleHtml, bodyHtml],
-          "ar",
-          "html"
-        );
-        setTranslatedNda({ ...resolved, name: arName, preamble: arPreamble, body: arBody });
+          const [arName, arPreamble, arBody] = await translateBatch(
+            [resolved.name || "", preambleHtml, bodyHtml],
+            "ar",
+            "html"
+          );
+          setTranslatedNda({ ...resolved, name: arName, preamble: arPreamble, body: arBody });
+        }
+      } finally {
+        setNdaLoading(false);
       }
     };
 

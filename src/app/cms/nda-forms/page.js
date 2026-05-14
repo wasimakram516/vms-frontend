@@ -61,7 +61,8 @@ export default function NdaFormsPage() {
     return forms.filter((f) =>
       (f.user?.fullName || "").toLowerCase().includes(q) ||
       (f.user?.email || "").toLowerCase().includes(q) ||
-      (f.ndaTemplate?.name || "").toLowerCase().includes(q)
+      (f.ndaTemplate?.name || "").toLowerCase().includes(q) ||
+      (f.visitorIdValues || []).some(v => String(v).toLowerCase().includes(q))
     );
   }, [forms, searchQuery]);
 
@@ -135,7 +136,7 @@ export default function NdaFormsPage() {
                   fullWidth
                   size="small"
                   variant="outlined"
-                  placeholder="Search by name, email or template..."
+                  placeholder="Search by name, email, ID number or template..."
                   value={searchQuery}
                   onChange={handleSearch}
                   InputProps={{

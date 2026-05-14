@@ -7,7 +7,9 @@ export const getTheme = (mode, direction = "ltr") => {
   const darkSurface = "rgba(23, 30, 39, 0.82)";
   const darkSurfaceStrong = "rgba(28, 36, 47, 0.9)";
   const darkBorder = "rgba(255, 255, 255, 0.1)";
-  const fontFamily = '"DINNextLTArabic", "Segoe UI", Arial, sans-serif';
+  const fontFamily = isRtl
+    ? '"DINNextLTArabic", "Segoe UI", Arial, sans-serif'
+    : '"Comfortaa", "Segoe UI", Arial, sans-serif';
 
   return createTheme({
     direction,

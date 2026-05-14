@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Box, GlobalStyles, Typography } from "@mui/material";
 import { motion } from "framer-motion";
 import { useColorMode } from "@/contexts/ThemeContext";
-import ICONS from "@/utils/iconUtil";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
 const bgPortrait  = "/bg-portrait.webp";
@@ -14,8 +13,6 @@ const brandLogoSrc = "/logo-light.png";
 const fontStyles = (
   <GlobalStyles
     styles={`
-      @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap');
-
       @font-face {
         font-family: 'DINNextLTArabic';
         src: url('/DINNextLTArabic-Regular.ttf') format('truetype');
@@ -24,17 +21,21 @@ const fontStyles = (
         font-display: swap;
       }
 
-      [dir="rtl"] body,
-      [dir="rtl"] .MuiTypography-root,
-      [dir="rtl"] .MuiInputBase-input,
-      [dir="rtl"] .MuiButton-root,
-      [dir="rtl"] .MuiMenuItem-root,
-      [dir="rtl"] .MuiInputLabel-root,
-      [dir="rtl"] .MuiFormHelperText-root,
-      [dir="rtl"] .MuiFormLabel-root,
-      [dir="rtl"] .MuiTab-root,
-      [dir="rtl"] .MuiSelect-select {
+      [dir="rtl"] #visitor-layout-root,
+      [dir="rtl"] #visitor-layout-root .MuiTypography-root,
+      [dir="rtl"] #visitor-layout-root .MuiInputBase-input,
+      [dir="rtl"] #visitor-layout-root .MuiButton-root,
+      [dir="rtl"] #visitor-layout-root .MuiMenuItem-root,
+      [dir="rtl"] #visitor-layout-root .MuiInputLabel-root,
+      [dir="rtl"] #visitor-layout-root .MuiFormHelperText-root,
+      [dir="rtl"] #visitor-layout-root .MuiFormLabel-root,
+      [dir="rtl"] #visitor-layout-root .MuiTab-root,
+      [dir="rtl"] #visitor-layout-root .MuiSelect-select {
         font-family: 'DINNextLTArabic', sans-serif !important;
+      }
+
+      [dir="rtl"] #visitor-layout-root .visitor-layout-brand-title {
+        font-family: 'Comfortaa', cursive !important;
       }
     `}
   />
@@ -50,19 +51,18 @@ export default function VisitorLayout({
 }) {
   const { mode } = useColorMode();
   const isDark = mode === "dark";
-  const [isMobileCardExpanded, setIsMobileCardExpanded] = useState(true);
-  const MobileCardToggleIcon = isMobileCardExpanded ? ICONS.expandMore : ICONS.expandLess;
+  const [isMobileCardExpanded] = useState(true);
 
   const rtlInputStyles = (
     <GlobalStyles
       styles={{
-        '[dir="rtl"] .MuiOutlinedInput-notchedOutline': {
+        '[dir="rtl"] #visitor-layout-root .MuiOutlinedInput-notchedOutline': {
           borderColor: isDark ? 'rgba(255,255,255,0.1) !important' : 'rgba(0,0,0,0.1) !important',
         },
-        '[dir="rtl"] .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': {
+        '[dir="rtl"] #visitor-layout-root .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': {
           borderColor: isDark ? 'rgba(255,255,255,0.3) !important' : 'rgba(0,0,0,0.3) !important',
         },
-        '[dir="rtl"] .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+        '[dir="rtl"] #visitor-layout-root .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
           borderColor: isDark ? '#ffffff !important' : '#000000 !important',
           borderWidth: '1px !important',
         },
@@ -75,6 +75,7 @@ export default function VisitorLayout({
       {fontStyles}
       {rtlInputStyles}
       <Box
+        id="visitor-layout-root"
         sx={{
           height: "100%",
           display: "flex",
@@ -168,6 +169,7 @@ export default function VisitorLayout({
               >
                 <Typography
                   dir="ltr"
+                  className="visitor-layout-brand-title"
                   sx={{
                     fontSize: { xs: "1.45rem", sm: "1.7rem", md: "3rem" },
                     fontWeight: 800,
@@ -175,6 +177,7 @@ export default function VisitorLayout({
                     mb: { xs: 0.75, md: 2 },
                     lineHeight: 1.1,
                     opacity: { xs: 0.92, md: 1 },
+                    fontFamily: "'Comfortaa', cursive",
                   }}
                 >
                   {title}

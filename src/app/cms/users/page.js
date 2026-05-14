@@ -39,6 +39,7 @@ import {
   deleteUser,
   createStaffUser,
   createAdminUser,
+  createSuperAdminUser,
   assignUserDepartments,
 } from "@/services/userService";
 import { getDepartments } from "@/services/departmentService";
@@ -54,7 +55,7 @@ import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay } from "@/utils/countryCodes";
 import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
 
-const CREATABLE_ROLES = ["admin", "staff"];
+const CREATABLE_ROLES = ["superadmin", "admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
 const ADMIN_TYPES = ["departmental", "kitchen"];
 
@@ -189,9 +190,11 @@ export default function UsersPage() {
         res = await updateUser(selectedUserId, payload);
       } else {
         res =
-          form.role === "admin"
-            ? await createAdminUser(payload)
-            : await createStaffUser(payload);
+          form.role === "superadmin"
+            ? await createSuperAdminUser(payload)
+            : form.role === "admin"
+              ? await createAdminUser(payload)
+              : await createStaffUser(payload);
       }
 
       if (!res?.error) {

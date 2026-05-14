@@ -76,6 +76,8 @@ export default function StaffVerifyPage() {
   const [badgeTemplate, setBadgeTemplate] = useState(null);
 
   // Assembly mode
+  const [idVerified, setIdVerified] = useState(false);
+
   const [assemblyMode, setAssemblyMode] = useState(false);
   const [assemblyVisitors, setAssemblyVisitors] = useState([]);
   const [assemblyLoading, setAssemblyLoading] = useState(false);
@@ -260,6 +262,7 @@ export default function StaffVerifyPage() {
         const logs = await getRegistrationActivityLogs(result.id);
         setActivityLogs(logs || []);
         flagIfOutsideHours("check_out");
+        setIdVerified(false);
       }
     } finally {
       setActionLoading(false);
@@ -393,6 +396,7 @@ export default function StaffVerifyPage() {
     setShowScanner(false);
     setScannerFailed(false);
     setOutsideHoursWarning(null);
+    setIdVerified(false);
   };
 
   const { on } = useSocket();
@@ -403,6 +407,8 @@ export default function StaffVerifyPage() {
     currentRegistrationIdRef.current = result?.id ?? null;
     currentRegistrationStatusRef.current = result?.status ?? null;
   }, [result?.id, result?.status]);
+
+  useEffect(() => { setIdVerified(false); }, [result?.id]);
 
   useEffect(() => {
     const unsub = on("registration:updated", (updatedReg) => {
@@ -1084,7 +1090,7 @@ export default function StaffVerifyPage() {
               })()}
             </List>
 
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mt={4}>
+            <Stack spacing={2} mt={4}>
               {(() => {
                 const status = result.status;
                 const isPending = ["pending", "admin_approved"].includes(status);
@@ -1095,84 +1101,155 @@ export default function StaffVerifyPage() {
                 const isMulti = result.allow_multi_checkin ?? result.allowMultiCheckin;
                 const isVipEnded = isEnded && (result.is_vip_fast_track || result.isVipFastTrack);
 
+                const _fvs = Array.isArray(result.fieldValues)
+                  ? result.fieldValues
+                  : Array.isArray(result.visitor?.fieldValues)
+                    ? result.visitor.fieldValues
+                    : [];
+                const _nk = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const _rv = (v) => {
+                  if (v == null || v === "") return null;
+                  if (typeof v === "object") return v.name || v.label || v.value || null;
+                  return String(v);
+                };
+                const _find = (aliases) => {
+                  const norm = aliases.map(_nk);
+                  const m = _fvs.find((fv) => norm.includes(_nk(fv?.customField?.fieldKey || fv?.customField?.name)) || norm.includes(_nk(fv?.customField?.label)));
+                  return _rv(m?.value);
+                };
+                const _idType = _find(["idtype", "identificationtype", "documenttype", "doctype"]);
+                const _omanId = _find(["omanid", "nationalid", "civilid", "idcardnumber", "idnumber", "idno"]);
+                const _passport = _find(["passport", "passportnumber", "passportno"]);
+                const _nk2 = _nk(_idType || "");
+                const resolvedId = (() => {
+                  if (_nk2.includes("passport") && (_passport || _omanId)) return { type: "Passport", value: _passport || _omanId };
+                  if (_omanId) return { type: _nk2.includes("passport") ? "Passport" : "ID", value: _omanId };
+                  if (_passport) return { type: "Passport", value: _passport };
+                  return null;
+                })();
+
                 return (
                   <>
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<ICONS.close />}
-                      onClick={reset}
-                    >
-                      Close
-                    </Button>
-
-                    {isPending && (
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        disabled
-                        startIcon={<ICONS.time />}
+                    {resolvedId && (isApproved || (isCheckedOut && isMulti)) && (
+                      <Box
+                        onClick={() => setIdVerified((v) => !v)}
                         sx={{
-                          fontSize: "0.85rem",
-                          bgcolor: isDark ? "rgba(255,255,255,0.08) !important" : "rgba(0,0,0,0.06) !important",
-                          color: isDark ? "rgba(255,255,255,0.4) !important" : "rgba(0,0,0,0.4) !important",
-                          border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1.5,
+                          p: 1.5,
+                          borderRadius: 2,
+                          border: "1px solid",
+                          borderColor: idVerified ? "success.main" : "warning.main",
+                          bgcolor: idVerified
+                            ? (isDark ? "rgba(46,125,50,0.12)" : "rgba(46,125,50,0.06)")
+                            : (isDark ? "rgba(237,108,2,0.12)" : "rgba(237,108,2,0.06)"),
+                          cursor: "pointer",
+                          userSelect: "none",
+                          width: "100%",
                         }}
                       >
-                        Awaiting Approval
-                      </Button>
+                        <Box
+                          sx={{
+                            width: 20, height: 20, borderRadius: 0.5, flexShrink: 0,
+                            border: "2px solid",
+                            borderColor: idVerified ? "success.main" : "warning.main",
+                            bgcolor: idVerified ? "success.main" : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          {idVerified && <ICONS.check sx={{ fontSize: 14, color: "#fff" }} />}
+                        </Box>
+                        <Box>
+                          <Typography variant="body2" fontWeight={700} color={idVerified ? "success.main" : "warning.main"} display="block">
+                            {idVerified ? "ID Verified" : "ID Verification Required"}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {resolvedId.type}: <strong>{resolvedId.value}</strong>
+                          </Typography>
+                        </Box>
+                      </Box>
                     )}
 
-                    {isApproved && (
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                       <Button
                         fullWidth
-                        variant="contained"
-                        color="success"
-                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
-                        onClick={handleCheckInAction}
-                        disabled={actionLoading}
+                        variant="outlined"
+                        startIcon={<ICONS.close />}
+                        onClick={reset}
                       >
-                        Check In
+                        Close
                       </Button>
-                    )}
 
-                    {isCheckedIn && (
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        color="error"
-                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
-                        onClick={handleCheckOutAction}
-                        disabled={actionLoading}
-                      >
-                        Check Out
-                      </Button>
-                    )}
+                      {isPending && (
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          disabled
+                          startIcon={<ICONS.time />}
+                          sx={{
+                            fontSize: "0.85rem",
+                            bgcolor: isDark ? "rgba(255,255,255,0.08) !important" : "rgba(0,0,0,0.06) !important",
+                            color: isDark ? "rgba(255,255,255,0.4) !important" : "rgba(0,0,0,0.4) !important",
+                            border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
+                          }}
+                        >
+                          Awaiting Approval
+                        </Button>
+                      )}
 
-                    {isCheckedOut && isMulti && (
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        color="success"
-                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
-                        onClick={handleCheckInAction}
-                        disabled={actionLoading}
-                      >
-                        Check In Again
-                      </Button>
-                    )}
-                    {isVipEnded && (
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        color="warning"
-                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.star />}
-                        onClick={handleVipRevisit}
-                        disabled={actionLoading}
-                      >
-                        VIP Check In
-                      </Button>
-                    )}
+                      {isApproved && (
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          color="success"
+                          startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
+                          onClick={handleCheckInAction}
+                          disabled={actionLoading || (Boolean(resolvedId) && !idVerified)}
+                        >
+                          Check In
+                        </Button>
+                      )}
+
+                      {isCheckedIn && (
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          color="error"
+                          startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
+                          onClick={handleCheckOutAction}
+                          disabled={actionLoading}
+                        >
+                          Check Out
+                        </Button>
+                      )}
+
+                      {isCheckedOut && isMulti && (
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          color="success"
+                          startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
+                          onClick={handleCheckInAction}
+                          disabled={actionLoading || (Boolean(resolvedId) && !idVerified)}
+                        >
+                          Check In Again
+                        </Button>
+                      )}
+
+                      {isVipEnded && (
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          color="warning"
+                          startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.star />}
+                          onClick={handleVipRevisit}
+                          disabled={actionLoading}
+                        >
+                          VIP Check In
+                        </Button>
+                      )}
+                    </Stack>
                   </>
                 );
               })()}

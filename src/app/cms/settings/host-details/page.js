@@ -275,7 +275,7 @@ export default function HostDetailsPage() {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: buildPhone(form.phone, "phone"),
-        address: form.address.trim() || undefined,
+        address: form.address.trim() || null,
         website: form.website.trim() || undefined,
         logoUrl: finalLogoUrl || undefined,
         contactPersonName: form.contactPersonName.trim() || undefined,

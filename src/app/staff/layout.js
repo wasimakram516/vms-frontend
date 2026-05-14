@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Box } from "@mui/material";
 import { usePathname } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -8,6 +9,7 @@ import RoleGuard from "@/components/auth/RoleGuard";
 const FULL_WIDTH_PATHS = ["/staff/kitchen/orders"];
 
 export default function StaffLayout({ children }) {
+  useEffect(() => { document.documentElement.dir = "ltr"; }, []);
   const pathname = usePathname();
   const isStaffEntryPage = pathname === "/staff";
   const isFullWidth = FULL_WIDTH_PATHS.some((p) => pathname.startsWith(p));

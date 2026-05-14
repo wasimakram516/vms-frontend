@@ -32,6 +32,21 @@ export const getAllUsers = withApiHandler(async (role) => {
   return Array.isArray(users) ? users.map(mapUserToFrontend) : [];
 });
 
+export const createSuperAdminUser = withApiHandler(
+  async (data) => {
+    const res = await api.post("/users/superadmin", {
+      fullName: data.full_name,
+      email: data.email,
+      phone: buildFullPhone(data.phone, data.phoneIsoCode),
+      phoneIsoCode: data.phoneIsoCode,
+      password: data.password || undefined,
+    });
+    const userData = res.data?.data || res.data;
+    return userData ? mapUserToFrontend(userData) : null;
+  },
+  { showSuccess: true }
+);
+
 export const createAdminUser = withApiHandler(
   async (data) => {
     const res = await api.post("/users/admin", {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Box } from "@mui/material";
 import Sidebar from "@/components/nav/Sidebar";
 import { GlobalStyles } from "@mui/material";
@@ -13,6 +14,7 @@ import Stack from "@mui/material/Stack";
 import ICONS from "@/utils/iconUtil";
 
 export default function CmsLayout({ children }) {
+  useEffect(() => { document.documentElement.dir = "ltr"; }, []);
   const { user } = useAuth();
   const pathname = usePathname();
   const isDev = user?.role === "dev";
