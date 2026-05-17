@@ -64,6 +64,9 @@ const en = {
   bookingMin: "Min",
   bookingAmPm: "AM/PM",
   bookingSending: "Sending...",
+  bookingSaveChanges: "Save Changes",
+  activeRequestTitle: "You have an active request",
+  activeRequestDesc: "Update the date, time, purpose, or department below. Your request will return to pending for re-review after saving.",
 
   // OTP page
   otpMobileSubheading: "Verify Identity",

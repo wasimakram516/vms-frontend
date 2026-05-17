@@ -658,7 +658,13 @@ export default function CmsRegistrationsPage() {
       scheduleFrom: hasApproved ? (reg.approved_from || "") : (reg.requested_from || ""),
       scheduleTo: hasApproved ? (reg.approved_to || "") : (reg.requested_to || ""),
       hasApproved,
-      accessLevelId: hasApproved ? (reg.access_level_id || reg.accessLevelId || "") : "",
+      accessLevelIds: hasApproved
+        ? (reg.access_levels?.length
+            ? reg.access_levels.map((al) => al.id)
+            : (reg.access_level_id || reg.accessLevelId)
+              ? [reg.access_level_id || reg.accessLevelId]
+              : [])
+        : [],
       allowMultiCheckin: hasApproved ? (reg.allow_multi_checkin ?? reg.allowMultiCheckin ?? false) : false,
       fieldValues: fvMap,
     };
@@ -730,7 +736,10 @@ export default function CmsRegistrationsPage() {
       if (editForm.hasApproved) {
         if (editForm.scheduleFrom) payload.approvedFrom = editForm.scheduleFrom;
         if (editForm.scheduleTo) payload.approvedTo = editForm.scheduleTo;
-        if (editForm.accessLevelId) payload.accessLevelId = editForm.accessLevelId;
+        if (editForm.accessLevelIds?.length) {
+          payload.accessLevelIds = editForm.accessLevelIds;
+          payload.accessLevelId = editForm.accessLevelIds[0];
+        }
         payload.allowMultiCheckin = editForm.allowMultiCheckin ?? false;
       } else {
         if (editForm.scheduleFrom) payload.requestedFrom = editForm.scheduleFrom;
@@ -1421,8 +1430,16 @@ export default function CmsRegistrationsPage() {
                         {selected.department?.name && (
                           <InfoItem label="Department" value={selected.department.name} icon={<ICONS.apartment fontSize="small" />} />
                         )}
-                        {selected.access_level?.name || selected.accessLevel?.name ? (
-                          <InfoItem label="Access Level" value={selected.access_level?.name || selected.accessLevel?.name} icon={<ICONS.key fontSize="small" />} />
+                        {(selected.access_levels?.length || selected.access_level?.name || selected.accessLevel?.name) ? (
+                          <InfoItem
+                            label="Access Level"
+                            value={
+                              selected.access_levels?.length > 1
+                                ? selected.access_levels.map((al) => al.name).join(", ")
+                                : (selected.access_levels?.[0]?.name || selected.access_level?.name || selected.accessLevel?.name)
+                            }
+                            icon={<ICONS.key fontSize="small" />}
+                          />
                         ) : null}
                         {selected.vehicle_plate && (
                           <InfoItem label="Vehicle Plate" value={selected.vehicle_plate} icon={<ICONS.parking fontSize="small" />} />
@@ -1847,14 +1864,22 @@ export default function CmsRegistrationsPage() {
                 {editForm.hasApproved && (
                   <>
                     <FormControl fullWidth>
-                      <InputLabel>Access Level</InputLabel>
+                      <InputLabel>Access Zones</InputLabel>
                       <Select
-                        value={editForm.accessLevelId || ""}
-                        label="Access Level"
-                        onChange={(e) => setEditForm({ ...editForm, accessLevelId: e.target.value })}
+                        multiple
+                        value={editForm.accessLevelIds || []}
+                        label="Access Zones"
+                        onChange={(e) => setEditForm({ ...editForm, accessLevelIds: e.target.value })}
+                        renderValue={(selected) => (
+                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                            {selected.map((id) => {
+                              const al = accessLevels.find((a) => a.id === id);
+                              return <Chip key={id} label={al?.name || id} size="small" />;
+                            })}
+                          </Box>
+                        )}
                         sx={{ borderRadius: 2 }}
                       >
-                        <MenuItem value=""><em>None</em></MenuItem>
                         {accessLevels.filter((al) => al.isActive !== false).map((al) => (
                           <MenuItem key={al.id} value={al.id}>{al.name}</MenuItem>
                         ))}

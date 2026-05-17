@@ -64,6 +64,9 @@ const ar = {
   bookingMin: "د",
   bookingAmPm: "ص/م",
   bookingSending: "جارٍ الإرسال...",
+  bookingSaveChanges: "حفظ التغييرات",
+  activeRequestTitle: "لديك طلب نشط",
+  activeRequestDesc: "قم بتحديث التاريخ أو الوقت أو الغرض أو القسم أدناه. سيعود طلبك إلى حالة الانتظار لإعادة المراجعة بعد الحفظ.",
 
   // OTP page
   otpMobileSubheading: "التحقق من الهوية",

@@ -298,10 +298,8 @@ export default function BookingPage() {
             <Box sx={{ p: 2, borderRadius: 3, bgcolor: "warning.main", color: "warning.contrastText", display: "flex", alignItems: "flex-start", gap: 1.5 }}>
               <ICONS.edit sx={{ mt: 0.2, fontSize: 20, flexShrink: 0 }} />
               <Box>
-                <Typography variant="body2" fontWeight={700}>You have an active request</Typography>
-                <Typography variant="caption">
-                  Update the date, time, purpose, or department below. Your request will return to pending for re-review after saving.
-                </Typography>
+                <Typography variant="body2" fontWeight={700}>{t("activeRequestTitle")}</Typography>
+                <Typography variant="caption">{t("activeRequestDesc")}</Typography>
               </Box>
             </Box>
           )}
@@ -509,7 +507,7 @@ export default function BookingPage() {
           <Divider />
 
           <Stack direction="row" sx={{ gap: 2 }}>
-            {!isReturning && (
+            {!isReturning && !isEditMode && (
               <Button
                 variant="outlined"
                 fullWidth
@@ -529,7 +527,7 @@ export default function BookingPage() {
               onClick={handleSubmit}
               sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(dir) }}
             >
-              {submitting ? t("bookingSending") : isEditMode ? "Save Changes" : t("submit")}
+              {submitting ? t("bookingSending") : isEditMode ? t("bookingSaveChanges") : t("submit")}
             </Button>
           </Stack>
         </Stack>
