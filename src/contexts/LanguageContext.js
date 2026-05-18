@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from "react";
 import en from "@/locales/en";
 import ar from "@/locales/ar";
 
@@ -8,17 +8,22 @@ const dicts = { en, ar };
 
 const LanguageContext = createContext();
 
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 export const LanguageProvider = ({ children }) => {
-  const [lang, setLangState] = useState("en");
+  const [lang, setLangState] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sinan-lang");
+      if (saved === "en" || saved === "ar") return saved;
+    }
+    return "en";
+  });
 
   const isRtl = lang === "ar";
 
-  useEffect(() => {
-    const saved = localStorage.getItem("sinan-lang");
-    if (saved === "en" || saved === "ar") {
-      setLangState(saved);
-    }
-  }, []);
+  useIsomorphicLayoutEffect(() => {
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  }, [lang]);
 
   const setLang = useCallback((newLang) => {
     setLangState(newLang);

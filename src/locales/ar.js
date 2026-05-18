@@ -108,6 +108,21 @@ const ar = {
   summarySave: "حفظ الملخص",
   summaryToken: "الرمز:",
 
+  // Layout / Navbar
+  navbarBrand: "بوابة زوار سنتري",
+  layoutBrandTitle: "سنان سنتري",
+  layoutBrandSubtitle: "استمتع برحلة زيارة سلسة في سنان. يرجى اختيار نوع زيارتك للمتابعة.",
+
+  // Login page
+  loginPanelTitle: "بوابة الإدارة",
+  loginPanelSubtitle: "أدخل بيانات اعتمادك للوصول إلى أدوات مسؤول سنان سنتري.",
+  loginTitle: "تسجيل دخول المسؤول",
+  loginSubtitle: "أدخل بيانات اعتمادك للوصول إلى بوابة مسؤول سنان سنتري.",
+  loginEmail: "البريد الإلكتروني",
+  loginPassword: "كلمة المرور",
+  loginSigning: "جارٍ التسجيل...",
+  loginButton: "تسجيل الدخول",
+
   // Purpose of visit options (display labels — internal values stay in English)
   purposeMeeting: "اجتماع",
   purposeVendorVisit: "زيارة مورّد",

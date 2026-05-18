@@ -16,9 +16,35 @@ import SearchIcon from "@mui/icons-material/Search";
 import { COUNTRY_CODES, getFlagImageUrl } from "@/utils/countryCodes";
 
 // Deduplicate by isoCode — COUNTRY_CODES may have entries with the same country listed multiple times
-const UNIQUE_COUNTRIES = Object.values(
+const BASE_COUNTRIES = Object.values(
   Object.fromEntries(COUNTRY_CODES.map((cc) => [cc.isoCode, cc]))
-).sort((a, b) => a.country.localeCompare(b.country));
+);
+
+// Manual Arabic names for codes Intl.DisplayNames doesn't cover
+const AR_OVERRIDES = {
+  DG: "دييغو غارسيا",
+  EH: "الصحراء الغربية",
+  AC: "جزيرة أسينشن",
+  TA: "تريستان دا كونا",
+  BQ: "جزر الكاريبي الهولندية",
+  XK: "كوسوفو",
+  CP: "جزيرة كليبرتون",
+  EA: "سبتة ومليلية",
+};
+
+function getDisplayName(isoCode, lang) {
+  if (lang === "en") return null;
+  const upper = isoCode.toUpperCase();
+  if (lang === "ar" && AR_OVERRIDES[upper]) return AR_OVERRIDES[upper];
+  try {
+    const name = new Intl.DisplayNames([lang], { type: "region" }).of(upper);
+    // Intl returns the code itself when no translation exists — treat that as a miss
+    if (!name || name.toUpperCase() === upper) return null;
+    return name;
+  } catch {
+    return null;
+  }
+}
 
 export default function CountryPicker({
   label = "Country",
@@ -28,14 +54,23 @@ export default function CountryPicker({
   error = false,
   helperText,
   disabled = false,
+  lang = "en",
 }) {
   const [search, setSearch] = useState("");
+
+  const UNIQUE_COUNTRIES = useMemo(() => {
+    return BASE_COUNTRIES
+      .map((cc) => ({ ...cc, displayName: getDisplayName(cc.isoCode, lang) || cc.country }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, lang));
+  }, [lang]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return UNIQUE_COUNTRIES;
     const q = search.toLowerCase();
-    return UNIQUE_COUNTRIES.filter((cc) => cc.country.toLowerCase().includes(q));
-  }, [search]);
+    return UNIQUE_COUNTRIES.filter((cc) =>
+      cc.displayName.toLowerCase().includes(q) || cc.country.toLowerCase().includes(q)
+    );
+  }, [search, UNIQUE_COUNTRIES]);
 
   const selected = UNIQUE_COUNTRIES.find((cc) => cc.isoCode === value?.toLowerCase());
 
@@ -52,10 +87,10 @@ export default function CountryPicker({
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <img
                 src={getFlagImageUrl(selected.isoCode)}
-                alt={selected.country}
+                alt={selected.displayName}
                 style={{ width: 20, height: 14, objectFit: "cover", borderRadius: 2 }}
               />
-              <Typography variant="body2">{selected.country}</Typography>
+              <Typography variant="body2">{selected.displayName}</Typography>
             </Box>
           ) : (
             <Typography variant="body2" color="text.secondary">{label}</Typography>
@@ -69,7 +104,7 @@ export default function CountryPicker({
           <TextField
             size="small"
             fullWidth
-            placeholder="Search country…"
+            placeholder={lang === "ar" ? "ابحث عن دولة…" : "Search country…"}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.stopPropagation()}
@@ -86,7 +121,7 @@ export default function CountryPicker({
 
         {filtered.length === 0 && (
           <MenuItem disabled>
-            <Typography variant="body2" color="text.secondary">No countries found</Typography>
+            <Typography variant="body2" color="text.secondary">{lang === "ar" ? "لا توجد دول" : "No countries found"}</Typography>
           </MenuItem>
         )}
 
@@ -98,7 +133,7 @@ export default function CountryPicker({
                 alt={cc.country}
                 style={{ width: 20, height: 14, objectFit: "cover", borderRadius: 2 }}
               />
-              <Typography variant="body2">{cc.country}</Typography>
+              <Typography variant="body2">{cc.displayName}</Typography>
             </Box>
           </MenuItem>
         ))}

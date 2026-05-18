@@ -17,12 +17,15 @@ import VisitorLayout from "@/components/layout/VisitorLayout";
 import { login } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { validateRequired } from "@/utils/validationUtils";
 import { getStaffDestination } from "@/utils/navigationUtils";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
 export default function LoginPage() {
   const router = useRouter();
   const { user, setUser, logout, loading: authLoading } = useAuth();
   const { mode } = useColorMode();
+  const { t, isRtl } = useLanguage();
   const isDark = mode === "dark";
 
   useEffect(() => {
@@ -94,9 +97,9 @@ export default function LoginPage() {
   }
 
   return (
-    <VisitorLayout 
-      title="Admin Portal" 
-      subtitle="Enter your credentials to access the Sinan Sentry admin tools."
+    <VisitorLayout
+      title={t("loginPanelTitle")}
+      subtitle={t("loginPanelSubtitle")}
       justifyContent="center"
     >
       <Box sx={{ position: "relative", mb: 4 }}>
@@ -126,11 +129,10 @@ export default function LoginPage() {
               textAlign: "center"
             }}
           >
-            Admin sign in
+            {t("loginTitle")}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-            Enter your credentials to access the{" "}
-            <strong>{"Sinan Sentry admin"}</strong> portal.
+            {t("loginSubtitle")}
           </Typography>
         </Box>
       </Box>
@@ -138,7 +140,7 @@ export default function LoginPage() {
 
         <TextField
           fullWidth
-          label="Email"
+          label={t("loginEmail")}
           name="email"
           type="email"
           value={form.email}
@@ -157,7 +159,7 @@ export default function LoginPage() {
 
         <TextField
           fullWidth
-          label="Password"
+          label={t("loginPassword")}
           name="password"
           type={showPassword ? "text" : "password"}
           value={form.password}
@@ -197,9 +199,10 @@ export default function LoginPage() {
             borderRadius: 30,
             fontSize: "0.95rem",
             fontWeight: 700,
+            ...getStartIconSpacing(isRtl ? "rtl" : "ltr"),
           }}
         >
-          {loading ? "Signing..." : "Login"}
+          {loading ? t("loginSigning") : t("loginButton")}
         </Button>
       </Box>
     </VisitorLayout>

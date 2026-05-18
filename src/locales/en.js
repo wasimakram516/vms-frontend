@@ -108,6 +108,21 @@ const en = {
   summarySave: "Save Summary",
   summaryToken: "Token:",
 
+  // Layout / Navbar
+  navbarBrand: "Sentry Visitor Portal",
+  layoutBrandTitle: "Sinan Sentry",
+  layoutBrandSubtitle: "Experience a seamless visitor journey at Sinan. Please select your visit type to proceed.",
+
+  // Login page
+  loginPanelTitle: "Admin Portal",
+  loginPanelSubtitle: "Enter your credentials to access the Sinan Sentry admin tools.",
+  loginTitle: "Admin sign in",
+  loginSubtitle: "Enter your credentials to access the Sinan Sentry admin portal.",
+  loginEmail: "Email",
+  loginPassword: "Password",
+  loginSigning: "Signing...",
+  loginButton: "Login",
+
   // Purpose of visit options (display labels — internal values stay in English)
   purposeMeeting: "Meeting",
   purposeVendorVisit: "Vendor Visit",

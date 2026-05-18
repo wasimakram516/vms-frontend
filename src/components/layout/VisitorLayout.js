@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Box, GlobalStyles, Typography } from "@mui/material";
 import { motion } from "framer-motion";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
 const bgPortrait  = "/bg-portrait.webp";
@@ -21,36 +22,42 @@ const fontStyles = (
         font-display: swap;
       }
 
-      [dir="rtl"] #visitor-layout-root,
-      [dir="rtl"] #visitor-layout-root .MuiTypography-root,
-      [dir="rtl"] #visitor-layout-root .MuiInputBase-input,
-      [dir="rtl"] #visitor-layout-root .MuiButton-root,
-      [dir="rtl"] #visitor-layout-root .MuiMenuItem-root,
-      [dir="rtl"] #visitor-layout-root .MuiInputLabel-root,
-      [dir="rtl"] #visitor-layout-root .MuiFormHelperText-root,
-      [dir="rtl"] #visitor-layout-root .MuiFormLabel-root,
-      [dir="rtl"] #visitor-layout-root .MuiTab-root,
-      [dir="rtl"] #visitor-layout-root .MuiSelect-select {
+      [dir="rtl"],
+      [dir="rtl"] .MuiTypography-root,
+      [dir="rtl"] .MuiInputBase-input,
+      [dir="rtl"] .MuiButton-root,
+      [dir="rtl"] .MuiMenuItem-root,
+      [dir="rtl"] .MuiInputLabel-root,
+      [dir="rtl"] .MuiFormHelperText-root,
+      [dir="rtl"] .MuiFormLabel-root,
+      [dir="rtl"] .MuiTab-root,
+      [dir="rtl"] .MuiSelect-select,
+      [dir="rtl"] .MuiTooltip-tooltip,
+      [dir="rtl"] .MuiAlert-message,
+      [dir="rtl"] .MuiChip-label {
         font-family: 'DINNextLTArabic', sans-serif !important;
       }
 
-      [dir="rtl"] #visitor-layout-root .visitor-layout-brand-title {
+      [dir="rtl"] .visitor-layout-brand-title {
         font-family: 'Comfortaa', cursive !important;
       }
     `}
   />
 );
 
-export default function VisitorLayout({ 
-  children, 
-  title = "Sinan Sentry",
-  subtitle = "Experience a seamless visitor journey at Sinan. Please select your visit type to proceed.",
+export default function VisitorLayout({
+  children,
+  title,
+  subtitle,
   mobileSubheading = "",
   maxWidth = 450,
   justifyContent = "flex-start",
 }) {
   const { mode } = useColorMode();
+  const { t } = useLanguage();
   const isDark = mode === "dark";
+  const effectiveTitle = title ?? t("layoutBrandTitle");
+  const effectiveSubtitle = subtitle ?? t("layoutBrandSubtitle");
   const [isMobileCardExpanded] = useState(true);
 
   const rtlInputStyles = (
@@ -180,7 +187,7 @@ export default function VisitorLayout({
                     fontFamily: "'Comfortaa', cursive",
                   }}
                 >
-                  {title}
+                  {effectiveTitle}
                 </Typography>
                 <Typography
                   dir="ltr"
@@ -191,7 +198,7 @@ export default function VisitorLayout({
                     fontSize: { xs: "0.92rem", md: "1rem" },
                   }}
                 >
-                  {subtitle}
+                  {effectiveSubtitle}
                 </Typography>
               </Box>
             </Box>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Box, Typography, Stack, Paper } from "@mui/material";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import VisitorLayout from "@/components/layout/VisitorLayout";
@@ -13,7 +14,9 @@ export default function HomePage() {
   const router = useRouter();
   const { resetVisitorFlow } = useVisitor();
   const { mode } = useColorMode();
+  const { t, isRtl } = useLanguage();
   const isDark = mode === "dark";
+  const dir = isRtl ? "rtl" : "ltr";
   const [isNavigating, setIsNavigating] = useState(false);
 
   const navigateWithLoader = (path) => {
@@ -55,7 +58,7 @@ export default function HomePage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading="Visitor Gateway">
+    <VisitorLayout justifyContent="center" mobileSubheading={t("homeTitle")}>
       <Stack spacing={4}>
         <Box
           textAlign="center"
@@ -65,10 +68,10 @@ export default function HomePage() {
             variant="h4"
             fontWeight={800}
           >
-            Visitor Gateway
+            {t("homeTitle")}
           </Typography>
           <Typography color="text.secondary" mt={1}>
-            Experience a seamless visitor journey at Sinan. Please select your visit type to proceed.
+            {t("homeSubtitle")}
           </Typography>
         </Box>
 
@@ -94,9 +97,10 @@ export default function HomePage() {
               }
             }}
           >
-            <Stack 
-              direction={{ xs: "column", md: "row" }} 
-              spacing={{ xs: 1, md: 2 }} 
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              useFlexGap
+              spacing={{ xs: 1.5, md: 2 }}
               alignItems="center"
             >
               <Box sx={{
@@ -114,19 +118,19 @@ export default function HomePage() {
               }}>
                 <ICONS.register fontSize="large" />
               </Box>
-              <Box textAlign={{ xs: "center", md: "left" }}>
-                <Typography 
-                  variant="h6" 
-                  fontWeight={800} 
-                  sx={{ 
+              <Box textAlign={{ xs: isRtl ? "end" : "center", md: "start" }}>
+                <Typography
+                  variant="h6"
+                  fontWeight={800}
+                  sx={{
                     color: "text.primary",
                     fontSize: { xs: "1.05rem", md: "inherit" }
                   }}
                 >
-                  New Visitor
+                  {t("homeNewVisitor")}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Visiting for the first time? Register now.
+                  {t("homeNewVisitorDesc")}
                 </Typography>
               </Box>
             </Stack>
@@ -153,9 +157,10 @@ export default function HomePage() {
               }
             }}
           >
-            <Stack 
-              direction={{ xs: "column", md: "row" }} 
-              spacing={{ xs: 1, md: 2 }} 
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              useFlexGap
+              spacing={{ xs: 1.5, md: 2 }}
               alignItems="center"
             >
               <Box sx={{
@@ -173,19 +178,19 @@ export default function HomePage() {
               }}>
                 <ICONS.replay fontSize="large" />
               </Box>
-              <Box textAlign={{ xs: "center", md: "left" }}>
-                <Typography 
-                  variant="h6" 
-                  fontWeight={800} 
-                  sx={{ 
+              <Box textAlign={{ xs: isRtl ? "end" : "center", md: "start" }}>
+                <Typography
+                  variant="h6"
+                  fontWeight={800}
+                  sx={{
                     color: "text.primary",
                     fontSize: { xs: "1.05rem", md: "inherit" }
                   }}
                 >
-                  Returning Visitor
+                  {t("homeReturningVisitor")}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Already have an account? Sign in quickly.
+                  {t("homeReturningVisitorDesc")}
                 </Typography>
               </Box>
             </Stack>

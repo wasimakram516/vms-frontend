@@ -53,14 +53,13 @@ export default function BookingPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState, setFlowState } = useVisitor();
   const { mode } = useColorMode();
-  const { t, isRtl } = useLanguage();
+  const { t, isRtl, lang } = useLanguage();
   const isDark = mode === "dark";
   const dir = isRtl ? "rtl" : "ltr";
 
   // Scoped RTL — same pattern as details page
   useEffect(() => {
     document.documentElement.dir = isRtl ? "rtl" : "ltr";
-    return () => { document.documentElement.dir = "ltr"; };
   }, [isRtl]);
 
   const isReturning = flowState?.isReturning === true;
@@ -188,7 +187,7 @@ export default function BookingPage() {
           <Box sx={{ flex: 1 }}>
             <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t("bookingAmPm")}</Typography>
             <TextField select size="small" value={ampm} onChange={(e) => handleTimePartChange(type, "ampm", e.target.value)} sx={{ width: "100%", "& .MuiOutlinedInput-root": { borderRadius: 30 }, "& .MuiSelect-select": { fontSize: "0.75rem", py: 1, px: 1 } }}>
-              {PERIODS.map((p) => <MenuItem key={p} value={p} sx={{ fontSize: "0.75rem" }}>{p}</MenuItem>)}
+              {PERIODS.map((p) => <MenuItem key={p} value={p} sx={{ fontSize: "0.75rem" }}>{lang === "ar" ? (p === "AM" ? "ص" : "م") : p}</MenuItem>)}
             </TextField>
           </Box>
         </Stack>
@@ -277,8 +276,8 @@ export default function BookingPage() {
   return (
     <>
       <VisitorLayout
-        title="Appointment Booking"
-        subtitle="Select your preferred visit date and arrival time."
+        title={t("bookingLayoutTitle")}
+        subtitle={t("bookingLayoutSubtitle")}
         mobileSubheading={t("bookingMobileSubheading")}
         maxWidth={900}
       >
@@ -377,8 +376,55 @@ export default function BookingPage() {
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, px: 2 }}>
                 {t("bookingSelectDate")}
               </Typography>
-              <Box dir="ltr" sx={{ border: "1px solid", borderColor: "divider", borderRadius: 4, bgcolor: "action.hover", "& .MuiDateCalendar-root": { width: "100%", height: "auto", transform: "scale(0.95)", transformOrigin: "top" } }}>
-                <DateCalendar value={hasValidBookingDate ? bookingDate : null} onChange={handleDateChange} disablePast />
+              <Box
+                dir="ltr"
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 4,
+                  overflow: "hidden",
+                  bgcolor: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                  "& .MuiDateCalendar-root": { width: "100%", height: "auto", maxHeight: "none" },
+                  "& .MuiPickersArrowSwitcher-button": {
+                    width: 32, height: 32, borderRadius: 1,
+                    color: "text.primary",
+                    "&:hover": { bgcolor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" },
+                  },
+                  "& .MuiPickersCalendarHeader-switchViewButton": {
+                    width: 32, height: 32, borderRadius: 1,
+                    "&:hover": { bgcolor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" },
+                  },
+                  "& .MuiPickersDay-root.Mui-selected": {
+                    bgcolor: isDark ? "#ffffff" : "#000000",
+                    color: isDark ? "#000000" : "#ffffff",
+                    fontWeight: 800,
+                    "&:hover": { bgcolor: isDark ? "#e0e0e0" : "#333333" },
+                    "&:focus": { bgcolor: isDark ? "#ffffff" : "#000000" },
+                  },
+                  "& .MuiPickersDay-root.MuiPickersDay-today:not(.Mui-selected)": {
+                    borderColor: isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)",
+                  },
+                  "& .MuiDayCalendar-weekDayLabel": {
+                    fontWeight: 700,
+                    color: "text.secondary",
+                    fontSize: "0.75rem",
+                  },
+                  "& .MuiPickersCalendarHeader-label": { fontWeight: 700 },
+                }}
+              >
+                <DateCalendar
+                  value={hasValidBookingDate ? bookingDate : null}
+                  onChange={handleDateChange}
+                  disablePast
+                  slots={{
+                    leftArrowIcon: () => (
+                      <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1, fontFamily: "monospace" }}>{">"}</span>
+                    ),
+                    rightArrowIcon: () => (
+                      <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1, fontFamily: "monospace" }}>{"<"}</span>
+                    ),
+                  }}
+                />
               </Box>
             </Grid>
 
@@ -472,8 +518,9 @@ export default function BookingPage() {
                                 from = from.startOf("day").hour(0).minute(0);
                                 to = to.add(30, "days").hour(23).minute(59);
                               }
-                              const fmtDate = (d) => formatDate(d.toDate());
-                              const fmtTime = (d) => formatTime(d.format("HH:mm"));
+                              const locale = lang === "ar" ? "ar-u-nu-latn" : "en-GB";
+                              const fmtDate = (d) => new Intl.DateTimeFormat(locale, { day: "2-digit", month: "long", year: "numeric" }).format(d.toDate());
+                              const fmtTime = (d) => d.toDate().toLocaleString(locale, { hour: "2-digit", minute: "2-digit", hour12: true });
                               return `${fmtDate(from)}, ${fmtTime(from)} → ${fmtDate(to)}, ${fmtTime(to)}`;
                             })()}
                           </Typography>

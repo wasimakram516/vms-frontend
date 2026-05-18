@@ -132,12 +132,15 @@ export const getTheme = (mode, direction = "ltr") => {
               borderRadius: "16px",
             },
             "& .MuiOutlinedInput-notchedOutline": {
+              left: 0,
               borderColor: isDark ? darkBorder : "rgba(0,0,0,0.1)",
+              borderWidth: "0.5px",
               borderRadius: "inherit",
               "[dir='rtl'] &": { textAlign: "right" },
             },
             "&:hover .MuiOutlinedInput-notchedOutline": {
               borderColor: isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)",
+              borderWidth: "1px",
             },
             "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
               borderColor: isDark ? "#ffffff" : "#000000",
@@ -159,10 +162,16 @@ export const getTheme = (mode, direction = "ltr") => {
             "&.Mui-focused": {
               color: isDark ? "#ffffff" : "#000000",
             },
-            "[dir='rtl'] &": {
-              right: 28,
+            "&[dir='rtl'], [dir='rtl'] &": {
+              right: 30,
               left: "auto",
+              textAlign: "right",
               transformOrigin: "top right",
+            },
+            "&[dir='ltr'], [dir='ltr'] &": {
+              right: "auto",
+              textAlign: "left",
+              transformOrigin: "top left",
             },
           },
         },

@@ -17,7 +17,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 import ICONS from "@/utils/iconUtil";
 
@@ -26,11 +28,15 @@ import { getStaffDestination } from "@/utils/navigationUtils";
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useColorMode();
+  const { t, isRtl } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
   const brandLogo = mode === "dark" ? "/logo-mark-light.png" : "/logo-mark-dark.png";
   const isStaffArea = pathname?.startsWith("/staff");
+  const isCmsArea = pathname?.startsWith("/cms");
+  const isVisitorArea = !isStaffArea && !isCmsArea;
   const kitchenAdmin = user?.adminType === "kitchen";
+
   const brandHref = isStaffArea ? "/staff" : kitchenAdmin ? "/cms/kitchen" : "/";
 
   const [anchorEl, setAnchorEl] = useState(null);
@@ -101,7 +107,7 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "block", sm: "none" } }}
               >
-                {"Sentry Visitor Portal"}
+                {isVisitorArea ? t("navbarBrand") : "Sentry Visitor Portal"}
               </Typography>
 
               <Typography
@@ -111,14 +117,16 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "none", sm: "block" } }}
               >
-                {"Sentry Visitor Portal"}
+                {isVisitorArea ? t("navbarBrand") : "Sentry Visitor Portal"}
               </Typography>
             </Stack>
           </Link>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            {isVisitorArea && <LanguageSwitcher />}
+
             <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
-              <IconButton 
+              <IconButton
                 onClick={toggleColorMode} 
                 sx={{ 
                   color: "text.primary",

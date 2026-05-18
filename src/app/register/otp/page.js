@@ -12,14 +12,18 @@ import {
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { sendOtp, verifyOtp, checkNdaValidity } from "@/services/registrationService";
+import { useLanguage } from "@/contexts/LanguageContext";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
 
 const OTP_LENGTH = 4;
 
 export default function RegisterOtpPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
+  const { t, isRtl } = useLanguage();
+  const dir = isRtl ? "rtl" : "ltr";
   const [otp, setOtp] = useState(() => Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(60);
@@ -183,16 +187,16 @@ export default function RegisterOtpPage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading="Verify Identity">
+    <VisitorLayout justifyContent="center" mobileSubheading={t("otpHeading")}>
       <Stack spacing={3}>
         <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
           <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            Verify Identity
+            {t("otpHeading")}
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>
-            We've sent a 4-digit code to{" "}
+            {t("otpSubtitle")}{" "}
             <Typography component="span" fontWeight={700} color="text.primary">
-              {visitorData.identity || "your device"}
+              {visitorData.identity || t("otpYourDevice")}
             </Typography>
           </Typography>
         </Box>
@@ -245,13 +249,13 @@ export default function RegisterOtpPage() {
           disabled={loading}
           onClick={handleVerify}
           startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <ICONS.checkCircle />}
-          sx={{ py: 1.8, borderRadius: 30, fontWeight: 700 }}
+          sx={{ py: 1.8, borderRadius: 30, fontWeight: 700, ...getStartIconSpacing(dir) }}
         >
-          {loading ? "Verifying..." : "Verify"}
+          {loading ? t("otpVerifying") : t("otpVerify")}
         </Button>
 
         <Typography variant="caption" color="text.secondary" align="center">
-          Didn't receive code?{" "}
+          {t("otpNoCode")}{" "}
           <Typography
             component="span"
             variant="caption"
@@ -264,10 +268,10 @@ export default function RegisterOtpPage() {
             }}
           >
             {resending
-              ? "Sending..."
+              ? t("otpResending")
               : resendTimer > 0
-                ? `Resend in ${resendTimer}s`
-                : "Resend"}
+                ? t("otpResendIn").replace("{{s}}", resendTimer)
+                : t("otpResend")}
           </Typography>
         </Typography>
 
@@ -277,9 +281,9 @@ export default function RegisterOtpPage() {
           size="small"
           startIcon={<ICONS.back />}
           onClick={() => router.back()}
-          sx={{ color: "text.disabled", textTransform: "none" }}
+          sx={{ color: "text.disabled", textTransform: "none", ...getStartIconSpacing(dir) }}
         >
-          Back
+          {t("back")}
         </Button>
       </Stack>
     </VisitorLayout>

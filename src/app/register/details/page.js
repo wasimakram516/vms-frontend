@@ -43,7 +43,6 @@ import NdaTemplateContent from "@/components/NdaTemplateContent";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE, COUNTRY_CODES } from "@/utils/countryCodes";
 import { validateField } from "@/utils/validationUtils";
 import { useLanguage } from "@/contexts/LanguageContext";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { filterPhoneInput, filterNumberInput, onKeyPressNumeric, onKeyPressPhone } from "@/utils/phoneUtils";
 import { translateBatch } from "@/services/translationService";
 import { ndaDocToHtml } from "@/utils/ndaDocUtils";
@@ -52,18 +51,15 @@ import getStartIconSpacing from "@/utils/getStartIconSpacing";
 
 export default function DetailsPage() {
   const router = useRouter();
-  const { t, isRtl } = useLanguage();
+  const { t, isRtl, lang } = useLanguage();
   const { visitorData, setVisitorData, flowState, setFlowState } = useVisitor();
 
-  // Apply RTL direction only while this page is mounted; restore LTR on leave
   useEffect(() => {
     document.documentElement.dir = isRtl ? "rtl" : "ltr";
-    return () => {
-      document.documentElement.dir = "ltr";
-    };
   }, [isRtl]);
   const [fields, setFields] = useState([]);
   const [translatedLabels, setTranslatedLabels] = useState({});
+  const [translatedOptions, setTranslatedOptions] = useState({});
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState({});
   const [ndaOpen, setNdaOpen] = useState(false);
@@ -177,6 +173,25 @@ export default function DetailsPage() {
         map[f.field_key || f.fieldKey] = results[i] || f.label;
       });
       setTranslatedLabels(map);
+    });
+
+    // Translate select/radio/checkbox options
+    const optionFields = fields.filter((f) => {
+      const t = (f.input_type || f.inputType || "").toLowerCase();
+      return ["select", "radio", "checkbox"].includes(t);
+    });
+    if (!optionFields.length) return;
+    const allOpts = [];
+    optionFields.forEach((f) => (f.options_json || f.optionsJson || []).forEach((o) => allOpts.push(o)));
+    const uniqueOpts = [...new Set(allOpts)];
+    translateBatch(uniqueOpts, "ar").then((results) => {
+      const globalMap = Object.fromEntries(uniqueOpts.map((o, i) => [o, results[i] || o]));
+      const byField = {};
+      optionFields.forEach((f) => {
+        const key = f.field_key || f.fieldKey;
+        byField[key] = Object.fromEntries((f.options_json || f.optionsJson || []).map((o) => [o, globalMap[o] || o]));
+      });
+      setTranslatedOptions(byField);
     });
   }, [fields]);
 
@@ -402,16 +417,13 @@ export default function DetailsPage() {
 
   return (
     <VisitorLayout
-      title="Visitor Registration"
-      subtitle="Please provide your information to ensure a smooth check-in process at Sinan."
+      title={t("detailsLayoutTitle")}
+      subtitle={t("detailsLayoutSubtitle")}
       mobileSubheading={t("detailsMobileSubheading")}
       maxWidth={650}
     >
       <form autoComplete="off">
         <Stack spacing={3}>
-          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-            <LanguageSwitcher />
-          </Box>
           <Box sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}>
             <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
               {t("detailsHeading")}
@@ -458,7 +470,7 @@ export default function DetailsPage() {
                       >
                         {options.map((opt) => (
                           <MenuItem key={opt} value={opt}>
-                            {opt}
+                            {(isRtl && translatedOptions[fieldKey]?.[opt]) || opt}
                           </MenuItem>
                         ))}
                       </Select>
@@ -477,7 +489,7 @@ export default function DetailsPage() {
                         onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
                       >
                         {options.map((opt) => (
-                          <FormControlLabel key={opt} value={opt} control={<Radio />} label={opt} />
+                          <FormControlLabel key={opt} value={opt} control={<Radio />} label={(isRtl && translatedOptions[fieldKey]?.[opt]) || opt} />
                         ))}
                       </RadioGroup>
                       {error && <FormHelperText>{error}</FormHelperText>}
@@ -507,7 +519,7 @@ export default function DetailsPage() {
                                 onChange={(e) => handleCheckChange(opt, e.target.checked)}
                               />
                             }
-                            label={opt}
+                            label={(isRtl && translatedOptions[fieldKey]?.[opt]) || opt}
                           />
                         ))}
                       </FormGroup>
@@ -554,6 +566,8 @@ export default function DetailsPage() {
                           <CountryCodeSelector
                             value={isoCode}
                             onChange={(iso) => handleCountryCodeChange(fieldKey, iso)}
+                            lang={lang}
+                            dir={isRtl ? "rtl" : "ltr"}
                           />
                         ),
                       }}
@@ -576,6 +590,7 @@ export default function DetailsPage() {
                       required={isRequired}
                       error={Boolean(error)}
                       helperText={error}
+                      lang={isRtl ? "ar" : "en"}
                     />
                   );
                 }
@@ -593,6 +608,31 @@ export default function DetailsPage() {
                       />
                       {error && <FormHelperText error>{error}</FormHelperText>}
                     </Box>
+                  );
+                }
+
+                // Passport country / nationality / country-of-issue → CountryPicker with translated names
+                const isPassportCountryField =
+                  fieldKeyLower.includes("passport_country") ||
+                  fieldKeyLower.includes("passportcountry") ||
+                  fieldKeyLower.includes("country_of_issue") ||
+                  fieldKeyLower.includes("countryofissue") ||
+                  fieldKeyLower.includes("nationality") ||
+                  (fieldLabel.includes("country") && fieldLabel.includes("passport")) ||
+                  (fieldLabel.includes("nationality"));
+
+                if (isPassportCountryField) {
+                  return (
+                    <CountryPicker
+                      key={f.id || fieldKey}
+                      label={getFieldLabel(f)}
+                      value={val || ""}
+                      onChange={(iso) => handleFieldChange(fieldKey, iso)}
+                      required={isRequired}
+                      error={Boolean(error)}
+                      helperText={error}
+                      lang={isRtl ? "ar" : "en"}
+                    />
                   );
                 }
 

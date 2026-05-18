@@ -18,14 +18,18 @@ import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { sendOtpSilently } from "@/services/registrationService";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import { validateEmail } from "@/utils/validationUtils";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
 
 export default function ReturningVisitorPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
   const { mode } = useColorMode();
+  const { t, isRtl } = useLanguage();
+  const dir = isRtl ? "rtl" : "ltr";
   const isDark = mode === "dark";
   const [loading, setLoading] = useState(false);
   const [method, setMethod] = useState("email");
@@ -56,7 +60,7 @@ export default function ReturningVisitorPage() {
         setFlowState((prev) => ({ ...prev, isReturning: true, currentStep: "otp" }));
         router.push("/register/otp");
       } else {
-        setOtpRequestError(res.message || "Unable to send OTP. Please try again.");
+        setOtpRequestError(res.message || t("returningOtpError"));
       }
     } finally {
       setLoading(false);
@@ -64,14 +68,14 @@ export default function ReturningVisitorPage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading="Welcome Back">
+    <VisitorLayout justifyContent="center" mobileSubheading={t("returningHeading")}>
       <Stack spacing={3}>
         <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
           <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            Welcome Back
+            {t("returningHeading")}
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>
-            Sign in with your registered email. Phone OTP will be added later.
+            {t("returningSubtitle")}
           </Typography>
         </Box>
 
@@ -93,12 +97,16 @@ export default function ReturningVisitorPage() {
             value="email"
             icon={<ICONS.email fontSize="small" />}
             iconPosition="start"
-            label="Email"
+            label={t("returningEmailTab")}
             sx={{
               minHeight: 38,
               borderRadius: 999,
               fontWeight: 800,
               textTransform: "none",
+              "& .MuiTab-iconWrapper": {
+                marginRight: isRtl ? 0 : "8px",
+                marginLeft: isRtl ? "8px" : 0,
+              },
               "&.Mui-selected": {
                 bgcolor: "background.paper",
                 color: "text.primary",
@@ -110,12 +118,16 @@ export default function ReturningVisitorPage() {
             value="phone"
             icon={<ICONS.phone fontSize="small" />}
             iconPosition="start"
-            label="Phone"
+            label={t("returningPhoneTab")}
             sx={{
               minHeight: 38,
               borderRadius: 999,
               fontWeight: 800,
               textTransform: "none",
+              "& .MuiTab-iconWrapper": {
+                marginRight: isRtl ? 0 : "8px",
+                marginLeft: isRtl ? "8px" : 0,
+              },
               "&.Mui-selected": {
                 bgcolor: "background.paper",
                 color: "text.primary",
@@ -135,7 +147,7 @@ export default function ReturningVisitorPage() {
             <TextField
               fullWidth
               autoFocus
-              label="Email Address"
+              label={t("returningEmailLabel")}
               type="email"
               placeholder="name@example.com"
               value={email}
@@ -159,9 +171,9 @@ export default function ReturningVisitorPage() {
               disabled={loading}
               onClick={handleNext}
               startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <ICONS.email />}
-              sx={{ py: 1.8, borderRadius: 30, fontWeight: 700 }}
+              sx={{ py: 1.8, borderRadius: 30, fontWeight: 700, ...getStartIconSpacing(dir) }}
             >
-              {loading ? "Sending OTP..." : "Send OTP"}
+              {loading ? t("returningSendingOtp") : t("returningSendOtp")}
             </Button>
           </Stack>
         ) : (
@@ -191,10 +203,10 @@ export default function ReturningVisitorPage() {
               <ICONS.phone fontSize="medium" />
             </Box>
             <Typography variant="h6" fontWeight={800} sx={{ mb: 1 }}>
-              Phone OTP Coming Soon
+              {t("returningPhoneSoon")}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 320, mx: "auto" }}>
-              Returning visitor sign-in by phone will be added in a later update. Please use your email for now.
+              {t("returningPhoneSoonDesc")}
             </Typography>
           </Box>
         )}
@@ -204,9 +216,9 @@ export default function ReturningVisitorPage() {
           fullWidth
           startIcon={<ICONS.back />}
           onClick={() => router.push("/")}
-          sx={{ color: "text.disabled", textTransform: "none" }}
+          sx={{ color: "text.disabled", textTransform: "none", ...getStartIconSpacing(dir) }}
         >
-          Back
+          {t("back")}
         </Button>
       </Stack>
     </VisitorLayout>
