@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -29,7 +29,7 @@ import Grid from "@mui/material/Grid";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
-import { createRegistration, visitorEditRegistration } from "@/services/registrationService";
+import { createRegistration, visitorEditRegistration, getFields } from "@/services/registrationService";
 import { getDepartments } from "@/services/departmentService";
 import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
 import NdaTemplateContent from "@/components/NdaTemplateContent";
@@ -37,7 +37,6 @@ import { motion } from "framer-motion";
 import dayjs from "dayjs";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
-import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { parse24To12, convert12To24, formatDate, formatTime } from "@/utils/dateUtils";
@@ -80,8 +79,123 @@ export default function BookingPage() {
 
   const [bookingType, setBookingType] = useState("preset");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
+
+  // ── Custom fields for purpose of visit (returning visitor flow) ───────────
+  const [purposeCustomFields, setPurposeCustomFields] = useState([]);
+
+  const getChildFieldIds = (config) => {
+    if (!config) return [];
+    if (Array.isArray(config)) return config;
+    return config.fieldIds || [];
+  };
+
+  // Collect purpose field + all its transitive dependents
+  const purposeRelatedIds = useMemo(() => {
+    const normKey = (s = '') => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const purposeField = purposeCustomFields.find((f) => {
+      const k = normKey(f.field_key || f.fieldKey);
+      const l = (f.label || '').toLowerCase();
+      return k.includes('purposeofvisit') || k === 'purpose' || l.includes('purpose of visit');
+    });
+    if (!purposeField) return new Set();
+    const ids = new Set([purposeField.id]);
+    const queue = [purposeField];
+    const byId = Object.fromEntries(purposeCustomFields.map((f) => [f.id, f]));
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      const deps = cur.dependents_json || cur.dependentsJson;
+      if (!deps) continue;
+      Object.values(deps).forEach((cfg) => {
+        getChildFieldIds(cfg).forEach((id) => {
+          if (!ids.has(id)) { ids.add(id); if (byId[id]) queue.push(byId[id]); }
+        });
+      });
+    }
+    return ids;
+  }, [purposeCustomFields]);
+
+  // BFS visibility for the purpose field subset
+  const purposeVisibleIds = useMemo(() => {
+    const allChildIds = new Set();
+    purposeCustomFields.forEach((f) => {
+      const deps = f.dependents_json || f.dependentsJson;
+      if (deps) Object.values(deps).forEach((cfg) => getChildFieldIds(cfg).forEach((id) => allChildIds.add(id)));
+    });
+    const visible = new Set();
+    const byId = Object.fromEntries(purposeCustomFields.map((f) => [f.id, f]));
+    const queue = purposeCustomFields.filter((f) => !allChildIds.has(f.id) && purposeRelatedIds.has(f.id));
+    queue.forEach((f) => visible.add(f.id));
+    const bfsQueue = [...queue];
+    while (bfsQueue.length > 0) {
+      const cur = bfsQueue.shift();
+      const deps = cur.dependents_json || cur.dependentsJson;
+      if (!deps) continue;
+      const curVal = visitorData.dynamicFields?.[cur.field_key || cur.fieldKey];
+      if (curVal && deps[curVal]) {
+        getChildFieldIds(deps[curVal]).forEach((id) => {
+          if (!visible.has(id) && purposeRelatedIds.has(id)) {
+            visible.add(id);
+            if (byId[id]) bfsQueue.push(byId[id]);
+          }
+        });
+      }
+    }
+    return visible;
+  }, [purposeCustomFields, purposeRelatedIds, visitorData.dynamicFields]);
+
+  const handlePurposeFieldChange = (key, value) => {
+    setVisitorData((prev) => {
+      const updated = { ...prev.dynamicFields, [key]: value };
+      // Clear hidden dependents when parent value changes
+      const parentField = purposeCustomFields.find((f) => (f.field_key || f.fieldKey) === key);
+      const deps = parentField?.dependents_json || parentField?.dependentsJson;
+      if (deps) {
+        Object.entries(deps).forEach(([triggerVal, cfg]) => {
+          if (triggerVal !== value) {
+            getChildFieldIds(cfg).forEach((childId) => {
+              const childField = purposeCustomFields.find((f) => f.id === childId);
+              if (childField) delete updated[childField.field_key || childField.fieldKey];
+            });
+          }
+        });
+      }
+      return { ...prev, dynamicFields: updated };
+    });
+    if (fieldErrors[key]) setFieldErrors((p) => { const n = { ...p }; delete n[key]; return n; });
+  };
   const bookingDate = bookingData.date ? dayjs(bookingData.date) : null;
   const hasValidBookingDate = bookingDate?.isValid?.() === true;
+
+  // Fetch custom fields and pre-fill purpose from activeRegistration for returning visitors
+  useEffect(() => {
+    if (!isReturning) return;
+    getFields().then((res) => {
+      if (!Array.isArray(res)) return;
+      setPurposeCustomFields(res);
+
+      if (!isEditMode || !activeRegistration) return;
+
+      // Find the purpose field to know its key
+      const normKey = (s = '') => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const purposeField = res.find((f) => {
+        const k = normKey(f.field_key || f.fieldKey);
+        const l = (f.label || '').toLowerCase();
+        return k.includes('purposeofvisit') || k === 'purpose' || l.includes('purpose of visit');
+      });
+
+      // Merge field values from activeRegistration (prefer fieldValues, bridge purposeOfVisit for old records)
+      const preFill = { ...(activeRegistration.fieldValues || {}) };
+      if (purposeField) {
+        const pk = purposeField.field_key || purposeField.fieldKey;
+        if (!preFill[pk] && activeRegistration.purposeOfVisit) {
+          preFill[pk] = activeRegistration.purposeOfVisit;
+        }
+      }
+      if (Object.keys(preFill).length > 0) {
+        setVisitorData((prev) => ({ ...prev, dynamicFields: { ...prev.dynamicFields, ...preFill } }));
+      }
+    });
+  }, [isReturning]);
 
   useEffect(() => {
     if (!isReturning) return;
@@ -107,9 +221,6 @@ export default function BookingPage() {
         timeFrom: from.format("HH:mm"),
         timeTo: activeRegistration.requestedTo ? dayjs(activeRegistration.requestedTo).format("HH:mm") : prev.timeTo,
       }));
-    }
-    if (activeRegistration.purposeOfVisit) {
-      setVisitorData((prev) => ({ ...prev, purposeOfVisit: activeRegistration.purposeOfVisit }));
     }
     if (activeRegistration.departmentId) {
       setVisitorData((prev) => ({ ...prev, departmentId: activeRegistration.departmentId }));
@@ -201,7 +312,6 @@ export default function BookingPage() {
     if (isReturning) {
       const errs = {};
       if (!visitorData.departmentId) errs.departmentId = t("departmentRequired");
-      if (!visitorData.purposeOfVisit) errs.purposeOfVisit = t("purposeRequired");
       if (showNdaCheckbox && !ndaAccepted) errs.nda = t("ndaMustAccept");
       if (Object.keys(errs).length) { setFieldErrors(errs); return; }
     }
@@ -240,7 +350,6 @@ export default function BookingPage() {
         requestedFrom: dayjs(`${fromDate}T${bookingData.timeFrom}`).toISOString(),
         requestedTo: dayjs(`${toDate}T${bookingData.timeTo}`).toISOString(),
         phoneIsoCode: visitorData.phoneIsoCode,
-        purposeOfVisit: visitorData.purposeOfVisit,
         departmentId: visitorData.departmentId || undefined,
         fieldValues: {
           ...visitorData.dynamicFields,
@@ -255,8 +364,11 @@ export default function BookingPage() {
           userId: visitorData.userId,
           requestedFrom: dayjs(`${fromDate}T${bookingData.timeFrom}`).toISOString(),
           requestedTo: dayjs(`${toDate}T${bookingData.timeTo}`).toISOString(),
-          purposeOfVisit: visitorData.purposeOfVisit,
           departmentId: visitorData.departmentId || undefined,
+          fieldValues: {
+            ...visitorData.dynamicFields,
+            full_name: visitorData.fullName || visitorData.dynamicFields?.full_name,
+          },
         });
       } else {
         res = await createRegistration(payload);
@@ -325,17 +437,42 @@ export default function BookingPage() {
                 {fieldErrors.departmentId && <FormHelperText>{fieldErrors.departmentId}</FormHelperText>}
               </FormControl>
 
-              <PurposeOfVisitInput
-                value={visitorData.purposeOfVisit || ""}
-                onChange={(val) => {
-                  setVisitorData((prev) => ({ ...prev, purposeOfVisit: val }));
-                  if (fieldErrors.purposeOfVisit) setFieldErrors((p) => { const n = { ...p }; delete n.purposeOfVisit; return n; });
-                }}
-                required
-                error={Boolean(fieldErrors.purposeOfVisit)}
-                helperText={fieldErrors.purposeOfVisit}
-                rounded
-              />
+              {purposeCustomFields
+                .filter((f) => purposeVisibleIds.has(f.id))
+                .map((f) => {
+                  const fieldKey = f.field_key || f.fieldKey;
+                  const isRequired = f.is_required || f.isRequired;
+                  const inputType = (f.input_type || f.inputType || 'text').toLowerCase();
+                  const options = f.options_json || f.optionsJson || [];
+                  const val = visitorData.dynamicFields?.[fieldKey] ?? '';
+                  const err = fieldErrors[fieldKey];
+                  if (inputType === 'select') {
+                    return (
+                      <FormControl key={f.id} fullWidth required={isRequired} error={Boolean(err)}>
+                        <InputLabel>{f.label}</InputLabel>
+                        <Select value={val} label={f.label} onChange={(e) => handlePurposeFieldChange(fieldKey, e.target.value)} sx={{ borderRadius: 30 }}>
+                          {options.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                        </Select>
+                        {err && <FormHelperText>{err}</FormHelperText>}
+                      </FormControl>
+                    );
+                  }
+                  return (
+                    <TextField
+                      key={f.id}
+                      fullWidth
+                      label={f.label}
+                      value={val}
+                      required={isRequired}
+                      onChange={(e) => handlePurposeFieldChange(fieldKey, e.target.value)}
+                      error={Boolean(err)}
+                      helperText={err}
+                      multiline={inputType === 'textarea'}
+                      minRows={inputType === 'textarea' ? 2 : undefined}
+                      InputProps={{ sx: { borderRadius: 30 } }}
+                    />
+                  );
+                })}
 
               {showNdaCheckbox && (
                 <Stack spacing={0.75}>

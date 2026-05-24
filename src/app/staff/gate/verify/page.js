@@ -118,11 +118,18 @@ export default function StaffVerifyPage() {
   useEffect(() => {
     const goOnline  = () => setIsOnline(true);
     const goOffline = () => setIsOnline(false);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        getWorkingHours().then((wh) => { if (wh) setWorkingHours(wh); });
+      }
+    };
     window.addEventListener("online",  goOnline);
     window.addEventListener("offline", goOffline);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.removeEventListener("online",  goOnline);
       window.removeEventListener("offline", goOffline);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
@@ -909,7 +916,10 @@ export default function StaffVerifyPage() {
                 // Final field extraction with fallback to visitor summary
                 const visitorName = findCustomFieldValue(["fullname", "name", "visitorname"]) || result.visitor?.fullName || result.full_name || result.user?.fullName || "N/A";
                 const company = findCustomFieldValue(["company", "organisation", "organization", "employer", "firm"]) || result.visitor?.companyName || result.visitor?.organisation || result.organisation || result.companyName || result.user?.companyName || null;
-                const purpose = findCustomFieldValue(["purposeofvisit", "purpose", "visitpurpose"]) || result.visitor?.purposeOfVisit || result.purpose_of_visit || null;
+                const rawPurpose = findCustomFieldValue(["purposeofvisit", "purpose", "visitpurpose"]);
+                const purpose = (rawPurpose === "Other"
+                  ? (findCustomFieldValue(["pleasespecify", "specify", "otherdetails", "purposeotherdetails"]) || rawPurpose)
+                  : rawPurpose) || result.visitor?.purposeOfVisit || result.purpose_of_visit || null;
                 const department = findCustomFieldValue(["department", "dept", "division", "unit", "section", "team", "businessunit"]) || result.visitor?.department?.name || result.visitor?.department || result.department?.name || result.department || null;
                 const accessLevel = findCustomFieldValue(["accesslevel", "access level", "access", "clearance", "securitylevel", "badgelevel", "accesstype", "zone"]) || result.visitor?.accessLevel?.name || result.visitor?.accessLevel || result.accessLevel?.name || result.accessLevel || null;
                 const idTypeFromField = findCustomFieldValue(["idtype", "identificationtype", "documenttype", "doctype", "id document type"]);
@@ -1128,6 +1138,24 @@ export default function StaffVerifyPage() {
                   return null;
                 })();
 
+                const isVipFastTrack = result.is_vip_fast_track || result.isVipFastTrack;
+                const bufferMs = ((workingHours?.checkInBufferMinutes) ?? 60) * 60 * 1000;
+                const outsideWindow = (() => {
+                  if (isVipFastTrack || !isApproved) return false;
+                  if (!result.approved_from || !result.approved_to) return false;
+                  const now = Date.now();
+                  const effectiveFrom = new Date(result.approved_from).getTime() - bufferMs;
+                  const effectiveTo   = new Date(result.approved_to).getTime()   + bufferMs;
+                  return now < effectiveFrom || now > effectiveTo;
+                })();
+
+                const fmtWindow = () => {
+                  const fmt = (d) => `${formatDate(d)} ${formatTime(d)}`;
+                  const from = new Date(new Date(result.approved_from).getTime() - bufferMs);
+                  const to   = new Date(new Date(result.approved_to).getTime()   + bufferMs);
+                  return `${fmt(from)} – ${fmt(to)}`;
+                };
+
                 return (
                   <>
                     {resolvedId && (isApproved || (isCheckedOut && isMulti)) && (
@@ -1171,6 +1199,12 @@ export default function StaffVerifyPage() {
                       </Box>
                     )}
 
+                    {outsideWindow && (
+                      <Alert severity="error" icon={<ICONS.time fontSize="small" />} sx={{ borderRadius: 2, fontWeight: 600, mb: 1 }}>
+                        Outside check-in window. Allowed: {fmtWindow()}
+                      </Alert>
+                    )}
+
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                       <Button
                         fullWidth
@@ -1205,7 +1239,7 @@ export default function StaffVerifyPage() {
                           color="success"
                           startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
                           onClick={handleCheckInAction}
-                          disabled={actionLoading || (Boolean(resolvedId) && !idVerified)}
+                          disabled={actionLoading || (Boolean(resolvedId) && !idVerified) || outsideWindow}
                         >
                           Check In
                         </Button>

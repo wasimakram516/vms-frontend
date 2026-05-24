@@ -17,6 +17,7 @@ const mapHostToFrontend = (host) => ({
   ndaNotificationEmail: host.ndaNotificationEmail || "",
   exitTimeoutEnabled: host.exitTimeoutEnabled ?? false,
   exitTimeoutMinutes: host.exitTimeoutMinutes ?? 60,
+  checkInBufferMinutes: host.checkInBufferMinutes ?? 60,
   workingHoursEnabled: host.workingHoursEnabled ?? false,
   workingHoursStart: host.workingHoursStart ?? 8,
   workingHoursEnd: host.workingHoursEnd ?? 17,

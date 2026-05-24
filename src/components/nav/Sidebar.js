@@ -42,9 +42,9 @@ const getNavItems = (user, isKitchenModuleEnabled = true) => {
     ];
   }
 
-  // Departmental Admin: Everything EXCEPT Kitchen Orders
+  // Departmental Admin: Everything EXCEPT Kitchen Orders, NDA Forms, Users, and Fields
   if (role === "admin" && adminType === "departmental") {
-    // base is already what we want, just make sure we don't add kitchen later
+    return base.filter((item) => !["/cms/nda-forms", "/cms/users", "/cms/fields"].includes(item.path));
   } else if (isKitchenModuleEnabled) {
     // SuperAdmin: Add Kitchen Orders if enabled
     base.push({ label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" });

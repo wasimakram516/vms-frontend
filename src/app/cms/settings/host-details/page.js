@@ -56,6 +56,7 @@ const emptyForm = () => ({
   ndaNotificationEmail: "",
   exitTimeoutEnabled: false,
   exitTimeoutMinutes: 60,
+  checkInBufferMinutes: 60,
   workingHoursEnabled: false,
   workingHoursStart: 8,
   workingHoursEnd: 17,
@@ -161,6 +162,7 @@ export default function HostDetailsPage() {
       ndaNotificationEmail: host.ndaNotificationEmail || "",
       exitTimeoutEnabled: host.exitTimeoutEnabled ?? false,
       exitTimeoutMinutes: host.exitTimeoutMinutes ?? 60,
+      checkInBufferMinutes: host.checkInBufferMinutes ?? 60,
       workingHoursEnabled: host.workingHoursEnabled ?? false,
       workingHoursStart: host.workingHoursStart ?? 8,
       workingHoursEnd: host.workingHoursEnd ?? 17,
@@ -285,6 +287,7 @@ export default function HostDetailsPage() {
         ndaNotificationEmail: form.ndaNotificationEmail.trim() || undefined,
         exitTimeoutEnabled: form.exitTimeoutEnabled,
         exitTimeoutMinutes: form.exitTimeoutEnabled ? Number(form.exitTimeoutMinutes) : undefined,
+        checkInBufferMinutes: Number(form.checkInBufferMinutes) || 0,
         workingHoursEnabled: form.workingHoursEnabled,
         workingHoursStart: form.workingHoursEnabled ? Number(form.workingHoursStart) : undefined,
         workingHoursEnd: form.workingHoursEnabled ? Number(form.workingHoursEnd) : undefined,
@@ -441,6 +444,19 @@ export default function HostDetailsPage() {
                           variant="outlined"
                           sx={{ mt: 0.5, fontWeight: 600, fontSize: "0.72rem" }}
                         />
+                      }
+                    />
+                  </ListItem>
+                  <ListItem disablePadding sx={{ py: 0.6 }}>
+                    <ListItemIcon sx={{ minWidth: 36, color: "text.secondary" }}>
+                      <ICONS.time fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Check-in Buffer"
+                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}
+                      secondaryTypographyProps={{ component: "div" }}
+                      secondary={
+                        <Chip label={`±${host.checkInBufferMinutes ?? 60} min`} size="small" color="success" variant="outlined" sx={{ mt: 0.5, fontWeight: 600, fontSize: "0.72rem" }} />
                       }
                     />
                   </ListItem>
@@ -731,6 +747,21 @@ export default function HostDetailsPage() {
                 sx={{ mt: 1.5, maxWidth: 260 }}
               />
             )}
+            <TextField
+              label="Check-in buffer (minutes)"
+              type="number"
+              size="small"
+              value={form.checkInBufferMinutes}
+              onChange={(e) => setForm((p) => ({ ...p, checkInBufferMinutes: e.target.value }))}
+              onBlur={(e) => {
+                const v = Math.max(0, Math.min(1440, Number(e.target.value) || 0));
+                setForm((p) => ({ ...p, checkInBufferMinutes: v }));
+              }}
+              inputProps={{ min: 0, max: 1440 }}
+              helperText="Allow check-in this many minutes before/after the approved window. 0 = strict enforcement."
+              sx={{ mt: 1.5, maxWidth: 260 }}
+            />
+
             <FormControlLabel
               sx={{ mt: 1 }}
               control={

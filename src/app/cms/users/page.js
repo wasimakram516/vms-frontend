@@ -51,6 +51,7 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import { validateField, validatePhone } from "@/utils/validationUtils";
 import RecordMetadata from "@/components/RecordMetadata";
+import RoleGuard from "@/components/auth/RoleGuard";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay } from "@/utils/countryCodes";
 import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
@@ -362,6 +363,7 @@ export default function UsersPage() {
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]}>
     <Box>
       <Box
         sx={{
@@ -1116,5 +1118,6 @@ export default function UsersPage() {
         confirmButtonIcon={String(userStatusTarget?.status || "active").toLowerCase() === "active" ? <ICONS.close fontSize="small" /> : <ICONS.check fontSize="small" />}
       />
     </Box>
+    </RoleGuard>
   );
 }

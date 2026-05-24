@@ -33,7 +33,6 @@ import { getDepartments } from "@/services/departmentService";
 import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
-import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import CountryPicker from "@/components/CountryPicker";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -359,10 +358,6 @@ export default function DetailsPage() {
 
     if (!visitorData.departmentId) {
       newErrors.departmentId = t("departmentRequired");
-    }
-
-    if (!visitorData.purposeOfVisit) {
-      newErrors.purposeOfVisit = t("purposeRequired");
     }
 
     setErrors(newErrors);
@@ -737,20 +732,6 @@ export default function DetailsPage() {
             </Select>
             {errors.departmentId && <FormHelperText>{errors.departmentId}</FormHelperText>}
           </FormControl>
-
-          <PurposeOfVisitInput
-            value={visitorData.purposeOfVisit || ""}
-            onChange={(val) => {
-              setVisitorData((prev) => ({ ...prev, purposeOfVisit: val }));
-              if (errors.purposeOfVisit) {
-                setErrors((p) => { const n = { ...p }; delete n.purposeOfVisit; return n; });
-              }
-            }}
-            required
-            error={Boolean(errors.purposeOfVisit)}
-            helperText={errors.purposeOfVisit}
-            rounded
-          />
 
           <Divider />
 

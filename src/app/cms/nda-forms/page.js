@@ -97,7 +97,7 @@ export default function NdaFormsPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["superadmin", "admin"]} allowedAdminTypes={["departmental"]}>
+    <RoleGuard allowedRoles={["superadmin"]}>
       <Box>
         {/* Page header */}
         <Box

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Typography,
@@ -97,6 +97,7 @@ export default function CmsApprovalsPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [fetchingProfile, setFetchingProfile] = useState(false);
   const [loadingId, setLoadingId] = useState(null);
+  const hasLoadedOnceRef = useRef(false);
 
   const [scheduledDate, setScheduledDate] = useState(null);
   const [scheduledFrom, setScheduledFrom] = useState("09:00");
@@ -135,7 +136,7 @@ export default function CmsApprovalsPage() {
   }, [isSuperAdmin, userDepartmentIds]);
 
   const fetchPending = useCallback(async ({ refreshOnly = false } = {}) => {
-    const shouldShowFullLoader = !refreshOnly && !hasLoadedOnce && rows.length === 0;
+    const shouldShowFullLoader = !refreshOnly && !hasLoadedOnceRef.current;
     if (shouldShowFullLoader) setLoading(true);
     else setIsListRefreshing(true);
     try {
@@ -152,19 +153,23 @@ export default function CmsApprovalsPage() {
         const data = await getRegistrations("pending");
         setRows(Array.isArray(data) ? data : []);
       }
+      hasLoadedOnceRef.current = true;
       setHasLoadedOnce(true);
     } finally {
       if (shouldShowFullLoader) setLoading(false);
       setIsListRefreshing(false);
     }
-  }, [isSuperAdmin, hasLoadedOnce, rows.length]);
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     fetchPending();
+  }, [fetchPending]);
+
+  useEffect(() => {
     getAccessLevels().then((res) => {
       if (Array.isArray(res)) setAccessLevels(res.filter((al) => al.isActive !== false));
     });
-  }, [fetchPending]);
+  }, []);
 
   const { on } = useSocket();
 
@@ -546,7 +551,6 @@ export default function CmsApprovalsPage() {
       );
       setRows((prev) => prev.filter((r) => r.id !== approveTarget.id));
       setApproveTarget(null);
-      fetchPending();
     } catch (err) {
       showMessage("Failed to approve registration", "error");
     } finally {
@@ -569,7 +573,6 @@ export default function CmsApprovalsPage() {
       setRows((prev) => prev.filter((r) => r.id !== rejectTarget.id));
       setRejectTarget(null);
       setRejectReason("");
-      fetchPending();
     } catch (err) {
       showMessage("Failed to reject registration", "error");
     }

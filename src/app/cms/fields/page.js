@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Box,
   Typography,
@@ -45,6 +46,7 @@ import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
 import RecordMetadata from "@/components/RecordMetadata";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 const INPUT_TYPES = [
   "text",
@@ -78,6 +80,8 @@ const emptyForm = () => ({
 });
 
 export default function CmsFieldsPage() {
+  const { user } = useAuth();
+  const canEdit = user?.role !== "admin";
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -316,6 +320,7 @@ export default function CmsFieldsPage() {
   const needsDependents = HAS_DEPENDENTS.includes(form.inputType) && parsedOptions.length >= 2;
 
   return (
+    <RoleGuard allowedRoles={["superadmin", "dev"]}>
     <Box>
       <Box
         sx={{
@@ -337,11 +342,13 @@ export default function CmsFieldsPage() {
             Global dynamic fields used in the public visitor registration form.
           </Typography>
         </Box>
-        <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, width: { xs: "100%", sm: "auto" } }}>
-          <Button variant="contained" startIcon={<ICONS.add />} onClick={openAdd}>
-            Create
-          </Button>
-        </Box>
+        {canEdit && (
+          <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, width: { xs: "100%", sm: "auto" } }}>
+            <Button variant="contained" startIcon={<ICONS.add />} onClick={openAdd}>
+              Create
+            </Button>
+          </Box>
+        )}
       </Box>
 
       <Divider sx={{ mb: 3 }} />
@@ -524,20 +531,22 @@ export default function CmsFieldsPage() {
                         sx={{ px: 0, py: 0 }}
                       />
                     </Box>
-                    <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <IconButton
-                        size="small" color="primary" onClick={() => openEdit(field)}
-                        sx={{ bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)" }}
-                      >
-                        <ICONS.edit fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small" color="error" onClick={() => setDeleteTarget(field)}
-                        sx={{ bgcolor: isDark ? "rgba(255,100,100,0.05)" : "rgba(255,0,0,0.03)" }}
-                      >
-                        <ICONS.delete fontSize="small" />
-                      </IconButton>
-                    </Stack>
+                    {canEdit && (
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        <IconButton
+                          size="small" color="primary" onClick={() => openEdit(field)}
+                          sx={{ bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)" }}
+                        >
+                          <ICONS.edit fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small" color="error" onClick={() => setDeleteTarget(field)}
+                          sx={{ bgcolor: isDark ? "rgba(255,100,100,0.05)" : "rgba(255,0,0,0.03)" }}
+                        >
+                          <ICONS.delete fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    )}
                   </Box>
                 </AppCard>
               ))}
@@ -866,5 +875,6 @@ export default function CmsFieldsPage() {
         confirmButtonIcon={<ICONS.delete fontSize="small" />}
       />
     </Box>
+    </RoleGuard>
   );
 }

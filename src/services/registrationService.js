@@ -66,7 +66,24 @@ export const mapRegistration = (r) => {
     full_name: r.user?.fullName || "N/A",
     email: r.user?.email || null,
     phone: r.user?.phone || "N/A",
-    purpose_of_visit: r.purposeOfVisit,
+    purpose_of_visit: (() => {
+      const col = r.purposeOfVisit || null;
+      if (col && col !== 'Other') return col;
+      if (!Array.isArray(r.fieldValues)) return col;
+      const normKey = (s = '') => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const purposeFv = r.fieldValues.find((fv) => {
+        const k = normKey(fv.customField?.fieldKey || fv.customField?.field_key);
+        return k.includes('purposeofvisit') || k === 'purpose';
+      });
+      const purposeVal = purposeFv?.value ?? col;
+      if (purposeVal !== 'Other') return purposeVal;
+      // Resolve "Other" → companion specify field
+      const specifyFv = r.fieldValues.find((fv) => {
+        const k = normKey(fv.customField?.fieldKey || fv.customField?.field_key);
+        return k.includes('specify') || k.includes('otherdetail');
+      });
+      return specifyFv?.value ?? purposeVal;
+    })(),
     status: r.status,
     requested_from: r.requestedFrom,
     requested_to: r.requestedTo,

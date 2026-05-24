@@ -61,7 +61,6 @@ import FilterModal from "@/components/modals/FilterModal";
 import ListToolbar from "@/components/ListToolbar";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
-import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import RecordMetadata from "@/components/RecordMetadata";
 import {
@@ -196,6 +195,7 @@ const normalizeFieldIdentifier = (value) =>
 const DEFAULT_FIELD_IDENTIFIERS = new Set([
   "fullname", "name", "email", "emailaddress", "phone",
   "phonenumber", "mobile", "contact", "purposeofvisit",
+  "pleasespecify", "specify", "otherdetails", "purposeotherdetails", "otherspecify",
 ]);
 
 const getVisibleFieldValues = (registration) =>
@@ -642,7 +642,7 @@ export default function CmsRegistrationsPage() {
 
   // ── Edit registration ─────────────────────────────────────────────────────
 
-  const buildEditForm = (reg) => {
+  const buildEditForm = (reg, fields = []) => {
     const fvMap = {};
     if (Array.isArray(reg.fieldValues)) {
       reg.fieldValues.forEach((fv) => {
@@ -650,11 +650,24 @@ export default function CmsRegistrationsPage() {
         if (key) fvMap[key] = fv.value;
       });
     }
+    // Bridge: if purposeOfVisit column is set but not yet in fieldValues, pre-populate the
+    // matching custom field so the editor shows it (handles old registrations).
+    const columnPurpose = reg.purpose_of_visit || reg.purposeOfVisit;
+    if (columnPurpose && fields.length > 0) {
+      const normKey = (s = '') => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const purposeField = fields.find((f) => {
+        const k = normKey(f.fieldKey || f.field_key);
+        const l = (f.label || '').toLowerCase();
+        return k.includes('purposeofvisit') || k === 'purpose' || l.includes('purpose of visit');
+      });
+      if (purposeField && !fvMap[purposeField.fieldKey]) {
+        fvMap[purposeField.fieldKey] = columnPurpose;
+      }
+    }
     const hasApproved = !!(reg.approved_from || reg.approved_to);
     return {
       id: reg.id,
       departmentId: reg.department_id || reg.departmentId || "",
-      purposeOfVisit: reg.purpose_of_visit || reg.purposeOfVisit || "",
       scheduleFrom: hasApproved ? (reg.approved_from || "") : (reg.requested_from || ""),
       scheduleTo: hasApproved ? (reg.approved_to || "") : (reg.requested_to || ""),
       hasApproved,
@@ -697,7 +710,7 @@ export default function CmsRegistrationsPage() {
     setFetchingProfile(true);
     try {
       const fullDetail = await getRegistrationById(row.id);
-      setEditForm(buildEditForm(fullDetail));
+      setEditForm(buildEditForm(fullDetail, activeCustomFields));
       setEditCountryIsoCodes(buildEditCountryIsoCodes(fullDetail, activeCustomFields));
       setSelected(fullDetail);
       setEditTab(0);
@@ -709,7 +722,7 @@ export default function CmsRegistrationsPage() {
 
   const openEditModal = (reg = selected) => {
     if (!reg) return;
-    setEditForm(buildEditForm(reg));
+    setEditForm(buildEditForm(reg, activeCustomFields));
     setEditCountryIsoCodes(buildEditCountryIsoCodes(reg, activeCustomFields));
     setEditTab(0);
     setEditModal(true);
@@ -728,7 +741,6 @@ export default function CmsRegistrationsPage() {
       const phoneIsoCode = phoneField ? (editCountryIsoCodes[phoneField.fieldKey] || DEFAULT_ISO_CODE) : undefined;
 
       const payload = {
-        purposeOfVisit: editForm.purposeOfVisit,
         departmentId: editForm.departmentId || undefined,
         fieldValues: editForm.fieldValues,
         ...(phoneIsoCode ? { phoneIsoCode } : {}),
@@ -1905,10 +1917,6 @@ export default function CmsRegistrationsPage() {
           <Box role="tabpanel" hidden={editTab !== 1} sx={{ p: 2.5 }}>
             {editTab === 1 && (
               <Stack spacing={2.5}>
-                <PurposeOfVisitInput
-                  value={editForm.purposeOfVisit || ""}
-                  onChange={(val) => setEditForm({ ...editForm, purposeOfVisit: val })}
-                />
                 {activeCustomFields.map((field) => {
                   const val = editForm.fieldValues?.[field.fieldKey] ?? "";
                   const setVal = (v) => setEditForm((prev) => ({ ...prev, fieldValues: { ...prev.fieldValues, [field.fieldKey]: v } }));
