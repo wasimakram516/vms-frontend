@@ -328,6 +328,21 @@ export default function SummaryPage() {
 
   const sameDay = fromDate && toDate && fmtDate(fromDate) === fmtDate(toDate);
 
+  const DAY_NAMES_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const recurringType = registration?.recurringType ?? registration?.recurring_type ?? null;
+  const recurringDays = registration?.recurringDays ?? registration?.recurring_days ?? null;
+  const recurringTimeFrom = registration?.recurringTimeFrom ?? registration?.recurring_time_from ?? null;
+  const recurringTimeTo   = registration?.recurringTimeTo   ?? registration?.recurring_time_to   ?? null;
+
+  const recurringScheduleLabel = (() => {
+    if (!recurringType) return null;
+    const days = Array.isArray(recurringDays) && recurringDays.length
+      ? recurringDays.map((d) => DAY_NAMES_FULL[d]).join(", ")
+      : null;
+    const time = recurringTimeFrom && recurringTimeTo ? `${recurringTimeFrom} – ${recurringTimeTo}` : null;
+    return [days, time].filter(Boolean).join("  ·  ");
+  })();
+
   const summaryRows = [
     {
       label: sameDay ? t("summaryVisitDate") : t("summaryFrom"),
@@ -336,6 +351,7 @@ export default function SummaryPage() {
         : `${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)}`,
     },
     ...(!sameDay ? [{ label: t("summaryTo"), value: `${fmtDate(toDate)}  ·  ${fmtTime(toDate)}` }] : []),
+    ...(recurringScheduleLabel ? [{ label: "Recurring Days", value: recurringScheduleLabel }] : []),
     ...(deptName ? [{ label: t("summaryDepartment"), value: translatedDynamic.dept || deptName }] : []),
     ...(purposeText ? [{ label: t("summaryPurpose"), value: translatedDynamic.purpose || purposeText }] : []),
   ];

@@ -79,6 +79,10 @@ export default function BookingPage() {
 
   const [bookingType, setBookingType] = useState("preset");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
+  const [specificDays, setSpecificDays] = useState([]); // day indices [0=Sun..6=Sat]
+  const [specificEndDate, setSpecificEndDate] = useState(null); // dayjs end date for specificDays preset
+
+  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   // ── Custom fields for purpose of visit (returning visitor flow) ───────────
   const [purposeCustomFields, setPurposeCustomFields] = useState([]);
@@ -316,9 +320,30 @@ export default function BookingPage() {
       if (Object.keys(errs).length) { setFieldErrors(errs); return; }
     }
 
+    // Validate specific days
+    if (bookingType === "preset" && selectedPreset === "specificDays") {
+      if (!specificDays.length) {
+        setFieldErrors((p) => ({ ...p, specificDays: "Please select at least one day" }));
+        return;
+      }
+      if (!specificEndDate || !specificEndDate.isValid()) {
+        setFieldErrors((p) => ({ ...p, specificEndDate: "Please select an end date" }));
+        return;
+      }
+      if (specificEndDate.isBefore(bookingDate, "day")) {
+        setFieldErrors((p) => ({ ...p, specificEndDate: "End date must be on or after the start date" }));
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       let fromDate, toDate;
+      let recurringType = null;
+      let recurringDays = null;
+      let recurringTimeFrom = null;
+      let recurringTimeTo = null;
+
       if (bookingType === "preset") {
         const date = bookingDate;
         let from = date.clone();
@@ -330,11 +355,29 @@ export default function BookingPage() {
           from = from.startOf("day").hour(parseInt(fromParts[0])).minute(parseInt(fromParts[1]));
           to = to.add(1, "day").startOf("day").hour(parseInt(toParts[0])).minute(parseInt(toParts[1]));
         } else if (selectedPreset === "fullWeek") {
+          // Weekdays only: Mon–Fri — end on the Friday of the same week as selected date
           from = from.startOf("day");
-          to = to.add(6, "days").endOf("day");
+          const daysUntilFriday = (5 - date.day() + 7) % 7;
+          to = from.add(daysUntilFriday, "days").endOf("day");
+          recurringType = "full_week";
+          recurringDays = [1, 2, 3, 4, 5];
+          recurringTimeFrom = bookingData.timeFrom;
+          recurringTimeTo = bookingData.timeTo;
         } else if (selectedPreset === "fullMonth") {
+          // All days: from selected start to end of that calendar month
           from = from.startOf("day");
-          to = to.add(30, "days").endOf("day");
+          to = from.endOf("month");
+          recurringType = "full_month";
+          recurringDays = [0, 1, 2, 3, 4, 5, 6];
+          recurringTimeFrom = bookingData.timeFrom;
+          recurringTimeTo = bookingData.timeTo;
+        } else if (selectedPreset === "specificDays") {
+          from = from.startOf("day");
+          to = specificEndDate.clone().endOf("day");
+          recurringType = "specific_days";
+          recurringDays = [...specificDays].sort((a, b) => a - b);
+          recurringTimeFrom = bookingData.timeFrom;
+          recurringTimeTo = bookingData.timeTo;
         }
 
         fromDate = from.format("YYYY-MM-DD");
@@ -356,6 +399,7 @@ export default function BookingPage() {
           full_name: visitorData.fullName || visitorData.dynamicFields.full_name,
         },
         tzOffset: new Date().getTimezoneOffset(),
+        ...(recurringType && { recurringType, recurringDays, recurringTimeFrom, recurringTimeTo }),
       };
 
       let res;
@@ -619,21 +663,25 @@ export default function BookingPage() {
                           onChange={(e) => {
                             const preset = e.target.value;
                             setSelectedPreset(preset);
+                            setSpecificDays([]);
+                            setSpecificEndDate(null);
+                            setFieldErrors((p) => { const n = { ...p }; delete n.specificDays; delete n.specificEndDate; return n; });
                             if (preset === "fullDay") {
                               setBookingData((prev) => ({ ...prev, timeTo: prev.timeFrom }));
                             } else {
-                              setBookingData((prev) => ({ ...prev, timeFrom: "00:00", timeTo: "23:59" }));
+                              setBookingData((prev) => ({ ...prev, timeFrom: "08:00", timeTo: "17:00" }));
                             }
                           }}
                           sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                         >
                           <MenuItem value="fullDay">{t("bookingFullDay")}</MenuItem>
-                          <MenuItem value="fullWeek">{t("bookingFullWeek")}</MenuItem>
-                          <MenuItem value="fullMonth">{t("bookingFullMonth")}</MenuItem>
+                          <MenuItem value="fullWeek">Full Week (Mon–Fri)</MenuItem>
+                          <MenuItem value="fullMonth">Full Month (All Days)</MenuItem>
+                          <MenuItem value="specificDays">Specific Days</MenuItem>
                         </TextField>
                       </Box>
 
-                      {hasValidBookingDate && (
+                      {hasValidBookingDate && selectedPreset !== "specificDays" && (
                         <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider", mb: 2.5 }}>
                           <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
                             {t("bookingDateRange")}
@@ -650,10 +698,11 @@ export default function BookingPage() {
                                 to = to.add(1, "day").startOf("day").hour(parseInt(toParts[0])).minute(parseInt(toParts[1]));
                               } else if (selectedPreset === "fullWeek") {
                                 from = from.startOf("day").hour(0).minute(0);
-                                to = to.add(6, "days").hour(23).minute(59);
+                                const daysUntilFriday = (5 - date.day() + 7) % 7;
+                                to = from.add(daysUntilFriday, "days").hour(23).minute(59);
                               } else if (selectedPreset === "fullMonth") {
                                 from = from.startOf("day").hour(0).minute(0);
-                                to = to.add(30, "days").hour(23).minute(59);
+                                to = from.endOf("month");
                               }
                               const locale = lang === "ar" ? "ar-u-nu-latn" : "en-GB";
                               const fmtDate = (d) => new Intl.DateTimeFormat(locale, { day: "2-digit", month: "long", year: "numeric" }).format(d.toDate());
@@ -664,18 +713,94 @@ export default function BookingPage() {
                         </Box>
                       )}
 
+                      {/* ── Specific Days UI ── */}
+                      {selectedPreset === "specificDays" && (
+                        <Box sx={{ mb: 2.5 }}>
+                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                            Select Days
+                          </Typography>
+                          <Stack direction="row" flexWrap="wrap" sx={{ gap: 1, mb: 1 }}>
+                            {DAY_LABELS.map((label, idx) => {
+                              const selected = specificDays.includes(idx);
+                              return (
+                                <Box
+                                  key={idx}
+                                  onClick={() => {
+                                    setSpecificDays((prev) =>
+                                      prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx]
+                                    );
+                                    if (fieldErrors.specificDays) setFieldErrors((p) => { const n = { ...p }; delete n.specificDays; return n; });
+                                  }}
+                                  sx={{
+                                    px: 1.5, py: 0.75, borderRadius: 2, cursor: "pointer", userSelect: "none",
+                                    border: "1px solid",
+                                    borderColor: selected ? "primary.main" : "divider",
+                                    bgcolor: selected ? "primary.main" : "background.paper",
+                                    color: selected ? "primary.contrastText" : "text.primary",
+                                    fontWeight: 700, fontSize: "0.75rem",
+                                    transition: "all 0.15s",
+                                  }}
+                                >
+                                  {label}
+                                </Box>
+                              );
+                            })}
+                          </Stack>
+                          {fieldErrors.specificDays && (
+                            <Typography variant="caption" color="error.main">{fieldErrors.specificDays}</Typography>
+                          )}
+
+                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mt: 2, mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                            Period — Start & End Date
+                          </Typography>
+                          <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
+                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 36, fontWeight: 600 }}>From</Typography>
+                            <Typography variant="body2" fontWeight={700}>{hasValidBookingDate ? bookingDate.format("DD MMM YYYY") : "—"}</Typography>
+                          </Stack>
+                          <Stack direction="row" sx={{ gap: 1, mt: 0.5 }} alignItems="center">
+                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 36, fontWeight: 600 }}>To</Typography>
+                            <TextField
+                              type="date"
+                              size="small"
+                              value={specificEndDate ? specificEndDate.format("YYYY-MM-DD") : ""}
+                              onChange={(e) => {
+                                const v = e.target.value ? dayjs(e.target.value) : null;
+                                setSpecificEndDate(v);
+                                if (fieldErrors.specificEndDate) setFieldErrors((p) => { const n = { ...p }; delete n.specificEndDate; return n; });
+                              }}
+                              inputProps={{ min: hasValidBookingDate ? bookingDate.format("YYYY-MM-DD") : undefined }}
+                              error={Boolean(fieldErrors.specificEndDate)}
+                              helperText={fieldErrors.specificEndDate}
+                              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, width: 180 }}
+                            />
+                          </Stack>
+                        </Box>
+                      )}
+
                       <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 2, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                        {t("bookingTimeLabel")}
+                        {selectedPreset === "specificDays" || selectedPreset === "fullWeek" || selectedPreset === "fullMonth" ? "Daily Visit Time" : t("bookingTimeLabel")}
                       </Typography>
                       <Stack spacing={2}>
-                        {renderTimeDropdowns("timeFrom", selectedPreset === "fullDay" ? t("bookingFullDayStart") : t("bookingStartTime"))}
-                        {selectedPreset !== "fullDay" && renderTimeDropdowns("timeTo", t("bookingEndTime"))}
+                        {renderTimeDropdowns("timeFrom", selectedPreset === "fullDay" ? t("bookingFullDayStart") : "Visit Start")}
+                        {selectedPreset !== "fullDay" && renderTimeDropdowns("timeTo", "Visit End")}
                         {selectedPreset === "fullDay" && (
                           <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                             <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
                               <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
                               <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
                                 {t("bookingFullDayNote")}
+                              </Typography>
+                            </Stack>
+                          </Box>
+                        )}
+                        {(selectedPreset === "fullWeek" || selectedPreset === "fullMonth" || selectedPreset === "specificDays") && (
+                          <Box sx={{ p: 1.5, bgcolor: "info.main", borderRadius: 2, opacity: 0.85 }}>
+                            <Stack direction="row" sx={{ gap: 1 }} alignItems="flex-start">
+                              <ICONS.info sx={{ fontSize: 16, color: "info.contrastText", mt: 0.2 }} />
+                              <Typography variant="caption" fontWeight={600} color="info.contrastText" sx={{ fontSize: 11.5 }}>
+                                {selectedPreset === "fullWeek" && "Mon–Fri only. Visitor can check in each weekday during the selected time window."}
+                                {selectedPreset === "fullMonth" && "All days of the month. Visitor can check in on any day during the selected time window."}
+                                {selectedPreset === "specificDays" && "Visitor can check in only on the selected days, within the chosen time window."}
                               </Typography>
                             </Stack>
                           </Box>

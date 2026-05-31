@@ -109,6 +109,11 @@ export const mapRegistration = (r) => {
     admin_rejection_reason: r.adminRejectionReason,
     is_vip_fast_track: r.isVipFastTrack ?? false,
     vip_fast_track_approved_at: r.vipFastTrackApprovedAt,
+    recurring_type: r.recurringType ?? null,
+    recurring_days: r.recurringDays ?? null,
+    recurring_time_from: r.recurringTimeFrom ?? null,
+    recurring_time_to: r.recurringTimeTo ?? null,
+    current_visit_end: r.currentVisitEnd ?? null,
     ...r,
   };
 

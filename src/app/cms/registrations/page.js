@@ -1438,6 +1438,18 @@ export default function CmsRegistrationsPage() {
                       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: { xs: 2, md: "16px 32px" } }}>
                         <InfoItem label="Requested Schedule" value={buildScheduleText(selected.requested_from, selected.requested_to, "Not provided")} icon={<ICONS.event fontSize="small" />} />
                         <InfoItem label="Approved Schedule" value={buildScheduleText(selected.approved_from, selected.approved_to, "Pending approval")} icon={<ICONS.checkCircle fontSize="small" />} />
+                        {(() => {
+                          const rType = selected.recurring_type ?? selected.recurringType ?? null;
+                          const rDays = selected.recurring_days ?? selected.recurringDays ?? null;
+                          const rFrom = selected.recurring_time_from ?? selected.recurringTimeFrom ?? null;
+                          const rTo   = selected.recurring_time_to   ?? selected.recurringTimeTo   ?? null;
+                          if (!rType) return null;
+                          const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+                          const daysLabel = Array.isArray(rDays) && rDays.length ? rDays.map((d) => DAY_NAMES[d]).join(", ") : null;
+                          const timeLabel = rFrom && rTo ? `${rFrom} – ${rTo}` : null;
+                          const label = [daysLabel, timeLabel].filter(Boolean).join("  ·  ");
+                          return <InfoItem label="Recurring Days" value={label} icon={<ICONS.replay fontSize="small" />} sx={{ gridColumn: { md: "1 / -1" } }} />;
+                        })()}
                         <InfoItem label="Purpose of Visit" value={selected.purpose_of_visit} icon={<ICONS.info fontSize="small" />} />
                         {selected.department?.name && (
                           <InfoItem label="Department" value={selected.department.name} icon={<ICONS.apartment fontSize="small" />} />
@@ -2164,6 +2176,18 @@ function PreviousVisitCard({ visit, onViewTimeline }) {
         <InfoItem label="Department" value={departmentName || "-"} icon={<ICONS.apartment fontSize="small" />} />
         <InfoItem label="Requested Schedule" value={buildScheduleText(visit.requested_from, visit.requested_to, "Not provided")} icon={<ICONS.event fontSize="small" />} />
         <InfoItem label="Approved Schedule" value={buildScheduleText(visit.approved_from, visit.approved_to, "Not approved")} icon={<ICONS.checkCircle fontSize="small" />} />
+        {(() => {
+          const rType = visit.recurring_type ?? visit.recurringType ?? null;
+          const rDays = visit.recurring_days ?? visit.recurringDays ?? null;
+          const rFrom = visit.recurring_time_from ?? visit.recurringTimeFrom ?? null;
+          const rTo   = visit.recurring_time_to   ?? visit.recurringTimeTo   ?? null;
+          if (!rType) return null;
+          const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+          const daysLabel = Array.isArray(rDays) && rDays.length ? rDays.map((d) => DAY_NAMES[d]).join(", ") : null;
+          const timeLabel = rFrom && rTo ? `${rFrom} – ${rTo}` : null;
+          const label = [daysLabel, timeLabel].filter(Boolean).join("  ·  ");
+          return <InfoItem label="Recurring Days" value={label} icon={<ICONS.replay fontSize="small" />} sx={{ gridColumn: { md: "1 / -1" } }} />;
+        })()}
         <InfoItem label="Multi Check-in" value={allowMultiCheckin ? "Allowed" : "Not Allowed"} icon={<ICONS.replay fontSize="small" />} />
         <InfoItem label="Access Level" value={accessLevelName || "-"} icon={<ICONS.key fontSize="small" />} />
         {visit.rejection_reason ? (

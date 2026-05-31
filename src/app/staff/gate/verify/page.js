@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -416,6 +416,64 @@ export default function StaffVerifyPage() {
   }, [result?.id, result?.status]);
 
   useEffect(() => { setIdVerified(false); }, [result?.id]);
+
+  // Derive resolvedId at component level so auto check-in effects can use it
+  const resolvedId = useMemo(() => {
+    if (!result) return null;
+    const fvs = Array.isArray(result.fieldValues)
+      ? result.fieldValues
+      : Array.isArray(result.visitor?.fieldValues)
+        ? result.visitor.fieldValues
+        : [];
+    const nk = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const rv = (v) => {
+      if (v == null || v === "") return null;
+      if (typeof v === "object") return v.name || v.label || v.value || null;
+      return String(v);
+    };
+    const find = (aliases) => {
+      const norm = aliases.map(nk);
+      const m = fvs.find((fv) => norm.includes(nk(fv?.customField?.fieldKey || fv?.customField?.name)) || norm.includes(nk(fv?.customField?.label)));
+      return rv(m?.value);
+    };
+    const idType  = find(["idtype", "identificationtype", "documenttype", "doctype"]);
+    const omanId  = find(["omanid", "nationalid", "civilid", "idcardnumber", "idnumber", "idno"]);
+    const passport = find(["passport", "passportnumber", "passportno"]);
+    const nkIdType = nk(idType || "");
+    if (nkIdType.includes("passport") && (passport || omanId)) return { type: "Passport", value: passport || omanId };
+    if (omanId)   return { type: nkIdType.includes("passport") ? "Passport" : "ID", value: omanId };
+    if (passport) return { type: "Passport", value: passport };
+    return null;
+  }, [result]);
+
+  // Auto check-in: visitor scanned with no ID required
+  useEffect(() => {
+    if (!result || result.status !== "approved") return;
+    if (result.is_vip_fast_track || result.isVipFastTrack) return;
+    if (resolvedId !== null) return; // has ID — wait for manual verification
+    if (!result.approved_from) { handleCheckInAction(); return; }
+    const bufferMs = ((workingHours?.checkInBufferMinutes) ?? 60) * 60 * 1000;
+    const now = Date.now();
+    const approvedFromMs = new Date(result.approved_from).getTime();
+    if (now >= approvedFromMs - bufferMs && now <= approvedFromMs + bufferMs) {
+      handleCheckInAction();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result?.id]);
+
+  // Auto check-in: fires the moment ID is ticked green
+  useEffect(() => {
+    if (!idVerified || !result || result.status !== "approved") return;
+    if (result.is_vip_fast_track || result.isVipFastTrack) return;
+    if (!result.approved_from) { handleCheckInAction(); return; }
+    const bufferMs = ((workingHours?.checkInBufferMinutes) ?? 60) * 60 * 1000;
+    const now = Date.now();
+    const approvedFromMs = new Date(result.approved_from).getTime();
+    if (now >= approvedFromMs - bufferMs && now <= approvedFromMs + bufferMs) {
+      handleCheckInAction();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idVerified]);
 
   useEffect(() => {
     const unsub = on("registration:updated", (updatedReg) => {
@@ -962,19 +1020,9 @@ export default function StaffVerifyPage() {
                   return currentTime > latestTime ? current : latest;
                 }, null);
                 const checkInTime = latestCheckInLog?.metadata?.checkedInAt || latestCheckInLog?.createdAt;
-                const expectedCheckout = (() => {
-                  if (!result.approved_to) return null;
-                  const approvedTo = new Date(result.approved_to);
-                  const now = new Date();
-                  const expected = new Date(now);
-                  expected.setHours(
-                    approvedTo.getHours(),
-                    approvedTo.getMinutes(),
-                    approvedTo.getSeconds(),
-                    approvedTo.getMilliseconds()
-                  );
-                  return `${formatDate(expected)} ${formatTime(expected)}`;
-                })();
+                const expectedCheckout = result.approved_to
+                  ? `${formatDate(result.approved_to)} ${formatTime(result.approved_to)}`
+                  : null;
 
                 const checkOutLogs = (activityLogs || []).filter((log) => log?.activityType === "checked_out");
                 const latestCheckOutLog = checkOutLogs.reduce((latest, current) => {
@@ -1140,21 +1188,31 @@ export default function StaffVerifyPage() {
 
                 const isVipFastTrack = result.is_vip_fast_track || result.isVipFastTrack;
                 const bufferMs = ((workingHours?.checkInBufferMinutes) ?? 60) * 60 * 1000;
+
+                // Check-in window: ±buffer around approvedFrom only
                 const outsideWindow = (() => {
                   if (isVipFastTrack || !isApproved) return false;
-                  if (!result.approved_from || !result.approved_to) return false;
+                  if (!result.approved_from) return false;
                   const now = Date.now();
-                  const effectiveFrom = new Date(result.approved_from).getTime() - bufferMs;
-                  const effectiveTo   = new Date(result.approved_to).getTime()   + bufferMs;
-                  return now < effectiveFrom || now > effectiveTo;
+                  const approvedFromMs = new Date(result.approved_from).getTime();
+                  return now < approvedFromMs - bufferMs || now > approvedFromMs + bufferMs;
                 })();
 
                 const fmtWindow = () => {
                   const fmt = (d) => `${formatDate(d)} ${formatTime(d)}`;
-                  const from = new Date(new Date(result.approved_from).getTime() - bufferMs);
-                  const to   = new Date(new Date(result.approved_to).getTime()   + bufferMs);
+                  const approvedFromMs = new Date(result.approved_from).getTime();
+                  const from = new Date(approvedFromMs - bufferMs);
+                  const to   = new Date(approvedFromMs + bufferMs);
                   return `${fmt(from)} – ${fmt(to)}`;
                 };
+
+                // Check-out must be on the same calendar day as approvedTo
+                const outsideCheckoutDay = (() => {
+                  if (!isCheckedIn) return false;
+                  const ref = result.approved_to || result.approved_from;
+                  if (!ref) return false;
+                  return new Date(ref).toDateString() !== new Date().toDateString();
+                })();
 
                 return (
                   <>
@@ -1205,6 +1263,12 @@ export default function StaffVerifyPage() {
                       </Alert>
                     )}
 
+                    {outsideCheckoutDay && (
+                      <Alert severity="error" icon={<ICONS.time fontSize="small" />} sx={{ borderRadius: 2, fontWeight: 600, mb: 1 }}>
+                        Check-out must be on the same day as the appointment ({formatDate(result.approved_to || result.approved_from)}).
+                      </Alert>
+                    )}
+
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
                       <Button
                         fullWidth
@@ -1252,7 +1316,7 @@ export default function StaffVerifyPage() {
                           color="error"
                           startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
                           onClick={handleCheckOutAction}
-                          disabled={actionLoading}
+                          disabled={actionLoading || outsideCheckoutDay}
                         >
                           Check Out
                         </Button>
