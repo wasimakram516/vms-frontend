@@ -23,7 +23,7 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ListToolbar from "@/components/ListToolbar";
-import RoleGuard from "@/components/auth/RoleGuard";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMessage } from "@/contexts/MessageContext";
@@ -97,7 +97,7 @@ export default function NdaFormsPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <PermissionRouteGuard resource="nda-forms" hardcodeAllowed={isSuperAdmin}>
       <Box>
         {/* Page header */}
         <Box
@@ -325,6 +325,6 @@ export default function NdaFormsPage() {
         confirmButtonText="Delete"
         confirmButtonIcon={<ICONS.delete fontSize="small" />}
       />
-    </RoleGuard>
+    </PermissionRouteGuard>
   );
 }

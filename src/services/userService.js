@@ -12,6 +12,7 @@ const buildFullPhone = (phone, isoCode) => {
 const mapUserToFrontend = (user) => ({
   id: user.id,
   full_name: user.fullName,
+  fullName: user.fullName,
   email: user.email,
   role: user.role,
   phone: user.phone,
@@ -22,8 +23,13 @@ const mapUserToFrontend = (user) => ({
   departments: Array.isArray(user.departments) ? user.departments : [],
   created_at: user.createdAt,
   updated_at: user.updatedAt,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
   created_by: user.createdBy?.fullName || user.createdById || null,
   updated_by: user.updatedBy?.fullName || user.updatedById || null,
+  createdBy: user.createdBy || null,
+  updatedBy: user.updatedBy || null,
+  companyName: user.companyName || user.company_name || null,
 });
 
 export const getAllUsers = withApiHandler(async (role) => {

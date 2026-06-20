@@ -110,7 +110,7 @@ function iconForField(fieldKey, label) {
 function DynamicField({ field, value, error, isForcedRequired, onChange }) {
   const fieldKey = field.fieldKey || field.field_key;
   const inputType = (field.inputType || field.input_type || "text").toLowerCase();
-  const isRequired = field.isRequired || field.is_required || isForcedRequired;
+  const isRequired = field.isVipRequired || field.is_vip_required || isForcedRequired;
   const options = field.optionsJson || field.options_json || [];
 
   if (inputType === "select") {
@@ -284,7 +284,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
   const validate = () => {
     const newErrors = {};
     fields
-      .filter((f) => visibleFieldIds.has(f.id) && (f.isRequired || f.is_required || forcedRequiredIds.has(f.id)))
+      .filter((f) => visibleFieldIds.has(f.id) && (f.isVipRequired || f.is_vip_required || forcedRequiredIds.has(f.id)))
       .forEach((f) => {
         const key = f.fieldKey || f.field_key;
         const val = fieldValues[key];

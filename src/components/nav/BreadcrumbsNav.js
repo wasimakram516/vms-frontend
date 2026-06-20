@@ -12,12 +12,12 @@ const segmentMap = {
     label: "Dashboard",
     icon: <ICONS.home fontSize="small" sx={{ mr: 0.5 }} />,
   },
-  registrations: {
-    label: "Registrations",
-    icon: <ICONS.appRegister fontSize="small" sx={{ mr: 0.5 }} />,
+  visitors: {
+    label: "Visitors",
+    icon: <ICONS.badge fontSize="small" sx={{ mr: 0.5 }} />,
   },
-  approvals: {
-    label: "Approvals",
+  visits: {
+    label: "Visits",
     icon: <ICONS.checkin fontSize="small" sx={{ mr: 0.5 }} />,
   },
   users: {
@@ -43,6 +43,42 @@ const segmentMap = {
   "nda-forms": {
     label: "NDA Forms",
     icon: <ICONS.description fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  analytics: {
+    label: "Analytics",
+    icon: <ICONS.insights fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  kitchen: {
+    label: "Kitchen Orders",
+    icon: <ICONS.diningTable fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  departments: {
+    label: "Departments",
+    icon: <ICONS.apartment fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  "access-levels": {
+    label: "Access Levels",
+    icon: <ICONS.key fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  "kitchen-menu": {
+    label: "Kitchen Menu",
+    icon: <ICONS.diningTable fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  "badge-customization": {
+    label: "Badge Customization",
+    icon: <ICONS.badge fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  "access-control": {
+    label: "Access Control",
+    icon: <ICONS.security fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  permissions: {
+    label: "Permissions",
+    icon: <ICONS.key fontSize="small" sx={{ mr: 0.5 }} />,
+  },
+  "role-permissions": {
+    label: "Role Permissions",
+    icon: <ICONS.badge fontSize="small" sx={{ mr: 0.5 }} />,
   },
 };
 

@@ -32,6 +32,9 @@ import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessResource } from "@/utils/permissions";
 import RecordMetadata from "@/components/RecordMetadata";
 import {
   getMenuItems,
@@ -43,6 +46,10 @@ import { useSettings } from "@/contexts/SettingsContext";
 
 function KitchenMenuContent() {
   const { readOnly } = usePermission();
+  const { user } = useAuth();
+  const canCreate = canAccessResource(user, "kitchen-menu", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "create" });
+  const canUpdate = canAccessResource(user, "kitchen-menu", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "update" });
+  const canDelete = canAccessResource(user, "kitchen-menu", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "delete" });
   const { hostSettings, loading: settingsLoading } = useSettings();
   const isKitchenEnabled = hostSettings?.isKitchenModuleEnabled ?? true;
   const [items, setItems] = useState([]);
@@ -227,7 +234,7 @@ function KitchenMenuContent() {
               : "Manage items available in the staff kitchen for ordering."}
           </Typography>
         </Box>
-        {!readOnly && (
+        {canCreate && (
           <Button
             variant="contained"
             startIcon={<ICONS.add />}
@@ -334,7 +341,7 @@ function KitchenMenuContent() {
                   </Typography>
                 </Box>
 
-                {!readOnly && (
+                {(canUpdate || canDelete) && (
                   <Box
                     sx={{
                       p: 1.2,
@@ -357,6 +364,8 @@ function KitchenMenuContent() {
                       />
                     </Box>
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      {canUpdate && (
+                      <>
                       {item.status === "active" ? (
                         <Tooltip title="Deactivate">
                           <IconButton
@@ -390,6 +399,9 @@ function KitchenMenuContent() {
                           <ICONS.edit fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      </>
+                      )}
+                      {canDelete && (
                       <Tooltip title="Delete">
                         <IconButton
                           size="small"
@@ -403,6 +415,7 @@ function KitchenMenuContent() {
                           <ICONS.delete fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      )}
                     </Stack>
                   </Box>
                 )}
@@ -552,9 +565,13 @@ function KitchenMenuContent() {
 }
 
 export default function KitchenMenuPage() {
+  const { user } = useAuth();
+  const hardcodeAllowed = user?.role === "superadmin" || user?.role === "admin";
   return (
-    <PermissionGuard fullAccessRoles={["superadmin", "admin"]} readOnlyRoles={[]}>
-      <KitchenMenuContent />
-    </PermissionGuard>
+    <PermissionRouteGuard resource="kitchen-menu" hardcodeAllowed={hardcodeAllowed}>
+      <PermissionGuard fullAccessRoles={["superadmin", "admin"]} readOnlyRoles={[]}>
+        <KitchenMenuContent />
+      </PermissionGuard>
+    </PermissionRouteGuard>
   );
 }

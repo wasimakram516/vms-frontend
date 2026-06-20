@@ -46,6 +46,22 @@ export const verifyOtp = withApiHandler(async (target, code) => {
   return data;
 });
 
+/**
+ * Match a returning visitor by their ID custom-field values + phone number.
+ * No OTP code is required — the match itself is the verification.
+ * On success returns the same shape as verifyOtp (user, lastFieldValues, activeRegistration, …).
+ */
+export const verifyReturningById = withApiHandler(async (fieldValues, phone) => {
+  const { data } = await api.post("/auth/otp/verify-by-id", { fieldValues, phone });
+  if (data?.success) {
+    return {
+      success: true,
+      ...data.data,
+    };
+  }
+  return data;
+});
+
 export const visitorEditRegistration = withApiHandler(async (id, payload) => {
   const { data } = await api.patch(`/registrations/${id}/visitor-edit`, payload);
   return data?.data ?? data;
@@ -96,6 +112,7 @@ export const mapRegistration = (r) => {
     allow_multi_checkin: r.allowMultiCheckin,
     allow_parking: r.allowParking ?? false,
     is_vip: r.isVip ?? false,
+    escort_required: r.escortRequired ?? true,
     department: r.department,
     department_id: r.departmentId,
     access_level: r.accessLevel,
@@ -124,11 +141,12 @@ export const mapRegistration = (r) => {
   return mapped;
 };
 
-export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}) => {
+export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}, userId) => {
   const params = {};
   if (status && status !== "all") params.status = status;
   if (from) params.from = from;
   if (to) params.to = to;
+  if (userId) params.userId = userId;
   const res = await api.get("/registrations", { params });
   const registrations = res.data?.data || res.data || [];
 
@@ -251,11 +269,58 @@ export const verifyRegistrationById = withApiHandler(async (idNumber) => {
   }));
 });
 
+// Fetch checked-in registrations for the kitchen order picker — gated by kitchen:read,
+// department-scoped. Used in cms/kitchen so a kitchen admin can pick who to order for
+// without needing full visits/visitors access.
+export const getKitchenEligibleVisitors = withApiHandler(async () => {
+  const res = await api.get('/registrations/for-kitchen');
+  const registrations = res.data?.data || res.data || [];
+  return Array.isArray(registrations) ? registrations.map(mapRegistration) : [];
+});
+
 export const getCurrentlyInside = withApiHandler(async () => {
   const res = await api.get('/registrations/currently-inside');
   const payload = res.data?.data ?? res.data ?? [];
   return Array.isArray(payload) ? payload.map(mapRegistration) : [];
 });
+
+export const getTodayVisitors = withApiHandler(async () => {
+  const res = await api.get('/registrations/today');
+  const payload = res.data?.data ?? res.data ?? [];
+  return Array.isArray(payload) ? payload.map(mapRegistration) : [];
+});
+
+/**
+ * Fetch the list of existing visitors an admin may create new visits for.
+ * SuperAdmin sees all visitors; departmental admin sees only visitors who
+ * have previously visited their department(s).
+ */
+export const getEligibleVisitors = withApiHandler(async () => {
+  const res = await api.get("/registrations/eligible-visitors");
+  const data = res.data?.data || res.data || [];
+  return Array.isArray(data)
+    ? data.map((u) => ({
+        id: u.id,
+        fullName: u.fullName || u.full_name || "",
+        email: u.email || "",
+        phone: u.phone || "",
+        iso_code: u.iso_code || null,
+        hasActiveVisit: u.hasActiveVisit ?? false,
+      }))
+    : [];
+});
+
+/**
+ * Admin creates one or more visits on behalf of existing visitors.
+ * Returns { created: Registration[], skipped: { userId, reason }[] }.
+ */
+export const adminCreateVisits = withApiHandler(
+  async (payload) => {
+    const { data } = await api.post("/registrations/admin-create", payload);
+    return data?.data ?? data;
+  },
+  { showSuccess: true },
+);
 
 export async function exportRegistrationsXlsx(ids) {
   const res = await api.post(

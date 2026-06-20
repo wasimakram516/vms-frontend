@@ -19,7 +19,7 @@ export const formatDate = (dateString) => {
  * @param {string} dateString - The date string to format.
  * @returns {string} - Formatted date and time string.
  */
-export const formatDateTimeWithLocale = (dateString) => {
+export const formatDateTimeWithLocale = (dateString, opts = {}) => {
   if (!dateString) return "";
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return "";
@@ -31,6 +31,8 @@ export const formatDateTimeWithLocale = (dateString) => {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
+    timeZoneName: "short",
+    ...opts,
   });
 };
 

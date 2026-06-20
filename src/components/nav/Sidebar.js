@@ -19,43 +19,49 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useState } from "react";
 import ICONS from "@/utils/iconUtil";
+import { canAccessResource } from "@/utils/permissions";
+
+// Full catalog: every CMS nav item with its resource and the hardcoded-allowed rule
+const buildCatalog = (user, isKitchenModuleEnabled = true) => {
+  const role = user?.role;
+  const adminType = user?.role === "admin" ? (user?.adminType || "departmental") : user?.adminType;
+  const isSuperAdmin = role === "superadmin";
+  const isDev = role === "dev";
+  const isDeptAdmin = role === "admin" && adminType === "departmental";
+  const isKitchenAdmin = role === "admin" && adminType === "kitchen";
+
+  return [
+    { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard", resource: "dashboard", hardcodeAllowed: true },
+    { label: "Analytics", icon: ICONS.insights, path: "/cms/analytics", resource: "analytics", hardcodeAllowed: isSuperAdmin },
+    { label: "Visitors", icon: ICONS.badge, path: "/cms/visitors", resource: "visitors", hardcodeAllowed: !isKitchenAdmin },
+    { label: "Visits", icon: ICONS.checkin, path: "/cms/visits", resource: "visits", hardcodeAllowed: !isKitchenAdmin },
+    { label: "Fields", icon: ICONS.form, path: "/cms/fields", resource: "fields", hardcodeAllowed: isSuperAdmin },
+    { label: "NDA Forms", icon: ICONS.verified, path: "/cms/nda-forms", resource: "nda-forms", hardcodeAllowed: isSuperAdmin },
+    { label: "Users", icon: ICONS.people, path: "/cms/users", resource: "users", hardcodeAllowed: isSuperAdmin },
+    { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen", resource: "kitchen", hardcodeAllowed: (isKitchenAdmin || isSuperAdmin) && !!isKitchenModuleEnabled },
+    { label: "Settings", icon: ICONS.settings, path: "/cms/settings", resource: "settings", hardcodeAllowed: !isKitchenAdmin },
+  ];
+};
 
 const getNavItems = (user, isKitchenModuleEnabled = true) => {
   const role = user?.role;
-  const adminType = user?.role === "admin" ? (user?.adminType || "departmental") : user?.adminType;
+  const isDev = role === "dev";
 
-  // Base items for Departmental Admin, SuperAdmin
-  const base = [
-    { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard" },
-    { label: "Registrations", icon: ICONS.appRegister, path: "/cms/registrations" },
-    { label: "Approvals", icon: ICONS.checkCircle, path: "/cms/approvals" },
-    { label: "Fields", icon: ICONS.form, path: "/cms/fields" },
-    { label: "NDA Forms", icon: ICONS.verified, path: "/cms/nda-forms" },
-    { label: "Users", icon: ICONS.people, path: "/cms/users" },
-    { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
-  ];
-
-  if (role === "admin" && adminType === "kitchen") {
+  // Dev: keep existing hardcoded behavior (no permission layer)
+  if (isDev) {
     return [
-      { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" },
-      { label: "Menu Settings", icon: ICONS.settings, path: "/cms/settings/kitchen-menu" }
+      { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
     ];
   }
 
-  // Departmental Admin: Everything EXCEPT Kitchen Orders, NDA Forms, Users, and Fields
-  if (role === "admin" && adminType === "departmental") {
-    return base.filter((item) => !["/cms/nda-forms", "/cms/users", "/cms/fields"].includes(item.path));
-  } else if (isKitchenModuleEnabled) {
-    // SuperAdmin: Add Kitchen Orders if enabled
-    base.push({ label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" });
-  }
+  const catalog = buildCatalog(user, isKitchenModuleEnabled);
 
-  // Analytics is SuperAdmin-only — insert after Dashboard
-  if (role === "superadmin") {
-    base.splice(1, 0, { label: "Analytics", icon: ICONS.insights, path: "/cms/analytics" });
-  }
+  const isKitchenAdmin = role === "admin" && (user?.adminType || "departmental") === "kitchen";
 
-  return base;
+  return catalog.filter((item) => {
+    if (item.resource === "dashboard") return !isKitchenAdmin;
+    return canAccessResource(user, item.resource, { hardcodeAllowed: item.hardcodeAllowed });
+  });
 };
 
 export default function Sidebar() {

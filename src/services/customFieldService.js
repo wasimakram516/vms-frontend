@@ -10,6 +10,7 @@ const mapCustomFieldToFrontend = (field) => ({
   isActive: field.isActive,
   isUnique: field.isUnique,
   isVipFastTrack: field.isVipFastTrack ?? false,
+  isVipRequired: field.isVipRequired ?? false,
   sortOrder: field.sortOrder,
   optionsJson: field.optionsJson,
   dependentsJson: field.dependentsJson ?? null,

@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { sendOtp, verifyOtp, checkNdaValidity } from "@/services/registrationService";
+import { applyReturningVerification } from "@/utils/returningFlow";
 import { useLanguage } from "@/contexts/LanguageContext";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
@@ -118,65 +119,10 @@ export default function RegisterOtpPage() {
     if (code.length < OTP_LENGTH || loading) return;
 
     setLoading(true);
-    console.log(`Verifying OTP: ${code} for Identity: ${visitorData.identity}`);
     try {
       const res = await verifyOtp(visitorData.identity, code);
       if (!res.error && res.success) {
-        const visitorEmail = res.user?.email || visitorData.identity;
-        let ndaStillValid = true;
-        if (visitorEmail) {
-          const validityRes = await checkNdaValidity(visitorEmail).catch(() => null);
-          if (validityRes?.ndaRequired) ndaStillValid = false;
-        }
-
-        const activeReg = res.activeRegistration ?? null;
-
-        setFlowState((prev) => ({
-          ...prev,
-          otpVerified: true,
-          ndaAccepted: ndaStillValid,
-          isReturning: true,
-          isEditMode: Boolean(activeReg),
-          activeRegistration: activeReg,
-          currentStep: ndaStillValid ? "booking" : "nda"
-        }));
-
-        setVisitorData((prev) => {
-          const newData = { ...prev };
-
-          if (res.user) {
-            newData.userId = res.user.id;
-            newData.fullName = res.user.fullName || prev.fullName;
-            newData.email = res.user.email || prev.email;
-            newData.phone = res.user.phone || prev.phone;
-          }
-
-          if (res.lastFieldValues) {
-            newData.dynamicFields = {
-              ...prev.dynamicFields,
-              ...res.lastFieldValues
-            };
-
-            const isoCode = res.phoneIsoCode || res.phone_iso_code || res.isoCode || res.iso_code;
-            if (isoCode) {
-              newData.phoneIsoCode = isoCode;
-            }
-
-            if (res.user?.fullName && !newData.dynamicFields.full_name) {
-              newData.dynamicFields.full_name = res.user.fullName;
-            }
-            if (res.user?.email && !newData.dynamicFields.email) {
-              newData.dynamicFields.email = res.user.email;
-            }
-            if (res.user?.phone && !newData.dynamicFields.phone) {
-              newData.dynamicFields.phone = res.user.phone;
-            }
-          }
-
-          return newData;
-        });
-
-        router.push("/register/booking");
+        await applyReturningVerification(res, { setFlowState, setVisitorData, router, checkNdaValidity });
       } else {
         setOtp(Array(OTP_LENGTH).fill(""));
         inputRefs.current[0]?.focus();

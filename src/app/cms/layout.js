@@ -8,15 +8,17 @@ import { GlobalStyles } from "@mui/material";
 import RoleGuard from "@/components/auth/RoleGuard";
 import BreadcrumbsNav from "@/components/nav/BreadcrumbsNav";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import ICONS from "@/utils/iconUtil";
+import { canAccessResource } from "@/utils/permissions";
 
 export default function CmsLayout({ children }) {
   useEffect(() => { document.documentElement.dir = "ltr"; }, []);
   const { user } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const isDev = user?.role === "dev";
 
   // Access Control Logic
@@ -26,11 +28,22 @@ export default function CmsLayout({ children }) {
   
   const isOnKitchenPage = pathname.startsWith("/cms/kitchen");
   const isOnKitchenSettingsPage = pathname.startsWith("/cms/settings/kitchen-menu");
-  
+  const isOnDashboard = pathname === "/cms" || pathname === "/cms/dashboard";
+
+  // Redirect kitchen admin from dashboard/root to their home page
+  useEffect(() => {
+    if (isKitchenAdmin && isOnDashboard) {
+      router.replace("/cms/kitchen");
+    }
+  }, [isKitchenAdmin, isOnDashboard, router]);
+
   // Kitchen Admin can ONLY see Kitchen page and Kitchen Menu Settings
-  const kitchenAdminDenied = isKitchenAdmin && !isOnKitchenPage && !isOnKitchenSettingsPage && pathname !== "/cms";
-  // Departmental Admin can see everything EXCEPT Kitchen page and Kitchen Menu settings
-  const departmentalAdminDenied = isDepartmentalAdmin && (isOnKitchenPage || isOnKitchenSettingsPage);
+  const kitchenAdminDenied = isKitchenAdmin && !isOnKitchenPage && !isOnKitchenSettingsPage && !isOnDashboard;
+  // Departmental Admin is blocked from kitchen pages UNLESS dynamic permission grants access
+  const departmentalAdminDenied = isDepartmentalAdmin && (
+    (isOnKitchenPage && !canAccessResource(user, "kitchen", { hardcodeAllowed: false })) ||
+    (isOnKitchenSettingsPage && !canAccessResource(user, "kitchen-menu", { hardcodeAllowed: false }))
+  );
 
   const accessDenied = kitchenAdminDenied || departmentalAdminDenied;
   const flatpickrStyles = (

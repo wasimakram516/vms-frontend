@@ -51,6 +51,15 @@ const mapOrderToFrontend = (order) => ({
 });
 
 // Menu Items
+// Fetch kitchen orders for a specific registration — gated by visits:read, department-scoped.
+// Used in cms/visitors history tab so a dept admin with visits access can see a visit's orders
+// without needing full kitchen access.
+export const getKitchenOrdersForRegistration = withApiHandler(async (registrationId) => {
+  const res = await api.get(`/kitchen/orders/by-registration/${registrationId}`);
+  const orders = res.data?.data || res.data || [];
+  return Array.isArray(orders) ? orders.map(mapOrderToFrontend) : [];
+});
+
 export const getMenuItems = withApiHandler(async () => {
   const res = await api.get("/kitchen/menu-items");
   const items = res.data?.data || res.data || [];
