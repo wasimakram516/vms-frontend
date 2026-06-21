@@ -1990,15 +1990,25 @@ export default function StaffVerifyPage() {
                       return `${fmt(from)} – ${fmt(to)}`;
                     };
 
-                    // Check-out must be on the same calendar day as approvedTo
+                    // For single-day visits: today must match the appointment day.
+                    // For multi-day visits: today must fall within approved_from – approved_to.
+                    const isMultiDay = (() => {
+                      const f = result.approved_from;
+                      const t = result.approved_to;
+                      if (!f || !t) return false;
+                      return new Date(f).toDateString() !== new Date(t).toDateString();
+                    })();
                     const outsideCheckoutDay = (() => {
                       if (!isCheckedIn) return false;
+                      if (isMultiDay) {
+                        const todayMs = new Date().setHours(0, 0, 0, 0);
+                        const fromMs = new Date(result.approved_from).setHours(0, 0, 0, 0);
+                        const toMs = new Date(result.approved_to).setHours(0, 0, 0, 0);
+                        return todayMs < fromMs || todayMs > toMs;
+                      }
                       const ref = result.approved_to || result.approved_from;
                       if (!ref) return false;
-                      return (
-                        new Date(ref).toDateString() !==
-                        new Date().toDateString()
-                      );
+                      return new Date(ref).toDateString() !== new Date().toDateString();
                     })();
 
                     return (
@@ -2093,12 +2103,9 @@ export default function StaffVerifyPage() {
                             icon={<ICONS.time fontSize="small" />}
                             sx={{ borderRadius: 2, fontWeight: 600, mb: 1 }}
                           >
-                            Check-out must be on the same day as the appointment
-                            (
-                            {formatDate(
-                              result.approved_to || result.approved_from,
-                            )}
-                            ).
+                            {isMultiDay
+                              ? `Today is outside the approved visit window (${formatDate(result.approved_from)} – ${formatDate(result.approved_to)}).`
+                              : `Check-out must be on the same day as the appointment (${formatDate(result.approved_to || result.approved_from)}).`}
                           </Alert>
                         )}
 

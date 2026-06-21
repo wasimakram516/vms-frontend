@@ -323,14 +323,17 @@ export const adminCreateVisits = withApiHandler(
 );
 
 export async function exportRegistrationsXlsx(ids) {
-  const res = await api.post(
+  if (!Array.isArray(ids) || ids.length === 0) return;
+  const res = await api.get(
     '/registrations/export-registrations',
     {
-      ids,
-      tzOffset: new Date().getTimezoneOffset(),
-      tzName: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      params: {
+        ids: ids.join(','),
+        tzOffset: new Date().getTimezoneOffset(),
+        tzName: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+      responseType: 'blob',
     },
-    { responseType: 'blob' },
   );
   const date = new Date().toISOString().slice(0, 10);
   const url = URL.createObjectURL(new Blob([res.data]));

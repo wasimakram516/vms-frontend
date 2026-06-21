@@ -52,7 +52,7 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import RecordMetadata from "@/components/RecordMetadata";
-import { getAllUsers, getUserById, updateUser } from "@/services/userService";
+import { getVisitorUsers, getVisitorUserById, updateVisitorUser } from "@/services/userService";
 import {
   getRegistrations,
   getRegistrationActivityLogs,
@@ -250,7 +250,7 @@ export default function VisitorsPage() {
     if (!quiet) setLoading(true);
     else setIsListRefreshing(true);
     try {
-      const data = await getAllUsers("visitor");
+      const data = await getVisitorUsers();
       const visitors = Array.isArray(data) ? data : [];
       const enriched = await Promise.all(
         visitors.map(async (v) => {
@@ -484,7 +484,7 @@ export default function VisitorsPage() {
     setSelected(visitor);
     setSelectedTab("details");
     try {
-      const full = await getUserById(visitor.id);
+      const full = await getVisitorUserById(visitor.id);
       if (!full) {
         setFetchingProfile(false);
         return;
@@ -548,17 +548,22 @@ export default function VisitorsPage() {
       };
       if (editForm.email) payload.email = editForm.email;
       if (editForm.phone) payload.phone = editForm.phone;
-      await updateUser(editModal.id, payload);
+      const userResult = await updateVisitorUser(editModal.id, payload);
+      if (userResult?.error) return;
       if (editModal._latestRegId && editForm.fieldValues) {
-        await updateRegistration(editModal._latestRegId, {
+        const regResult = await updateRegistration(editModal._latestRegId, {
           fieldValues: editForm.fieldValues,
         });
+        if (regResult?.error) return;
       }
       showMessage("Visitor updated", "success");
       setEditModal(null);
       fetchVisitors(true);
-    } catch {
-      showMessage("Failed to update visitor", "error");
+    } catch (e) {
+      showMessage(
+        e?.response?.data?.message || e?.response?.data?.error || e?.message || "Failed to update visitor",
+        "error",
+      );
     } finally {
       setSubmitting(false);
     }

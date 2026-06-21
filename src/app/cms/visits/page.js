@@ -1098,12 +1098,13 @@ export default function CmsVisitsPage() {
     try {
       const isOverride = confirmModal.isOverride ?? false;
       const clientTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      await updateStatus(selected?.id, {
+      const result = await updateStatus(selected?.id, {
         status: confirmModal.targetStatus,
         override: isOverride,
         timestamp: customTimestampRef.current,
         clientTimezone,
       });
+      if (result?.error) return;
       showMessage(
         `Visit ${confirmModal.targetStatus.replace(/_/g, " ")} successfully`,
         "success",
@@ -1114,7 +1115,7 @@ export default function CmsVisitsPage() {
       fetchVisits(true);
     } catch (e) {
       showMessage(
-        e?.response?.data?.error || e?.message || "Failed to update status",
+        e?.response?.data?.message || e?.response?.data?.error || e?.message || "Failed to update status",
         "error",
       );
     } finally {
@@ -1577,13 +1578,37 @@ export default function CmsVisitsPage() {
       const targetStatus =
         approveTarget._pendingStatus ||
         (isSuperAdmin ? "approved" : "admin_approved");
+
+      const recurringFields = (() => {
+        if (scheduleType !== "preset") return {};
+        if (selectedPreset === "specificDays" && specificDays.length > 0) {
+          return {
+            recurringType: "specific_days",
+            recurringDays: specificDays,
+            recurringTimeFrom: scheduledFrom,
+            recurringTimeTo: scheduledTo,
+          };
+        }
+        if (selectedPreset === "fullWeek" || selectedPreset === "fullMonth") {
+          const days =
+            dayTypeTab === "working"
+              ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+              : (hostConfig?.weekendDays ?? [5, 6]);
+          return {
+            recurringType: "specific_days",
+            recurringDays: days,
+            recurringTimeFrom: scheduledFrom,
+            recurringTimeTo: scheduledTo,
+          };
+        }
+        return {};
+      })();
+
       const payload = {
         status: targetStatus,
         override: approveTarget._override ?? false,
         approvedFrom: dayjs(`${fromDate}T${fromTime}`).toISOString(),
-        approvedTo: dayjs(
-          `${toDate}T${scheduleType === "preset" && selectedPreset === "fullDay" ? toTime : toTime}`,
-        ).toISOString(),
+        approvedTo: dayjs(`${toDate}T${toTime}`).toISOString(),
         accessLevelIds: selectedAccessLevelIds,
         accessLevelId: selectedAccessLevelIds[0],
         allowMultiCheckin,
@@ -1593,9 +1618,11 @@ export default function CmsVisitsPage() {
         escortRequired,
         vipReason: isVip ? vipReason.trim() : undefined,
         approvalNote: approvalNote.trim() || undefined,
+        ...recurringFields,
       };
 
-      await updateStatus(approveTarget.id, payload);
+      const approveResult = await updateStatus(approveTarget.id, payload);
+      if (approveResult?.error) return;
       showMessage(
         `Visit ${targetStatus === "approved" ? "approved" : "department approved"} successfully`,
         "success",
@@ -1607,7 +1634,7 @@ export default function CmsVisitsPage() {
       fetchVisits(true);
     } catch (e) {
       showMessage(
-        e?.response?.data?.error || e?.message || "Approval failed",
+        e?.response?.data?.message || e?.response?.data?.error || e?.message || "Approval failed",
         "error",
       );
     } finally {
@@ -1618,24 +1645,25 @@ export default function CmsVisitsPage() {
   // ── Reject flow ──
   const handleReject = async () => {
     if (!rejectTarget) return;
-    if (!validateRequired(rejectReason)) {
+    if (validateRequired(rejectReason)) {
       showMessage("Please provide a rejection reason", "warning");
       return;
     }
     setSubmitting(true);
     try {
-      await updateStatus(rejectTarget.id, {
+      const rejectResult = await updateStatus(rejectTarget.id, {
         status: "rejected",
         override: rejectTarget._override ?? false,
         rejectionReason: rejectReason.trim(),
       });
+      if (rejectResult?.error) return;
       showMessage("Visit rejected", "success");
       setRejectTarget(null);
       setSelected(null);
       fetchVisits(true);
     } catch (e) {
       showMessage(
-        e?.response?.data?.error || e?.message || "Rejection failed",
+        e?.response?.data?.message || e?.response?.data?.error || e?.message || "Rejection failed",
         "error",
       );
     } finally {
@@ -1683,13 +1711,14 @@ export default function CmsVisitsPage() {
         if (editForm.scheduleTo) payload.requestedTo = editForm.scheduleTo;
       }
       if (editForm.departmentId) payload.departmentId = editForm.departmentId;
-      await updateRegistration(editForm.id, payload);
+      const editResult = await updateRegistration(editForm.id, payload);
+      if (editResult?.error) return;
       showMessage("Visit updated", "success");
       setEditForm(null);
       fetchVisits(true);
     } catch (e) {
       showMessage(
-        e?.response?.data?.error || e?.message || "Update failed",
+        e?.response?.data?.message || e?.response?.data?.error || e?.message || "Update failed",
         "error",
       );
     } finally {
@@ -1841,18 +1870,31 @@ export default function CmsVisitsPage() {
     const purposeOfVisit =
       newPurpose === "Other" ? newPurposeOther.trim() || "Other" : newPurpose;
 
-    // Build recurring metadata when the "Specific Days" preset is active
-    const recurringFields =
-      scheduleType === "preset" &&
-      selectedPreset === "specificDays" &&
-      specificDays.length > 0
-        ? {
-            recurringType: "specific_days",
-            recurringDays: specificDays,
-            recurringTimeFrom: scheduledFrom,
-            recurringTimeTo: scheduledTo,
-          }
-        : {};
+    // Build recurring metadata for multi-day presets with day-type filtering
+    const recurringFields = (() => {
+      if (scheduleType !== "preset") return {};
+      if (selectedPreset === "specificDays" && specificDays.length > 0) {
+        return {
+          recurringType: "specific_days",
+          recurringDays: specificDays,
+          recurringTimeFrom: scheduledFrom,
+          recurringTimeTo: scheduledTo,
+        };
+      }
+      if (selectedPreset === "fullWeek" || selectedPreset === "fullMonth") {
+        const days =
+          dayTypeTab === "working"
+            ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+            : (hostConfig?.weekendDays ?? [5, 6]);
+        return {
+          recurringType: "specific_days",
+          recurringDays: days,
+          recurringTimeFrom: scheduledFrom,
+          recurringTimeTo: scheduledTo,
+        };
+      }
+      return {};
+    })();
 
     const payload = {
       userIds: selectedVisitors.map((v) => v.id),
@@ -1873,6 +1915,7 @@ export default function CmsVisitsPage() {
     setNewVisitSubmitting(true);
     try {
       const result = await adminCreateVisits(payload);
+      if (result?.error) return;
       const createdCount = result?.created?.length ?? 0;
       const skippedCount = result?.skipped?.length ?? 0;
       if (skippedCount > 0) {
@@ -1886,8 +1929,10 @@ export default function CmsVisitsPage() {
       setNewVisitOpen(false);
       fetchVisits(true);
     } catch (e) {
-      // withApiHandler re-throws with a message property; fall back to generic
-      showMessage(e?.message || "Failed to create visits", "error");
+      showMessage(
+        e?.response?.data?.message || e?.response?.data?.error || e?.message || "Failed to create visits",
+        "error",
+      );
     } finally {
       setNewVisitSubmitting(false);
     }

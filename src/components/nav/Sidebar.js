@@ -60,6 +60,14 @@ const getNavItems = (user, isKitchenModuleEnabled = true) => {
 
   return catalog.filter((item) => {
     if (item.resource === "dashboard") return !isKitchenAdmin;
+    if (item.resource === "settings") {
+      if (isKitchenAdmin) return false;
+      if (user?.role === "superadmin") return true;
+      // Only show Settings when at least one settings sub-resource is managed and granted
+      return ["host-details", "departments", "access-levels", "nda-forms", "kitchen-menu", "access-control"].some(
+        (r) => canAccessResource(user, r, { hardcodeAllowed: false })
+      );
+    }
     return canAccessResource(user, item.resource, { hardcodeAllowed: item.hardcodeAllowed });
   });
 };

@@ -88,6 +88,7 @@ export default function UsersPage() {
   const canCreate = canAccessResource(currentUser, "users", { hardcodeAllowed: isSuperAdmin, action: "create" });
   const canUpdate = canAccessResource(currentUser, "users", { hardcodeAllowed: isSuperAdmin, action: "update" });
   const canDelete = canAccessResource(currentUser, "users", { hardcodeAllowed: isSuperAdmin, action: "delete" });
+  const canReadOverrides = canAccessResource(currentUser, "access-control", { hardcodeAllowed: currentUser?.role === "superadmin" || currentUser?.role === "dev", action: "read" });
   const canManageOverrides = canAccessResource(currentUser, "access-control", { hardcodeAllowed: currentUser?.role === "superadmin" || currentUser?.role === "dev", action: "update" });
 
   const [users, setUsers] = useState([]);
@@ -168,9 +169,11 @@ export default function UsersPage() {
     getDepartments().then((res) => {
       if (Array.isArray(res)) setAllDepartments(res);
     });
-    listPermissions().then((data) => {
-      if (Array.isArray(data)) setAllPermissions(data);
-    });
+    if (canReadOverrides || canManageOverrides) {
+      listPermissions().then((data) => {
+        if (Array.isArray(data)) setAllPermissions(data);
+      });
+    }
   }, []);
 
   // Load base role permissions whenever the create form's role/type changes
@@ -368,8 +371,8 @@ export default function UsersPage() {
         if (form.role === "admin" && savedId) {
           await assignUserDepartments(savedId, form.department_ids);
         }
-        // Save permission overrides (always for edit to allow clearing, only when non-empty for create)
-        if (savedId) {
+        // Save permission overrides only when user has update access on access-control
+        if (savedId && canManageOverrides) {
           const overridesToSave = isEditMode ? editOverrides : overrides;
           const overridesPayload = buildOverridesPayload(overridesToSave);
           if (isEditMode || overridesPayload.length > 0) {
@@ -1105,7 +1108,7 @@ export default function UsersPage() {
         />
         <DialogContent dividers sx={{ p: 0 }}>
           {/* Sticky tabs — hidden for superadmin/visitor (no overrides apply), or when user lacks override permission or is editing self */}
-          {form.role !== "superadmin" && form.role !== "visitor" && canManageOverrides && !isEditingSelf && (
+          {form.role !== "superadmin" && form.role !== "visitor" && (canReadOverrides || canManageOverrides) && !isEditingSelf && (
             <Box sx={{ position: "sticky", top: 0, zIndex: 10, bgcolor: "background.paper", px: 2, pt: 2, pb: 1, borderBottom: "1px solid", borderColor: "divider" }}>
               <Tabs
                 value={modalTab}
@@ -1258,8 +1261,8 @@ export default function UsersPage() {
             )}
           </Box>
 
-          {/* Tab 1: Permission Overrides — only shown when user has manage permission, not editing self, and role supports it */}
-          <Box sx={{ display: form.role !== "superadmin" && form.role !== "visitor" && canManageOverrides && modalTab === 1 ? "flex" : "none", flexDirection: "column", gap: 1.5, p: 2.5 }}>
+          {/* Tab 1: Permission Overrides — shown when user has read or manage permission, not editing self, and role supports it */}
+          <Box sx={{ display: form.role !== "superadmin" && form.role !== "visitor" && (canReadOverrides || canManageOverrides) && modalTab === 1 ? "flex" : "none", flexDirection: "column", gap: 1.5, p: 2.5 }}>
             {isEditingSelf ? (
               <Alert severity="info" sx={{ borderRadius: 2 }}>
                 You cannot modify your own permission overrides.
@@ -1305,7 +1308,7 @@ export default function UsersPage() {
                             return (
                               <Box
                                 key={action}
-                                onClick={() => handleToggleOverride(perm.id, action, isInherited, isEditMode)}
+                                onClick={() => canManageOverrides && handleToggleOverride(perm.id, action, isInherited, isEditMode)}
                                 sx={{
                                   p: 1,
                                   borderRadius: 1.5,
@@ -1316,17 +1319,18 @@ export default function UsersPage() {
                                   flexDirection: "column",
                                   alignItems: "center",
                                   gap: 0.5,
-                                  cursor: "pointer",
+                                  cursor: canManageOverrides ? "pointer" : "default",
                                   transition: "all 0.15s ease",
-                                  "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" },
+                                  "&:hover": canManageOverrides ? { borderColor: "primary.main", bgcolor: "action.hover" } : {},
                                 }}
                               >
                                 <Checkbox
                                   checked={isChecked}
                                   size="small"
                                   sx={{ p: 0 }}
+                                  disabled={!canManageOverrides}
                                   onClick={(e) => e.stopPropagation()}
-                                  onChange={() => handleToggleOverride(perm.id, action, isInherited, isEditMode)}
+                                  onChange={() => canManageOverrides && handleToggleOverride(perm.id, action, isInherited, isEditMode)}
                                 />
                                 <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "capitalize", lineHeight: 1 }}>
                                   {action}

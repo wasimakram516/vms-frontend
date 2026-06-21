@@ -33,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canAccessResource } from "@/utils/permissions";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import ICONS from "@/utils/iconUtil";
+import RecordMetadata from "@/components/RecordMetadata";
 import {
   listPermissions,
   createPermission,
@@ -45,9 +46,18 @@ const ACTIONS = ["read", "create", "update", "delete"];
 export default function PermissionsPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "superadmin";
-  const canCreate = canAccessResource(user, "access-control", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "create" });
-  const canUpdate = canAccessResource(user, "access-control", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "update" });
-  const canDelete = canAccessResource(user, "access-control", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "delete" });
+  const canCreate = canAccessResource(user, "access-control", {
+    hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev",
+    action: "create",
+  });
+  const canUpdate = canAccessResource(user, "access-control", {
+    hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev",
+    action: "update",
+  });
+  const canDelete = canAccessResource(user, "access-control", {
+    hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev",
+    action: "delete",
+  });
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -58,7 +68,12 @@ export default function PermissionsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createResource, setCreateResource] = useState("");
   const [createDesc, setCreateDesc] = useState("");
+  const [createIsActive, setCreateIsActive] = useState(true);
   const [creating, setCreating] = useState(false);
+
+  // Activate / deactivate
+  const [activateTarget, setActivateTarget] = useState(null);
+  const [deactivateTarget, setDeactivateTarget] = useState(null);
 
   // Edit dialog
   const [editPerm, setEditPerm] = useState(null);
@@ -81,20 +96,31 @@ export default function PermissionsPage() {
 
   const filtered = permissions.filter((p) => {
     const q = search.toLowerCase();
-    return p.resource.toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q);
+    return (
+      p.resource.toLowerCase().includes(q) ||
+      (p.description || "").toLowerCase().includes(q)
+    );
   });
-  const paged = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const paged = filtered.slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage,
+  );
 
   async function handleCreate(e) {
     e.preventDefault();
     if (!createResource.trim()) return;
     setCreating(true);
-    const result = await createPermission({ resource: createResource.trim(), description: createDesc });
+    const result = await createPermission({
+      resource: createResource.trim(),
+      description: createDesc,
+      isActive: createIsActive,
+    });
     if (!result?.error) {
       setPermissions((prev) => [result, ...prev]);
       setCreateOpen(false);
       setCreateResource("");
       setCreateDesc("");
+      setCreateIsActive(true);
       setPage(0);
     }
     setCreating(false);
@@ -104,9 +130,15 @@ export default function PermissionsPage() {
     e.preventDefault();
     if (!editPerm) return;
     setSaving(true);
-    const result = await updatePermission(editPerm.id, { resource: editResource, description: editDesc, isActive: editIsActive });
+    const result = await updatePermission(editPerm.id, {
+      resource: editResource,
+      description: editDesc,
+      isActive: editIsActive,
+    });
     if (!result?.error) {
-      setPermissions((prev) => prev.map((p) => (p.id === editPerm.id ? result : p)));
+      setPermissions((prev) =>
+        prev.map((p) => (p.id === editPerm.id ? result : p)),
+      );
       setEditPerm(null);
     }
     setSaving(false);
@@ -121,8 +153,35 @@ export default function PermissionsPage() {
     setDeleteTarget(null);
   }
 
+  async function handleActivate() {
+    const result = await updatePermission(activateTarget.id, {
+      isActive: true,
+    });
+    if (!result?.error) {
+      setPermissions((prev) =>
+        prev.map((p) => (p.id === activateTarget.id ? result : p)),
+      );
+    }
+    setActivateTarget(null);
+  }
+
+  async function handleDeactivate() {
+    const result = await updatePermission(deactivateTarget.id, {
+      isActive: false,
+    });
+    if (!result?.error) {
+      setPermissions((prev) =>
+        prev.map((p) => (p.id === deactivateTarget.id ? result : p)),
+      );
+    }
+    setDeactivateTarget(null);
+  }
+
   return (
-    <PermissionRouteGuard resource="access-control" hardcodeAllowed={isSuperAdmin}>
+    <PermissionRouteGuard
+      resource="access-control"
+      hardcodeAllowed={isSuperAdmin}
+    >
       <Box>
         <Box
           sx={{
@@ -140,18 +199,24 @@ export default function PermissionsPage() {
               Permissions
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Create, edit, and delete permission resources. Each resource always carries the four standard actions.
+              Create, edit, and delete permission resources. Each resource
+              always carries the four standard actions.
             </Typography>
           </Box>
           {canCreate && (
-          <Button
-            variant="contained"
-            startIcon={<ICONS.add />}
-            onClick={() => setCreateOpen(true)}
-            sx={{ whiteSpace: "nowrap", height: 40, borderRadius: 2, fontWeight: 700 }}
-          >
-            New Permission
-          </Button>
+            <Button
+              variant="contained"
+              startIcon={<ICONS.add />}
+              onClick={() => setCreateOpen(true)}
+              sx={{
+                whiteSpace: "nowrap",
+                height: 40,
+                borderRadius: 2,
+                fontWeight: 700,
+              }}
+            >
+              New Permission
+            </Button>
           )}
         </Box>
 
@@ -168,20 +233,42 @@ export default function PermissionsPage() {
               size="small"
               placeholder="Search permissions..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              slotProps={{ input: { startAdornment: <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} /> } }}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <ICONS.search
+                      fontSize="small"
+                      sx={{ mr: 1, opacity: 0.6 }}
+                    />
+                  ),
+                },
+              }}
               sx={{ maxWidth: { md: 360 } }}
             />
           }
           actionsSlot={
-            <FormControl size="small" sx={{ minWidth: { xs: "100%", sm: 160 } }}>
+            <FormControl
+              size="small"
+              sx={{ minWidth: { xs: "100%", sm: 160 } }}
+            >
               <InputLabel>Records per page</InputLabel>
               <Select
                 value={rowsPerPage}
-                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
+                onChange={(e) => {
+                  setRowsPerPage(Number(e.target.value));
+                  setPage(0);
+                }}
                 label="Records per page"
               >
-                {[9, 18, 36].map((n) => <MenuItem key={n} value={n}>{n}</MenuItem>)}
+                {[9, 18, 36].map((n) => (
+                  <MenuItem key={n} value={n}>
+                    {n}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           }
@@ -195,14 +282,28 @@ export default function PermissionsPage() {
           ) : filtered.length === 0 ? (
             <NoDataAvailable
               title="No permissions found"
-              description={search ? "Try adjusting your search." : "No permissions defined yet. Create one to get started."}
+              description={
+                search
+                  ? "Try adjusting your search."
+                  : "No permissions defined yet. Create one to get started."
+              }
             />
           ) : (
             <>
               <ResponsiveCardGrid>
                 {paged.map((perm) => (
                   <AppCard key={perm.id} sx={{ height: "100%", width: "100%" }}>
-                    <Box sx={{ bgcolor: "action.hover", borderBottom: "1px solid", borderColor: "divider", p: 2.5 }}>
+                    <Box
+                      sx={{
+                        bgcolor: "action.hover",
+                        borderBottom: "1px solid",
+                        borderColor: "divider",
+                        p: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
                       <Stack direction="row" alignItems="center" spacing={1.5}>
                         <Box
                           sx={{
@@ -222,61 +323,142 @@ export default function PermissionsPage() {
                         <Chip
                           label={perm.resource}
                           size="small"
-                          sx={{ fontWeight: 700, textTransform: "uppercase", fontSize: "0.7rem", borderRadius: 999 }}
-                        />
-                        <Chip
-                          label={perm.isActive ? "Active" : "Inactive"}
-                          size="small"
-                          color={perm.isActive ? "success" : "default"}
-                          variant={perm.isActive ? "filled" : "outlined"}
-                          sx={{ fontWeight: 700, fontSize: "0.65rem", height: 22 }}
+                          sx={{
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            fontSize: "0.7rem",
+                            borderRadius: 999,
+                          }}
                         />
                       </Stack>
+                      <Chip
+                        label={perm.isActive ? "Active" : "Inactive"}
+                        size="small"
+                        color={perm.isActive ? "success" : "default"}
+                        variant={perm.isActive ? "filled" : "outlined"}
+                        sx={{
+                          fontWeight: 700,
+                          fontSize: "0.65rem",
+                          height: 22,
+                        }}
+                      />
                     </Box>
 
                     <Box sx={{ p: 2.5, flexGrow: 1 }}>
                       <Typography
                         variant="body2"
                         color="text.secondary"
-                        sx={{ mb: 1.5, minHeight: 36, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+                        sx={{
+                          mb: 1.5,
+                          minHeight: 36,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
                       >
                         {perm.description || "No description provided."}
                       </Typography>
                       <Stack direction="row" flexWrap="wrap" gap={0.5}>
                         {ACTIONS.map((a) => (
-                          <Chip key={a} label={a} size="small" variant="outlined" sx={{ fontSize: "0.65rem", borderRadius: 999 }} />
+                          <Chip
+                            key={a}
+                            label={a}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontSize: "0.65rem", borderRadius: 999 }}
+                          />
                         ))}
                       </Stack>
                     </Box>
 
                     <Box
                       sx={{
-                        p: 2,
+                        p: 1.2,
                         borderTop: "1px solid",
                         borderColor: "divider",
                         bgcolor: "action.hover",
                         display: "flex",
-                        justifyContent: "flex-end",
+                        flexDirection: "column",
                         gap: 1,
                       }}
                     >
-                      {canUpdate && (
-                      <Tooltip title="Edit">
-                        <IconButton
-                          size="small"
-                          onClick={() => { setEditPerm(perm); setEditResource(perm.resource); setEditDesc(perm.description || ""); setEditIsActive(perm.isActive !== false); }}
-                          sx={{ color: "text.secondary" }}
+                      <Box sx={{ width: "100%", overflow: "hidden" }}>
+                        <RecordMetadata
+                          createdByName={perm.createdBy}
+                          updatedByName={perm.updatedBy}
+                          createdAt={perm.createdAt}
+                          updatedAt={perm.updatedAt}
+                          locale="en-GB"
+                          sx={{ px: 0, py: 0 }}
+                        />
+                      </Box>
+                      {(canUpdate || canDelete) && (
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          justifyContent="flex-end"
+                          alignItems="center"
                         >
-                          <ICONS.edit fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      )}
-                      {canDelete && (
-                      <Tooltip title="Delete">
-                        <IconButton size="small" onClick={() => setDeleteTarget(perm)} sx={{ color: "error.main" }}>
-                          <ICONS.delete fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                          {canUpdate && (
+                            <>
+                              {perm.isActive ? (
+                                <Tooltip title="Deactivate">
+                                  <IconButton
+                                    size="small"
+                                    color="warning"
+                                    onClick={() => setDeactivateTarget(perm)}
+                                    sx={{ bgcolor: "action.hover" }}
+                                  >
+                                    <ICONS.close fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              ) : (
+                                <Tooltip title="Activate">
+                                  <IconButton
+                                    size="small"
+                                    color="success"
+                                    onClick={() => setActivateTarget(perm)}
+                                    sx={{ bgcolor: "action.hover" }}
+                                  >
+                                    <ICONS.check fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              <Tooltip title="Edit">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => {
+                                    setEditPerm(perm);
+                                    setEditResource(perm.resource);
+                                    setEditDesc(perm.description || "");
+                                    setEditIsActive(perm.isActive !== false);
+                                  }}
+                                  sx={{
+                                    color: "text.secondary",
+                                    bgcolor: "action.hover",
+                                  }}
+                                >
+                                  <ICONS.edit fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
+                          {canDelete && (
+                            <Tooltip title="Delete">
+                              <IconButton
+                                size="small"
+                                onClick={() => setDeleteTarget(perm)}
+                                sx={{
+                                  color: "error.main",
+                                  bgcolor: "action.hover",
+                                }}
+                              >
+                                <ICONS.delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </Stack>
                       )}
                     </Box>
                   </AppCard>
@@ -284,7 +466,14 @@ export default function PermissionsPage() {
               </ResponsiveCardGrid>
 
               {filtered.length > rowsPerPage && (
-                <Box sx={{ display: "flex", justifyContent: "center", mt: 4, mb: 2 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    mt: 4,
+                    mb: 2,
+                  }}
+                >
                   <Pagination
                     count={Math.ceil(filtered.length / rowsPerPage)}
                     page={page + 1}
@@ -301,10 +490,20 @@ export default function PermissionsPage() {
         </Box>
 
         {/* Create dialog */}
-        <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 700 }}>New Permission</DialogTitle>
           <DialogContent dividers>
-            <Box component="form" id="create-perm-form" onSubmit={handleCreate} sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: 1 }}>
+            <Box
+              component="form"
+              id="create-perm-form"
+              onSubmit={handleCreate}
+              sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: 1 }}
+            >
               <TextField
                 label="Resource"
                 placeholder="e.g. users, visits, reports"
@@ -324,17 +523,42 @@ export default function PermissionsPage() {
                 multiline
                 rows={2}
               />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={createIsActive}
+                    onChange={(e) => setCreateIsActive(e.target.checked)}
+                    color="success"
+                  />
+                }
+                label="Active"
+              />
               <Typography variant="body2" color="text.secondary">
-                Actions <strong>read, create, update, delete</strong> are added automatically.
+                Actions <strong>read, create, update, delete</strong> are added
+                automatically.
               </Typography>
             </Box>
           </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2, gap: 1, flexDirection: { xs: "column", sm: "row" } }}>
-            <Button variant="outlined" onClick={() => setCreateOpen(false)} fullWidth={false}>Cancel</Button>
+          <DialogActions
+            sx={{
+              px: 3,
+              pb: 2,
+              gap: 1,
+              flexDirection: { xs: "column-reverse", sm: "row" },
+            }}
+          >
+            <Button
+              variant="outlined"
+              onClick={() => setCreateOpen(false)}
+              fullWidth
+            >
+              Cancel
+            </Button>
             <Button
               type="submit"
               form="create-perm-form"
               variant="contained"
+              fullWidth
               disabled={creating || !createResource.trim()}
             >
               {creating ? "Creating..." : "Create"}
@@ -343,10 +567,20 @@ export default function PermissionsPage() {
         </Dialog>
 
         {/* Edit dialog */}
-        <Dialog open={!!editPerm} onClose={() => setEditPerm(null)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={!!editPerm}
+          onClose={() => setEditPerm(null)}
+          maxWidth="sm"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 700 }}>Edit Permission</DialogTitle>
           <DialogContent dividers>
-            <Box component="form" id="edit-perm-form" onSubmit={handleEdit} sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: 1 }}>
+            <Box
+              component="form"
+              id="edit-perm-form"
+              onSubmit={handleEdit}
+              sx={{ display: "flex", flexDirection: "column", gap: 2.5, pt: 1 }}
+            >
               <TextField
                 label="Resource"
                 value={editResource}
@@ -365,26 +599,72 @@ export default function PermissionsPage() {
                 rows={2}
               />
               <FormControlLabel
-                control={<Switch checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} />}
+                control={
+                  <Switch
+                    checked={editIsActive}
+                    onChange={(e) => setEditIsActive(e.target.checked)}
+                    color="success"
+                  />
+                }
                 label="Active"
               />
             </Box>
           </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2, gap: 1, flexDirection: { xs: "column", sm: "row" } }}>
-            <Button variant="outlined" onClick={() => setEditPerm(null)}>Cancel</Button>
-            <Button type="submit" form="edit-perm-form" variant="contained" disabled={saving}>
+          <DialogActions
+            sx={{
+              px: 3,
+              pb: 2,
+              gap: 1,
+              flexDirection: { xs: "column-reverse", sm: "row" },
+            }}
+          >
+            <Button
+              variant="outlined"
+              onClick={() => setEditPerm(null)}
+              fullWidth
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="edit-perm-form"
+              variant="contained"
+              fullWidth
+              disabled={saving}
+            >
               {saving ? "Saving..." : "Save"}
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Deactivate confirm */}
+        <ConfirmationDialog
+          open={!!deactivateTarget}
+          onConfirm={handleDeactivate}
+          onCancel={() => setDeactivateTarget(null)}
+          title="Deactivate Permission"
+          message={`Deactivate permission "${deactivateTarget?.resource}"? The resource will no longer be managed by the permission system — all authenticated users will have access.`}
+          confirmButtonText="Deactivate"
+          confirmButtonColor="warning"
+        />
+
+        {/* Activate confirm */}
+        <ConfirmationDialog
+          open={!!activateTarget}
+          onConfirm={handleActivate}
+          onCancel={() => setActivateTarget(null)}
+          title="Activate Permission"
+          message={`Activate permission "${activateTarget?.resource}"? The resource will become managed by the permission system again.`}
+          confirmButtonText="Activate"
+          confirmButtonColor="success"
+        />
 
         {/* Delete confirm */}
         <ConfirmationDialog
           open={!!deleteTarget}
           title="Delete Permission"
           message={`Delete permission "${deleteTarget?.resource}"? This will also remove all role and user assignments for this resource.`}
-          confirmLabel="Delete"
-          confirmColor="error"
+          confirmButtonText="Delete"
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
         />
