@@ -164,7 +164,7 @@ export const SocketProvider = ({ children }) => {
         const m = minutesOverdue % 60;
         const overdue = h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ""}` : `${m}m`;
         showMessageRef.current?.(
-          `${visitorName || "A visitor"} is ${overdue} overdue — please check out.`,
+          `${visitorName || "A visitor"} is ${overdue} overstay — please check out.`,
           "warning",
         );
       }

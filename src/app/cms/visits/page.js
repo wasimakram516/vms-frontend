@@ -145,6 +145,16 @@ const STATUS_CONFIG = {
 };
 const TERMINAL_STATUSES = new Set(["visit_ended", "rejected", "expired"]);
 
+const ACTION_LABELS = {
+  admin_approved: "Dept Approve",
+  approved: "Final Approve",
+  rejected: "Reject",
+  cancelled: "Cancel",
+  checked_in: "Check In",
+  checked_out: "Check Out",
+  visit_ended: "End Visit",
+};
+
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTES = Array.from({ length: 12 }, (_, i) =>
   String(i * 5).padStart(2, "0"),
@@ -3334,8 +3344,8 @@ export default function CmsVisitsPage() {
                           <Stack
                             direction="row"
                             spacing={1.5}
-                            alignItems="center"
-                            sx={{ flexGrow: 1 }}
+                            alignItems="flex-start"
+                            sx={{ flexGrow: 1, flexWrap: "wrap", rowGap: 0.5 }}
                           >
                             <Avatar
                               sx={{
@@ -3344,18 +3354,20 @@ export default function CmsVisitsPage() {
                                 fontSize: "0.75rem",
                                 bgcolor: isDark ? "#fff" : "#000",
                                 color: isDark ? "#000" : "#fff",
+                                flexShrink: 0,
                               }}
                             >
                               {opt.fullName?.[0] ?? "?"}
                             </Avatar>
-                            <Box sx={{ flexGrow: 1 }}>
-                              <Typography variant="body2" fontWeight={600}>
+                            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                              <Typography variant="body2" fontWeight={600} noWrap>
                                 {opt.fullName}
                               </Typography>
                               {opt.email && (
                                 <Typography
                                   variant="caption"
                                   color="text.secondary"
+                                  noWrap
                                 >
                                   {opt.email}
                                 </Typography>
@@ -3365,7 +3377,7 @@ export default function CmsVisitsPage() {
                               direction="row"
                               spacing={0.5}
                               alignItems="center"
-                              sx={{ flexShrink: 0 }}
+                              sx={{ flexWrap: "wrap", flexShrink: 0 }}
                             >
                               {visitorVisitCounts[opt.id] != null &&
                                 visitorVisitCounts[opt.id] > 0 && (
@@ -3440,10 +3452,10 @@ export default function CmsVisitsPage() {
                   <Grid container spacing={2}>
                     <Grid size={{ xs: 12, sm: 6 }}>
                       <FormControl fullWidth required size="small">
-                        <InputLabel>Department</InputLabel>
-                        <Select
-                          value={newDepartmentId}
-                          label="Department"
+                      <InputLabel>Visiting Department</InputLabel>
+                      <Select
+                        value={newDepartmentId}
+                        label="Visiting Department"
                           onChange={(e) => setNewDepartmentId(e.target.value)}
                           sx={{ borderRadius: 2 }}
                         >
@@ -5266,7 +5278,7 @@ export default function CmsVisitsPage() {
                         />
                         {(selected.department?.name || selected.department) && (
                           <InfoItem
-                            label="Department"
+                            label="Visiting Department"
                             value={
                               selected.department?.name || selected.department
                             }
@@ -5393,10 +5405,6 @@ export default function CmsVisitsPage() {
                         checked_out: "warning",
                         visit_ended: "error",
                       };
-                      const actionLabels = {
-                        checked_in: "Check In",
-                        checked_out: "Check Out",
-                      };
                       return (
                         <Button
                           key={targetStatus}
@@ -5423,7 +5431,7 @@ export default function CmsVisitsPage() {
                             width: { xs: "100%", sm: "auto" },
                           }}
                         >
-                          {actionLabels[targetStatus] ?? cfg.label}
+                          {ACTION_LABELS[targetStatus] ?? cfg.label}
                         </Button>
                       );
                     })}
@@ -5467,7 +5475,7 @@ export default function CmsVisitsPage() {
                                 handleStatusAction(s, true);
                               }}
                             >
-                              {STATUS_CONFIG[s]?.label || toTitleCase(s)}
+                              {ACTION_LABELS[s] || STATUS_CONFIG[s]?.label || toTitleCase(s)}
                             </MenuItem>
                           ))}
                         </Menu>
@@ -5697,9 +5705,9 @@ export default function CmsVisitsPage() {
                     {(approveTarget.department?.name ||
                       approveTarget.department) && (
                       <Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Department
-                        </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Visiting Department
+                    </Typography>
                         <Typography
                           variant="body2"
                           fontWeight={500}
@@ -7024,13 +7032,13 @@ export default function CmsVisitsPage() {
                               key={v.userId}
                               direction="row"
                               spacing={1}
-                              alignItems="center"
-                              sx={{ py: 0.4 }}
+                              alignItems="flex-start"
+                              sx={{ py: 0.4, flexWrap: "wrap", rowGap: 0.5 }}
                             >
                               <Typography
                                 variant="body2"
                                 fontWeight={600}
-                                sx={{ flex: 1, minWidth: 0 }}
+                                sx={{ flex: 1, minWidth: 120 }}
                                 noWrap
                               >
                                 {v.name}
@@ -7039,7 +7047,7 @@ export default function CmsVisitsPage() {
                                 direction="row"
                                 spacing={0.5}
                                 alignItems="center"
-                                sx={{ flexShrink: 0 }}
+                                sx={{ flexShrink: 0, flexWrap: "wrap" }}
                               >
                                 {v.selectedCount > 1 && (
                                   <Chip
@@ -7124,7 +7132,7 @@ export default function CmsVisitsPage() {
                               {cfg.icon}
                             </Box>
                             <Typography variant="body2" fontWeight={600}>
-                              {cfg.label}
+                              {ACTION_LABELS[s] || cfg.label}
                             </Typography>
                           </Stack>
                         </MenuItem>
@@ -8346,10 +8354,10 @@ export default function CmsVisitsPage() {
                       />
                     </Box>
                     <FormControl fullWidth>
-                      <InputLabel>Department</InputLabel>
+                      <InputLabel>Visiting Department</InputLabel>
                       <Select
                         value={editForm.departmentId || ""}
-                        label="Department"
+                        label="Visiting Department"
                         onChange={(e) =>
                           setEditForm({
                             ...editForm,

@@ -1685,7 +1685,7 @@ export default function StaffVerifyPage() {
                       pushField("Name", visitorName, ICONS.person);
                       pushField("Company", company, ICONS.business);
                       pushField("Purpose", purpose, ICONS.info);
-                      pushField("Department", department, ICONS.business);
+                      pushField("Visiting Department", department, ICONS.business);
                       pushField("ID Type", resolvedId?.type, ICONS.badge);
                       pushField(
                         resolvedId?.type
@@ -1725,7 +1725,7 @@ export default function StaffVerifyPage() {
                       pushField("Name", visitorName, ICONS.person);
                       pushField("Company", company, ICONS.business);
                       pushField("Purpose", purpose, ICONS.info);
-                      pushField("Department", department, ICONS.business);
+                      pushField("Visiting Department", department, ICONS.business);
                       pushField("ID Type", resolvedId?.type, ICONS.badge);
                       pushField(
                         resolvedId?.type
@@ -1759,7 +1759,7 @@ export default function StaffVerifyPage() {
                       pushField("Name", visitorName, ICONS.person);
                       pushField("Company", company, ICONS.business);
                       pushField("Purpose", purpose, ICONS.info);
-                      pushField("Department", department, ICONS.business);
+                      pushField("Visiting Department", department, ICONS.business);
                       pushField("ID Type", resolvedId?.type, ICONS.badge);
                       pushField(
                         resolvedId?.type
@@ -1792,7 +1792,7 @@ export default function StaffVerifyPage() {
                     else if (isPending) {
                       pushField("Name", visitorName, ICONS.person);
                       pushField("Purpose", purpose, ICONS.info);
-                      pushField("Department", department, ICONS.business);
+                      pushField("Visiting Department", department, ICONS.business);
                       pushField("ID Type", resolvedId?.type, ICONS.badge);
                       pushField(
                         resolvedId?.type
@@ -1807,7 +1807,7 @@ export default function StaffVerifyPage() {
                       pushField("Name", visitorName, ICONS.person);
                       pushField("Company", company, ICONS.business);
                       pushField("Purpose", purpose, ICONS.info);
-                      pushField("Department", department, ICONS.business);
+                      pushField("Visiting Department", department, ICONS.business);
                       pushField("ID Type", resolvedId?.type, ICONS.badge);
                       pushField(
                         resolvedId?.type

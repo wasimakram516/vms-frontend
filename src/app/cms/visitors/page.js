@@ -1617,8 +1617,8 @@ function HistoryVisitCard({ visit, visitorName, isDark, onViewTimeline }) {
         }}
       >
         <InfoItem
-          label="Department"
-          value={departmentName || "-"}
+  label="Visiting Department"
+  value={departmentName || "-"}
           icon={<ICONS.apartment fontSize="small" />}
         />
         <InfoItem
