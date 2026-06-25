@@ -8252,66 +8252,61 @@ export default function CmsVisitsPage() {
                           />
                         )}
 
-                        <Box sx={{ mt: 1 }}>
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={editForm.isVip ?? false}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  setEditForm({ ...editForm, isVip: checked });
-                                  if (!checked)
-                                    setEditForm((prev) => ({
-                                      ...prev,
-                                      vipReason: "",
-                                    }));
-                                }}
-                                color="success"
-                              />
-                            }
-                            label={
-                              <Stack
-                                direction="row"
-                                spacing={1}
-                                alignItems="center"
-                              >
-                                <Typography variant="body2">VIP</Typography>
-                                <Chip
-                                  label={
-                                    editForm.isVip ? "Enabled" : "Disabled"
-                                  }
-                                  size="small"
-                                  color={editForm.isVip ? "success" : "default"}
-                                  sx={{
-                                    fontWeight: 700,
-                                    height: 20,
-                                    fontSize: "0.65rem",
-                                  }}
-                                />
-                              </Stack>
-                            }
-                          />
-                          {editForm.isVip && (
-                            <TextField
-                              fullWidth
-                              size="small"
-                              label="VIP Reason"
-                              placeholder="Enter the reason for VIP status…"
-                              value={editForm.vipReason ?? ""}
-                              onChange={(e) =>
-                                setEditForm((prev) => ({
-                                  ...prev,
-                                  vipReason: e.target.value,
-                                }))
-                              }
-                              sx={{
-                                mt: 1,
-                                "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={editForm.isVip ?? false}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setEditForm({ ...editForm, isVip: checked });
+                                if (!checked)
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    vipReason: "",
+                                  }));
                               }}
-                              inputProps={{ maxLength: 300 }}
+                              color="success"
                             />
-                          )}
-                        </Box>
+                          }
+                          label={
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                            >
+                              <Typography variant="body2">VIP</Typography>
+                              <Chip
+                                label={editForm.isVip ? "Enabled" : "Disabled"}
+                                size="small"
+                                color={editForm.isVip ? "success" : "default"}
+                                sx={{
+                                  fontWeight: 700,
+                                  height: 20,
+                                  fontSize: "0.65rem",
+                                }}
+                              />
+                            </Stack>
+                          }
+                        />
+                        {editForm.isVip && (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="VIP Reason"
+                            placeholder="Enter the reason for VIP status…"
+                            value={editForm.vipReason ?? ""}
+                            onChange={(e) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                vipReason: e.target.value,
+                              }))
+                            }
+                            sx={{
+                              "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                            }}
+                            inputProps={{ maxLength: 300 }}
+                          />
+                        )}
 
                         <FormControlLabel
                           control={
