@@ -337,7 +337,7 @@ function DepartmentsContent() {
       <Dialog
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
       >

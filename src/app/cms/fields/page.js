@@ -588,7 +588,7 @@ export default function CmsFieldsPage() {
       <Dialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 4, variant: "frosted" } }}
       >

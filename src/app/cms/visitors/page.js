@@ -1376,7 +1376,7 @@ export default function VisitorsPage() {
         <Dialog
           open={!!editModal}
           onClose={() => setEditModal(null)}
-          maxWidth="sm"
+          maxWidth="md"
           fullWidth
           PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
         >
