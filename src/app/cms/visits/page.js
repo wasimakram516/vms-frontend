@@ -2860,7 +2860,17 @@ export default function CmsVisitsPage() {
                     </Stack>
                   </Box>
 
-                  <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
+                  <Box
+                    sx={{
+                      flexGrow: 1,
+                      px: 2,
+                      py: 1.5,
+                      "& > :not(:last-child)": {
+                        borderBottom: "1px solid",
+                        borderColor: "divider",
+                      },
+                    }}
+                  >
                     {resolvedId && (
                       <Box
                         sx={{
@@ -2868,8 +2878,6 @@ export default function CmsVisitsPage() {
                           justifyContent: "space-between",
                           alignItems: "flex-start",
                           py: 0.8,
-                          borderBottom: "1px solid",
-                          borderColor: "divider",
                         }}
                       >
                         <Typography
@@ -2905,8 +2913,6 @@ export default function CmsVisitsPage() {
                           justifyContent: "space-between",
                           alignItems: "flex-start",
                           py: 0.8,
-                          borderBottom: "1px solid",
-                          borderColor: "divider",
                         }}
                       >
                         <Typography
@@ -2945,8 +2951,6 @@ export default function CmsVisitsPage() {
                           justifyContent: "space-between",
                           alignItems: "flex-start",
                           py: 0.8,
-                          borderBottom: "1px solid",
-                          borderColor: "divider",
                         }}
                       >
                         <Typography
@@ -2982,8 +2986,6 @@ export default function CmsVisitsPage() {
                           justifyContent: "space-between",
                           alignItems: "flex-start",
                           py: 0.8,
-                          borderBottom: "1px solid",
-                          borderColor: "divider",
                         }}
                       >
                         <Typography
@@ -7891,7 +7893,7 @@ export default function CmsVisitsPage() {
         <Dialog
           open={!!editForm}
           onClose={() => setEditForm(null)}
-          maxWidth="sm"
+          maxWidth="md"
           fullWidth
           PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
         >
