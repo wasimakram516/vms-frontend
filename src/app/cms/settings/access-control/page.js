@@ -1,129 +1,420 @@
 "use client";
 
-import { Box, Typography, Button, Divider } from "@mui/material";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
-import AppCard from "@/components/cards/AppCard";
-import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
-import ICONS from "@/utils/iconUtil";
+import {
+  Box,
+  Typography,
+  Button,
+  Tooltip,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  FormControlLabel,
+  Checkbox,
+  Switch,
+  Chip,
+  CircularProgress,
+  Stack,
+  Paper,
+  Tabs,
+  Tab,
+  useMediaQuery,
+  useTheme,
+  Alert,
+} from "@mui/material";
+import { useEffect, useState, useCallback, useRef } from "react";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
+import { useAuth } from "@/contexts/AuthContext";
+import { useSocket } from "@/contexts/SocketContext";
 import { canAccessResource } from "@/utils/permissions";
+import ICONS from "@/utils/iconUtil";
+import { getRolePagePermissions, setRolePagePermissions } from "@/services/permissionService";
+import { refreshUser } from "@/services/authService";
+import { ROLE_KEYS, getPagesForRole } from "@/constants/pageCatalog";
 
-const CARDS = [
-  {
-    icon: ICONS.key,
-    label: "Permissions",
-    description:
-      "Create and manage permission resources. Each permission covers the four standard actions: read, create, update, and delete.",
-    path: "/cms/settings/access-control/permissions",
-  },
-  {
-    icon: ICONS.badge,
-    label: "Role Permissions",
-    description:
-      "Assign a base permission set to each role type (Dept Admin, Kitchen Admin, Gate Staff, Kitchen Staff). Every user of that role inherits this set.",
-    path: "/cms/settings/access-control/role-permissions",
-  },
-];
+const ACTION_LABELS = {
+  "vip-bypass": "VIP Fast Track",
+};
+
+function actionLabel(action) {
+  return ACTION_LABELS[action] || action.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function RoleItem({ roleKey, label, description, isActive, onClick, showChevron }) {
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        p: 2,
+        borderRadius: 2,
+        cursor: "pointer",
+        border: "1px solid",
+        borderColor: isActive ? "primary.main" : "divider",
+        bgcolor: isActive ? "primary.main" : "transparent",
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+        transition: "all 0.18s ease",
+        "&:hover": {
+          borderColor: "primary.main",
+          bgcolor: isActive ? "primary.dark" : "action.hover",
+        },
+      }}
+    >
+      <ICONS.badge sx={{ color: isActive ? "primary.contrastText" : "text.secondary", fontSize: 20, flexShrink: 0 }} />
+      <Box sx={{ flex: 1, overflow: "hidden" }}>
+        <Typography
+          variant="body2"
+          sx={{
+            fontWeight: 700,
+            color: isActive ? "primary.contrastText" : "text.primary",
+            fontSize: "0.88rem",
+            lineHeight: 1.3,
+          }}
+        >
+          {label}
+        </Typography>
+        {description && (
+          <Typography variant="caption" sx={{ color: isActive ? "primary.contrastText" : "text.secondary", opacity: isActive ? 0.8 : 1, display: "block" }}>
+            {description}
+          </Typography>
+        )}
+      </Box>
+      {showChevron && (
+        <ICONS.chevronRight sx={{ color: isActive ? "primary.contrastText" : "text.secondary", fontSize: 18, flexShrink: 0 }} />
+      )}
+    </Box>
+  );
+}
 
 export default function AccessControlPage() {
-  const router = useRouter();
   const { user } = useAuth();
+  const { socket } = useSocket();
   const isSuperAdmin = user?.role === "superadmin";
-  const canManage = ["create", "update", "delete"].some((action) =>
-    canAccessResource(user, "access-control", { hardcodeAllowed: isSuperAdmin, action })
+  const canUpdate = canAccessResource(user, "access-control", { hardcodeAllowed: isSuperAdmin, action: "update" });
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+
+  const [selectedRoleIdx, setSelectedRoleIdx] = useState(0);
+  const selectedRole = ROLE_KEYS[selectedRoleIdx];
+  const rolePages = getPagesForRole(selectedRole?.key);
+
+  const [assignments, setAssignments] = useState({});
+  const [savedAssignments, setSavedAssignments] = useState({});
+  const [loadingRole, setLoadingRole] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const [mobileTab, setMobileTab] = useState(0);
+
+  const loadRolePermissions = useCallback(async (roleKey) => {
+    setLoadingRole(true);
+    const data = await getRolePagePermissions(roleKey);
+    const map = {};
+    if (Array.isArray(data)) {
+      for (const entry of data) {
+        map[entry.pageId] = new Set(Array.isArray(entry.actions) ? entry.actions : []);
+      }
+    }
+    setAssignments(map);
+    setSavedAssignments(
+      Object.fromEntries(Object.entries(map).map(([k, v]) => [k, new Set(v)]))
+    );
+    setLoadingRole(false);
+  }, []);
+
+  useEffect(() => {
+    if (selectedRole) loadRolePermissions(selectedRole.key);
+  }, [selectedRole, loadRolePermissions]);
+
+  const selectedRoleKeyRef = useRef(selectedRole?.key);
+  useEffect(() => { selectedRoleKeyRef.current = selectedRole?.key; }, [selectedRole]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onRoleUpdated = ({ roleKey }) => {
+      if (roleKey === selectedRoleKeyRef.current) {
+        loadRolePermissions(roleKey);
+      }
+    };
+    socket.on("page-permissions:role-updated", onRoleUpdated);
+    return () => { socket.off("page-permissions:role-updated", onRoleUpdated); };
+  }, [socket, loadRolePermissions]);
+
+  function toggleAction(pageId, action) {
+    setAssignments((prev) => {
+      const current = new Set(prev[pageId] || []);
+      if (current.has(action)) current.delete(action);
+      else current.add(action);
+      return { ...prev, [pageId]: current };
+    });
+  }
+
+  function toggleAll(pageId, allChecked) {
+    setAssignments((prev) => {
+      const page = rolePages.find((p) => p.pageId === pageId);
+      const pageActions = page ? page.actions : [];
+      return { ...prev, [pageId]: allChecked ? new Set() : new Set(pageActions) };
+    });
+  }
+
+  function isDirty() {
+    for (const page of rolePages) {
+      const curr = assignments[page.pageId] || new Set();
+      const saved = savedAssignments[page.pageId] || new Set();
+      if (curr.size !== saved.size) return true;
+      for (const a of curr) if (!saved.has(a)) return true;
+    }
+    return false;
+  }
+
+  function handleReset() {
+    setAssignments(
+      Object.fromEntries(Object.entries(savedAssignments).map(([k, v]) => [k, new Set(v)]))
+    );
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    const entries = rolePages
+      .map((page) => {
+        const actions = [...(assignments[page.pageId] || new Set())];
+        return actions.length > 0 ? { pageId: page.pageId, actions } : null;
+      })
+      .filter(Boolean);
+
+    const result = await setRolePagePermissions(selectedRole.key, entries);
+    if (!result?.error) {
+      setSavedAssignments(
+        Object.fromEntries(
+          Object.entries(assignments).map(([k, v]) => [k, new Set(v)])
+        )
+      );
+      const role = selectedRole.key.split(":")[0];
+      const type = selectedRole.key.split(":")[1];
+      if (user?.role === role && (user?.adminType === type || user?.staffType === type)) {
+        refreshUser();
+      }
+    }
+    setSaving(false);
+  }
+
+  // ── Role list panel ────────────────────────────────────────
+  const roleListPanel = (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {ROLE_KEYS.map((r, i) => (
+        <RoleItem
+          key={r.key}
+          roleKey={r.key}
+          label={r.label}
+          description={r.description}
+          isActive={i === selectedRoleIdx}
+          showChevron={isMobile}
+          onClick={() => {
+            setSelectedRoleIdx(i);
+            if (isMobile) setMobileTab(1);
+          }}
+        />
+      ))}
+    </Box>
+  );
+
+  // ── Permissions accordion panel ─────────────────────────────
+  const accordionPanel = (
+    <Box>
+      {loadingRole ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <Alert severity="info" sx={{ borderRadius: 2, fontSize: "0.82rem", mb: 2 }}>
+            Actions checked here become the base set for <strong>{selectedRole.label}</strong>.
+          </Alert>
+
+          {rolePages.length === 0 ? (
+            <Alert severity="info">No page permissions configured for this role.</Alert>
+          ) : rolePages.map((page) => {
+            const granted = assignments[page.pageId] || new Set();
+            const pageActions = page.actions;
+            const allChecked = pageActions.every((a) => granted.has(a));
+            const someChecked = pageActions.some((a) => granted.has(a));
+
+            return (
+              <Accordion
+                key={page.pageId}
+                variant="outlined"
+                disableGutters
+                sx={{ mb: 1, borderRadius: "8px !important", "&:before": { display: "none" }, overflow: "hidden" }}
+              >
+                <AccordionSummary expandIcon={<ICONS.expandMore />}>
+                  <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flex: 1, mr: 1 }}>
+                    <Chip
+                      label={page.label}
+                      size="small"
+                      sx={{ fontWeight: 700, textTransform: "uppercase", fontSize: "0.7rem", borderRadius: 999 }}
+                    />
+                  </Stack>
+                  {canUpdate && (
+                    <Tooltip title={allChecked ? "Deselect all actions" : "Select all actions"}>
+                      <Switch
+                        checked={allChecked}
+                        size="small"
+                        color={someChecked && !allChecked ? "warning" : "primary"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleAll(page.pageId, allChecked);
+                        }}
+                        sx={{ mr: 0.5 }}
+                      />
+                    </Tooltip>
+                  )}
+                </AccordionSummary>
+                <AccordionDetails sx={{ bgcolor: "background.paper", borderTop: "1px solid", borderColor: "divider", py: 1.5 }}>
+                  <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                    {pageActions.map((action) => (
+                      <FormControlLabel
+                        key={action}
+                        control={
+                          <Checkbox
+                            checked={granted.has(action)}
+                            onChange={() => canUpdate && toggleAction(page.pageId, action)}
+                            disabled={!canUpdate}
+                            size="small"
+                          />
+                        }
+                        label={
+                          <Typography sx={{ fontSize: "0.85rem" }}>
+                            {actionLabel(action)}
+                          </Typography>
+                        }
+                        sx={{ mr: 1 }}
+                      />
+                    ))}
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+            );
+          })}
+
+          {canUpdate && (
+            <Stack
+              direction={{ xs: "column-reverse", sm: "row" }}
+              justifyContent={{ sm: "flex-end" }}
+              gap={{ xs: 1.5, sm: 1 }}
+              sx={{ mt: 3 }}
+            >
+              <Button
+                variant="outlined"
+                disabled={saving || !isDirty()}
+                onClick={handleReset}
+                startIcon={<ICONS.refresh />}
+                sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
+              >
+                Reset
+              </Button>
+              <Button
+                variant="contained"
+                disabled={saving || !isDirty()}
+                onClick={handleSave}
+                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <ICONS.save />}
+                sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </Button>
+            </Stack>
+          )}
+        </>
+      )}
+    </Box>
   );
 
   return (
     <PermissionRouteGuard resource="access-control" hardcodeAllowed={isSuperAdmin}>
       <Box>
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
-            justifyContent: "space-between",
-            alignItems: { xs: "stretch", sm: "center" },
-            mt: 2,
-            mb: 1,
-            gap: 2,
-            flexWrap: "wrap",
-          }}
-        >
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h5" fontWeight="bold">
-              Access Control
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Manage dynamic permissions, role base sets, and per-user overrides.
-            </Typography>
-          </Box>
+        <Box sx={{ mt: 2, mb: 1 }}>
+          <Typography variant="h5" fontWeight="bold">
+            Access Control
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Assign page-level permissions to each role. All users of that role inherit this base set.
+          </Typography>
         </Box>
 
         <Divider sx={{ mb: 3 }} />
 
-        <ResponsiveCardGrid>
-          {CARDS.map(({ icon: Icon, label, description, path }) => (
-            <AppCard key={path}>
-              <Box
+        {isMobile ? (
+          <Box>
+            <Box sx={{ position: "sticky", top: 0, zIndex: 10, bgcolor: "background.default", pb: 1 }}>
+              <Tabs
+                value={mobileTab}
+                onChange={(_, v) => setMobileTab(v)}
+                variant="fullWidth"
                 sx={{
-                  bgcolor: "action.hover",
-                  borderBottom: "1px solid",
+                  borderRadius: 2,
+                  bgcolor: "background.paper",
+                  border: 1,
                   borderColor: "divider",
-                  p: 2.5,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 2,
+                  "& .MuiTab-root": { fontWeight: 600, textTransform: "none", fontSize: "0.88rem" },
                 }}
               >
-                <Box
-                  sx={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 2,
-                    bgcolor: "primary.main",
-                    color: "primary.contrastText",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon fontSize="small" />
-                </Box>
+                <Tab label="Select Role" />
+                <Tab
+                  label={
+                    mobileTab === 1 || selectedRoleIdx >= 0
+                      ? `Permissions: ${ROLE_KEYS[selectedRoleIdx]?.label ?? ""}`
+                      : "Permissions"
+                  }
+                />
+              </Tabs>
+            </Box>
+
+            {mobileTab === 0 && (
+              <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, mt: 1 }}>
+                <Typography variant="subtitle2" fontWeight={700} color="text.secondary" sx={{ mb: 1.5, textTransform: "uppercase", fontSize: "0.7rem", letterSpacing: 0.5 }}>
+                  Select Role
+                </Typography>
+                {roleListPanel}
+              </Paper>
+            )}
+
+            {mobileTab === 1 && (
+              <Box sx={{ mt: 1 }}>
+                {accordionPanel}
+              </Box>
+            )}
+          </Box>
+        ) : (
+          <Box sx={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 3, alignItems: "start" }}>
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 2.5,
+                borderRadius: 2,
+                position: "sticky",
+                top: 80,
+                maxHeight: "calc(100vh - 160px)",
+                overflowY: "auto",
+              }}
+            >
+              <Typography variant="subtitle2" fontWeight={700} color="text.secondary" sx={{ mb: 1.5, textTransform: "uppercase", fontSize: "0.7rem", letterSpacing: 0.5 }}>
+                Select Role
+              </Typography>
+              {roleListPanel}
+            </Paper>
+
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
                 <Typography variant="subtitle1" fontWeight={700}>
-                  {label}
+                  {selectedRole.label}
                 </Typography>
-              </Box>
-
-              <Box sx={{ flexGrow: 1, px: 2.5, py: 2 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
-                  {description}
+                <Typography variant="body2" color="text.secondary">
+                  {selectedRole.description}
                 </Typography>
-              </Box>
-
-              <Box
-                sx={{
-                  px: 2.5,
-                  pb: 2.5,
-                  pt: 1,
-                  borderTop: "1px solid",
-                  borderColor: "divider",
-                  bgcolor: "action.hover",
-                }}
-              >
-                <Button
-                  variant={canManage ? "contained" : "outlined"}
-                  size="small"
-                  startIcon={canManage ? <ICONS.edit fontSize="small" /> : <ICONS.view fontSize="small" />}
-                  onClick={() => router.push(path)}
-                  sx={{ borderRadius: 30 }}
-                >
-                  {canManage ? "Manage" : "View"}
-                </Button>
-              </Box>
-            </AppCard>
-          ))}
-        </ResponsiveCardGrid>
+              </Stack>
+              {accordionPanel}
+            </Box>
+          </Box>
+        )}
       </Box>
     </PermissionRouteGuard>
   );

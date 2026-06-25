@@ -720,7 +720,6 @@ export default function CmsVisitsPage() {
   const [scheduleType, setScheduleType] = useState("preset");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
   const [dayTypeTab, setDayTypeTab] = useState("working");
-  const [timeTypeTab, setTimeTypeTab] = useState("working");
   const [specificDays, setSpecificDays] = useState([]);
   const [specificEndDate, setSpecificEndDate] = useState(null);
   const [selectedAccessLevelIds, setSelectedAccessLevelIds] = useState([]);
@@ -1141,38 +1140,9 @@ export default function CmsVisitsPage() {
       ampm: h24 < 12 ? "AM" : "PM",
     }));
 
-  const getAllowedHours12 = (cfg, tTab) => {
-    if (!cfg || tTab !== "working") return buildAllHoursDetailed();
-    const startMoD = cfg.start * 60 + (cfg.startMinute ?? 0);
-    const endMoD = cfg.end * 60 + (cfg.endMinute ?? 0);
-    return buildAllHoursDetailed().filter(({ h24 }) => {
-      const moD = h24 * 60;
-      return h24 * 60 + 59 >= startMoD && moD <= endMoD;
-    });
-  };
+  const getAllowedHours12 = () => buildAllHoursDetailed();
 
-  const getAllowedMinutes = (h24, cfg, tTab) => {
-    if (!cfg || tTab !== "working") return MINUTES;
-    const startMoD = cfg.start * 60 + (cfg.startMinute ?? 0);
-    const endMoD = cfg.end * 60 + (cfg.endMinute ?? 0);
-    return MINUTES.filter((mStr) => {
-      const moD = h24 * 60 + Number(mStr);
-      return moD >= startMoD && moD <= endMoD;
-    });
-  };
-
-  const snapToWorkingHours = (time24) => {
-    if (!hostConfig) return time24;
-    const [h, m] = time24.split(":").map(Number);
-    const moD = h * 60 + m;
-    const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-    const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
-    if (moD < startMoD)
-      return `${String(hostConfig.start).padStart(2, "0")}:${String(hostConfig.startMinute ?? 0).padStart(2, "0")}`;
-    if (moD > endMoD)
-      return `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`;
-    return time24;
-  };
+  const getAllowedMinutes = () => MINUTES;
 
   const handleTimePartChange = (type, part, value) => {
     const timeValue = type === "scheduledFrom" ? scheduledFrom : scheduledTo;
@@ -1201,17 +1171,16 @@ export default function CmsVisitsPage() {
     }
   };
 
-  const renderTimeDropdowns = (type, label, unrestricted) => {
+  const renderTimeDropdowns = (type, label) => {
     const timeValue = type === "scheduledFrom" ? scheduledFrom : scheduledTo;
     const { hour12, minute, ampm } = parse24To12(timeValue);
-    const effectiveTab = unrestricted ? "outside" : timeTypeTab;
-    const rawHours = getAllowedHours12(hostConfig, effectiveTab);
+    const rawHours = getAllowedHours12();
     // Deduplicate by h12 value (AM/PM is a separate picker) and sort 1→12
     const allowedHours = [
       ...new Map(rawHours.map((h) => [h.h12, h])).values(),
     ].sort((a, b) => (a.h12 === 12 ? 13 : a.h12) - (b.h12 === 12 ? 13 : b.h12));
     const h24 = timeValue.split(":").map(Number)[0];
-    const allowedMin = getAllowedMinutes(h24, hostConfig, effectiveTab);
+    const allowedMin = getAllowedMinutes();
 
     return (
       <Box>
@@ -1407,11 +1376,7 @@ export default function CmsVisitsPage() {
       }
       // Detect day type from recurring days or requested day-of-week
       let detectedDayType = "working";
-      let detectedTimeType = "working";
       const rDays = fullReg.recurring_days ?? fullReg.recurringDays ?? null;
-      const rFrom =
-        fullReg.recurring_time_from ?? fullReg.recurringTimeFrom ?? null;
-      const rTo = fullReg.recurring_time_to ?? fullReg.recurringTimeTo ?? null;
       if (hostConfig && Array.isArray(rDays) && rDays.length > 0) {
         const allWeekend = rDays.every((d) =>
           (hostConfig.weekendDays ?? [5, 6]).includes(d),
@@ -1423,36 +1388,7 @@ export default function CmsVisitsPage() {
         if ((hostConfig.weekendDays ?? [5, 6]).includes(dow))
           detectedDayType = "weekend";
       }
-      if (
-        hostConfig &&
-        detectedType === "preset" &&
-        detectedPreset !== "fullDay" &&
-        rFrom &&
-        rTo
-      ) {
-        const parseMoD = (t) => {
-          const [h, m] = t.split(":").map(Number);
-          return h * 60 + m;
-        };
-        const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-        const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
-        const fromMoD = parseMoD(rFrom);
-        const toMoD = parseMoD(rTo);
-        if (fromMoD < startMoD || toMoD > endMoD) detectedTimeType = "outside";
-      } else if (hostConfig && scheduleFrom) {
-        const timeFrom = getLocalTime(scheduleFrom) || "09:00";
-        const timeTo = getLocalTime(scheduleTo) || "18:00";
-        const parseMoD = (t) => {
-          const [h, m] = t.split(":").map(Number);
-          return h * 60 + m;
-        };
-        const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-        const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
-        if (parseMoD(timeFrom) < startMoD || parseMoD(timeTo) > endMoD)
-          detectedTimeType = "outside";
-      }
       setDayTypeTab(detectedDayType);
-      setTimeTypeTab(detectedTimeType);
       if (rType === "specific_days" && Array.isArray(rDays)) {
         setSpecificDays([...rDays]);
       } else {
@@ -1475,12 +1411,6 @@ export default function CmsVisitsPage() {
         setScheduledFrom("09:00");
         setScheduledTo("18:00");
       }
-      // Snap times to working hours if working tab is active
-      if (detectedTimeType === "working") {
-        setScheduledFrom((prev) => snapToWorkingHours(prev));
-        setScheduledTo((prev) => snapToWorkingHours(prev));
-      }
-
       // Prefill access zones from the existing multi or single selection
       const prefillIds = isAdminApproved
         ? fullReg.access_levels?.length
@@ -1770,7 +1700,6 @@ export default function CmsVisitsPage() {
     setScheduleType("preset");
     setSelectedPreset("fullDay");
     setDayTypeTab("working");
-    setTimeTypeTab("working");
     setSpecificDays([]);
     setSpecificEndDate(null);
 
@@ -1992,7 +1921,6 @@ export default function CmsVisitsPage() {
     setScheduleType("preset");
     setSelectedPreset("fullDay");
     setDayTypeTab("working");
-    setTimeTypeTab("working");
     setSpecificDays([]);
     setSpecificEndDate(null);
     setSelectedAccessLevelIds([]);
@@ -2399,59 +2327,59 @@ export default function CmsVisitsPage() {
               View and manage all visitor visits across your system.
             </Typography>
           </Box>
-          {canCreateVisit && (
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              alignItems="center"
-              spacing={1}
-              sx={{ justifyContent: { sm: "flex-end" } }}
-            >
-              {selectMode && (
-                <>
-                  <Button
-                    variant="contained"
-                    color="warning"
-                    disabled={selectedRowIds.size === 0}
-                    startIcon={<ICONS.edit />}
-                    onClick={openBatchDialog}
-                    sx={{
-                      whiteSpace: "nowrap",
-                      height: 40,
-                      borderRadius: 2,
-                      fontWeight: 700,
-                      px: 2,
-                      width: { xs: "100%", sm: "auto" },
-                    }}
-                  >
-                    Update ({selectedRowIds.size})
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={selectAllOnPage}
-                    sx={{
-                      whiteSpace: "nowrap",
-                      height: 40,
-                      px: 2,
-                      width: { xs: "100%", sm: "auto" },
-                    }}
-                  >
-                    Select Page
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={clearSelection}
-                    sx={{
-                      whiteSpace: "nowrap",
-                      height: 40,
-                      px: 2,
-                      width: { xs: "100%", sm: "auto" },
-                    }}
-                  >
-                    Clear
-                  </Button>
-                </>
-              )}
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            alignItems="center"
+            spacing={1}
+            sx={{ justifyContent: { sm: "flex-end" } }}
+          >
+            {canUpdate && selectMode && (
+              <>
+                <Button
+                  variant="contained"
+                  color="warning"
+                  disabled={selectedRowIds.size === 0}
+                  startIcon={<ICONS.edit />}
+                  onClick={openBatchDialog}
+                  sx={{
+                    whiteSpace: "nowrap",
+                    height: 40,
+                    borderRadius: 2,
+                    fontWeight: 700,
+                    px: 2,
+                    width: { xs: "100%", sm: "auto" },
+                  }}
+                >
+                  Update ({selectedRowIds.size})
+                </Button>
+                <Button
+                  size="small"
+                  onClick={selectAllOnPage}
+                  sx={{
+                    whiteSpace: "nowrap",
+                    height: 40,
+                    px: 2,
+                    width: { xs: "100%", sm: "auto" },
+                  }}
+                >
+                  Select Page
+                </Button>
+                <Button
+                  size="small"
+                  onClick={clearSelection}
+                  sx={{
+                    whiteSpace: "nowrap",
+                    height: 40,
+                    px: 2,
+                    width: { xs: "100%", sm: "auto" },
+                  }}
+                >
+                  Clear
+                </Button>
+              </>
+            )}
 
+            {canUpdate && (
               <Button
                 variant={selectMode ? "contained" : "outlined"}
                 color={selectMode ? "primary" : "inherit"}
@@ -2477,13 +2405,15 @@ export default function CmsVisitsPage() {
                   ? `Selecting (${selectedRowIds.size})`
                   : "Update Batch"}
               </Button>
+            )}
 
-              <Divider
-                orientation="vertical"
-                flexItem
-                sx={{ mx: 0.5, display: { xs: "none", sm: "block" } }}
-              />
+            <Divider
+              orientation="vertical"
+              flexItem
+              sx={{ mx: 0.5, display: { xs: "none", sm: "block" } }}
+            />
 
+            {canCreateVisit && (
               <Button
                 variant="contained"
                 startIcon={<ICONS.add />}
@@ -2501,8 +2431,8 @@ export default function CmsVisitsPage() {
               >
                 New Request
               </Button>
-            </Stack>
-          )}
+            )}
+          </Stack>
         </Box>
 
         <Divider sx={{ mb: 3 }} />
@@ -3776,12 +3706,10 @@ export default function CmsVisitsPage() {
                                 {renderTimeDropdowns(
                                   "scheduledFrom",
                                   "Expected Arrival (From)",
-                                  true,
                                 )}
                                 {renderTimeDropdowns(
                                   "scheduledTo",
                                   "Expected Departure (To)",
-                                  true,
                                 )}
                               </Stack>
                               <Box
@@ -4251,155 +4179,68 @@ export default function CmsVisitsPage() {
                                   </Stack>
                                 </Box>
                               ) : (
-                                <>
-                                  <Box sx={{ mb: 1.5 }}>
-                                    <Typography
-                                      variant="caption"
-                                      fontWeight={700}
-                                      color="text.secondary"
-                                      sx={{
-                                        display: "block",
-                                        mb: 0.75,
-                                        textTransform: "uppercase",
-                                        fontSize: "0.65rem",
-                                      }}
-                                    >
-                                      {t("bookingTimeType")}
-                                    </Typography>
-                                    <Tabs
-                                      value={timeTypeTab}
-                                      onChange={(_, v) => {
-                                        setTimeTypeTab(v);
-                                        if (v === "working") {
-                                          setScheduledFrom((prev) =>
-                                            snapToWorkingHours(prev),
-                                          );
-                                          setScheduledTo((prev) =>
-                                            snapToWorkingHours(prev),
-                                          );
-                                        }
-                                      }}
-                                      TabIndicatorProps={{
-                                        sx: { height: 3, borderRadius: 1 },
-                                      }}
-                                      sx={{
-                                        minHeight: 32,
-                                        "& .MuiTab-root": {
-                                          minHeight: 32,
-                                          py: 0.5,
-                                          fontSize: "0.72rem",
-                                          fontWeight: 700,
-                                        },
-                                      }}
-                                    >
-                                      <Tab
-                                        value="working"
-                                        label={t("bookingWorkingHours")}
-                                      />
-                                      <Tab
-                                        value="outside"
-                                        label={t("bookingOutsideHours")}
-                                      />
-                                    </Tabs>
+                                  <>
                                     {hostConfig &&
                                       (() => {
                                         const fmt = (h24, min) => {
-                                          const h12 =
-                                            h24 === 0
-                                              ? 12
-                                              : h24 > 12
-                                                ? h24 - 12
-                                                : h24;
+                                          const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
                                           const ampm = h24 < 12 ? "AM" : "PM";
                                           return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
                                         };
-                                        const s = fmt(
-                                          hostConfig.start,
-                                          hostConfig.startMinute ?? 0,
-                                        );
-                                        const e = fmt(
-                                          hostConfig.end,
-                                          hostConfig.endMinute ?? 0,
-                                        );
-                                        return timeTypeTab === "working" ? (
-                                          <Typography
-                                            variant="caption"
-                                            color="info.main"
-                                            sx={{
-                                              display: "block",
-                                              mt: 0.75,
-                                              fontSize: "0.68rem",
-                                            }}
-                                          >
-                                            {t("bookingWorkingHoursInfo")
-                                              .replace("{{start}}", s)
-                                              .replace("{{end}}", e)}
-                                          </Typography>
-                                        ) : (
-                                          <Typography
-                                            variant="caption"
-                                            color="info.main"
-                                            sx={{
-                                              display: "block",
-                                              mt: 0.75,
-                                              fontSize: "0.68rem",
-                                            }}
-                                          >
-                                            {t("bookingOutsideHoursInfo")
-                                              .replace("{{start}}", s)
-                                              .replace("{{end}}", e)}
+                                        const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
+                                        const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                        return (
+                                          <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                                            {t("bookingWorkingHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
                                           </Typography>
                                         );
                                       })()}
-                                  </Box>
-                                  <Stack spacing={2} sx={{ mb: 2 }}>
-                                    {renderTimeDropdowns(
-                                      "scheduledFrom",
-                                      "Start Time",
-                                    )}
-                                    {renderTimeDropdowns(
-                                      "scheduledTo",
-                                      "End Time",
-                                    )}
-                                  </Stack>
-                                  {(() => {
-                                    const mins = getDuration();
-                                    if (mins <= 0) return null;
-                                    return (
-                                      <Box
-                                        sx={{
-                                          p: 1.5,
-                                          bgcolor: "background.paper",
-                                          borderRadius: 2,
-                                          border: "1px solid",
-                                          borderColor: "divider",
-                                        }}
-                                      >
-                                        <Stack
-                                          direction="row"
-                                          spacing={1}
-                                          alignItems="center"
-                                        >
-                                          <ICONS.info
-                                            sx={{
-                                              fontSize: 16,
-                                              color: "text.secondary",
-                                            }}
-                                          />
-                                          <Typography
-                                            variant="caption"
-                                            fontWeight={700}
-                                            color="text.secondary"
-                                            sx={{ fontSize: 12 }}
-                                          >
-                                            Visit duration: {getDuration()} min
-                                          </Typography>
-                                        </Stack>
-                                      </Box>
-                                    );
-                                  })()}
-                                </>
-                              )}
+                                    <Stack spacing={2} sx={{ mb: 2 }}>
+                                      {renderTimeDropdowns("scheduledFrom", "Start Time")}
+                                      {renderTimeDropdowns("scheduledTo", "End Time")}
+                                    </Stack>
+                                    {(() => {
+                                      const mins = getDuration();
+                                      if (mins <= 0) return null;
+                                      return (
+                                        <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                                          <Stack direction="row" spacing={1} alignItems="center">
+                                            <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
+                                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
+                                              Visit duration: {getDuration()} min
+                                            </Typography>
+                                          </Stack>
+                                        </Box>
+                                      );
+                                    })()}
+                                    {hostConfig &&
+                                      (() => {
+                                        const parseMoD = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+                                        const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
+                                        const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
+                                        const fromMoD = parseMoD(scheduledFrom || "08:00");
+                                        const toMoD = parseMoD(scheduledTo || "17:00");
+                                        if (fromMoD >= startMoD && toMoD <= endMoD) return null;
+                                        const fmt = (h24, min) => {
+                                          const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+                                          const ampm = h24 < 12 ? "AM" : "PM";
+                                          return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+                                        };
+                                        const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
+                                        const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                        return (
+                                          <Box sx={{ mt: 1, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
+                                            <Stack direction="row" spacing={1} alignItems="center">
+                                              <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
+                                              <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
+                                                {t("bookingSelectedTimeOutside").replace("{{start}}", s).replace("{{end}}", e)}
+                                              </Typography>
+                                            </Stack>
+                                          </Box>
+                                        );
+                                      })()}
+                                  </>
+                                )}
                             </Box>
                           )}
                         </Stack>
@@ -5014,37 +4855,36 @@ export default function CmsVisitsPage() {
                           >
                             {selected.full_name}
                           </Typography>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{
-                              display: "block",
-                              textAlign: { xs: "center", sm: "left" },
-                              mt: 0.5,
-                            }}
-                          >
-                            {selected.email}
-                          </Typography>
                           <Stack
                             direction={{ xs: "column", sm: "row" }}
-                            spacing={{ xs: 1, sm: 2 }}
-                            sx={{ mt: 1, flexWrap: "wrap", gap: 1 }}
+                            spacing={{ xs: 0.5, sm: 2 }}
+                            sx={{ mt: 0.5, flexWrap: "wrap", alignItems: "center" }}
                           >
-                            {selected.phone && (
+                            {selected.email && (
                               <Typography
-                                variant="body2"
+                                variant="caption"
                                 color="text.secondary"
                                 sx={{
                                   display: "flex",
                                   alignItems: "center",
-                                  justifyContent: {
-                                    xs: "center",
-                                    sm: "flex-start",
-                                  },
+                                  gap: 0.5,
+                                  textAlign: { xs: "center", sm: "left" },
+                                }}
+                              >
+                                {selected.email}
+                              </Typography>
+                            )}
+                            {selected.phone && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
                                   gap: 0.5,
                                 }}
                               >
-                                <ICONS.phone fontSize="inherit" />{" "}
+                                <ICONS.phone sx={{ fontSize: 13 }} />
                                 {formatPhoneNumberForDisplay(
                                   selected.phone,
                                   selected.phone_iso_code ||
@@ -6606,150 +6446,65 @@ export default function CmsVisitsPage() {
                           </Box>
                         ) : (
                           <>
-                            {/* Time-type tabs */}
-                            <Box sx={{ mb: 1.5 }}>
-                              <Typography
-                                variant="caption"
-                                fontWeight={700}
-                                color="text.secondary"
-                                sx={{
-                                  display: "block",
-                                  mb: 0.75,
-                                  textTransform: "uppercase",
-                                  fontSize: "0.65rem",
-                                }}
-                              >
-                                {t("bookingTimeType")}
-                              </Typography>
-                              <Tabs
-                                value={timeTypeTab}
-                                onChange={(_, v) => {
-                                  setTimeTypeTab(v);
-                                  if (v === "working") {
-                                    setScheduledFrom((prev) =>
-                                      snapToWorkingHours(prev),
-                                    );
-                                    setScheduledTo((prev) =>
-                                      snapToWorkingHours(prev),
-                                    );
-                                  }
-                                }}
-                                TabIndicatorProps={{
-                                  sx: { height: 3, borderRadius: 1 },
-                                }}
-                                sx={{
-                                  minHeight: 32,
-                                  "& .MuiTab-root": {
-                                    minHeight: 32,
-                                    py: 0.5,
-                                    fontSize: "0.72rem",
-                                    fontWeight: 700,
-                                  },
-                                }}
-                              >
-                                <Tab
-                                  value="working"
-                                  label={t("bookingWorkingHours")}
-                                />
-                                <Tab
-                                  value="outside"
-                                  label={t("bookingOutsideHours")}
-                                />
-                              </Tabs>
-                              {hostConfig &&
-                                (() => {
-                                  const fmt = (h24, min) => {
-                                    const h12 =
-                                      h24 === 0
-                                        ? 12
-                                        : h24 > 12
-                                          ? h24 - 12
-                                          : h24;
-                                    const ampm = h24 < 12 ? "AM" : "PM";
-                                    return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
-                                  };
-                                  const s = fmt(
-                                    hostConfig.start,
-                                    hostConfig.startMinute ?? 0,
-                                  );
-                                  const e = fmt(
-                                    hostConfig.end,
-                                    hostConfig.endMinute ?? 0,
-                                  );
-                                  return timeTypeTab === "working" ? (
-                                    <Typography
-                                      variant="caption"
-                                      color="info.main"
-                                      sx={{
-                                        display: "block",
-                                        mt: 0.75,
-                                        fontSize: "0.68rem",
-                                      }}
-                                    >
-                                      {t("bookingWorkingHoursInfo")
-                                        .replace("{{start}}", s)
-                                        .replace("{{end}}", e)}
-                                    </Typography>
-                                  ) : (
-                                    <Typography
-                                      variant="caption"
-                                      color="info.main"
-                                      sx={{
-                                        display: "block",
-                                        mt: 0.75,
-                                        fontSize: "0.68rem",
-                                      }}
-                                    >
-                                      {t("bookingOutsideHoursInfo")
-                                        .replace("{{start}}", s)
-                                        .replace("{{end}}", e)}
-                                    </Typography>
-                                  );
-                                })()}
-                            </Box>
+                            {hostConfig &&
+                              (() => {
+                                const fmt = (h24, min) => {
+                                  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+                                  const ampm = h24 < 12 ? "AM" : "PM";
+                                  return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+                                };
+                                const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
+                                const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                return (
+                                  <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                                    {t("bookingWorkingHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
+                                  </Typography>
+                                );
+                              })()}
                             <Stack spacing={2} sx={{ mb: 2 }}>
-                              {renderTimeDropdowns(
-                                "scheduledFrom",
-                                "Start Time",
-                              )}
+                              {renderTimeDropdowns("scheduledFrom", "Start Time")}
                               {renderTimeDropdowns("scheduledTo", "End Time")}
                             </Stack>
                             {(() => {
                               const mins = getDuration();
                               if (mins <= 0) return null;
                               return (
-                                <Box
-                                  sx={{
-                                    p: 1.5,
-                                    bgcolor: "background.paper",
-                                    borderRadius: 2,
-                                    border: "1px solid",
-                                    borderColor: "divider",
-                                  }}
-                                >
-                                  <Stack
-                                    direction="row"
-                                    spacing={1}
-                                    alignItems="center"
-                                  >
-                                    <ICONS.info
-                                      sx={{
-                                        fontSize: 16,
-                                        color: "text.secondary",
-                                      }}
-                                    />
-                                    <Typography
-                                      variant="caption"
-                                      fontWeight={700}
-                                      color="text.secondary"
-                                      sx={{ fontSize: 12 }}
-                                    >
+                                <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
+                                    <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
                                       Visit duration: {mins} min
                                     </Typography>
                                   </Stack>
                                 </Box>
                               );
                             })()}
+                            {hostConfig &&
+                              (() => {
+                                const parseMoD = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+                                const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
+                                const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
+                                const fromMoD = parseMoD(scheduledFrom || "08:00");
+                                const toMoD = parseMoD(scheduledTo || "17:00");
+                                if (fromMoD >= startMoD && toMoD <= endMoD) return null;
+                                const fmt = (h24, min) => {
+                                  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+                                  const ampm = h24 < 12 ? "AM" : "PM";
+                                  return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+                                };
+                                const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
+                                const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                return (
+                                  <Box sx={{ mt: 1, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                      <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
+                                      <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
+                                        {t("bookingSelectedTimeOutside").replace("{{start}}", s).replace("{{end}}", e)}
+                                      </Typography>
+                                    </Stack>
+                                  </Box>
+                                );
+                              })()}
                           </>
                         )}
                       </Box>
@@ -7982,98 +7737,61 @@ export default function CmsVisitsPage() {
                               </Box>
                             ) : (
                               <>
-                                <Box sx={{ mb: 1.5 }}>
-                                  <Typography
-                                    variant="caption"
-                                    fontWeight={700}
-                                    color="text.secondary"
-                                    sx={{
-                                      display: "block",
-                                      mb: 0.75,
-                                      textTransform: "uppercase",
-                                      fontSize: "0.65rem",
-                                    }}
-                                  >
-                                    {t("bookingTimeType")}
-                                  </Typography>
-                                  <Tabs
-                                    value={timeTypeTab}
-                                    onChange={(_, v) => {
-                                      setTimeTypeTab(v);
-                                      if (v === "working") {
-                                        setScheduledFrom((prev) =>
-                                          snapToWorkingHours(prev),
-                                        );
-                                        setScheduledTo((prev) =>
-                                          snapToWorkingHours(prev),
-                                        );
-                                      }
-                                    }}
-                                    TabIndicatorProps={{
-                                      sx: { height: 3, borderRadius: 1 },
-                                    }}
-                                    sx={{
-                                      minHeight: 32,
-                                      "& .MuiTab-root": {
-                                        minHeight: 32,
-                                        py: 0.5,
-                                        fontSize: "0.72rem",
-                                        fontWeight: 700,
-                                      },
-                                    }}
-                                  >
-                                    <Tab
-                                      value="working"
-                                      label={t("bookingWorkingHours")}
-                                    />
-                                    <Tab
-                                      value="outside"
-                                      label={t("bookingOutsideHours")}
-                                    />
-                                  </Tabs>
-                                </Box>
+                                {hostConfig &&
+                                  (() => {
+                                    const fmt = (h24, min) => {
+                                      const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+                                      const ampm = h24 < 12 ? "AM" : "PM";
+                                      return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+                                    };
+                                    const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
+                                    const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                    return (
+                                      <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                                        {t("bookingWorkingHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
+                                      </Typography>
+                                    );
+                                  })()}
                                 <Stack spacing={2} sx={{ mb: 2 }}>
-                                  {renderTimeDropdowns(
-                                    "scheduledFrom",
-                                    "Start Time",
-                                  )}
-                                  {renderTimeDropdowns(
-                                    "scheduledTo",
-                                    "End Time",
-                                  )}
+                                  {renderTimeDropdowns("scheduledFrom", "Start Time")}
+                                  {renderTimeDropdowns("scheduledTo", "End Time")}
                                 </Stack>
                                 {getDuration() > 0 && (
-                                  <Box
-                                    sx={{
-                                      p: 1.5,
-                                      bgcolor: "background.paper",
-                                      borderRadius: 2,
-                                      border: "1px solid",
-                                      borderColor: "divider",
-                                    }}
-                                  >
-                                    <Stack
-                                      direction="row"
-                                      spacing={1}
-                                      alignItems="center"
-                                    >
-                                      <ICONS.info
-                                        sx={{
-                                          fontSize: 16,
-                                          color: "text.secondary",
-                                        }}
-                                      />
-                                      <Typography
-                                        variant="caption"
-                                        fontWeight={700}
-                                        color="text.secondary"
-                                        sx={{ fontSize: 12 }}
-                                      >
+                                  <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                      <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
+                                      <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
                                         Visit duration: {getDuration()} min
                                       </Typography>
                                     </Stack>
                                   </Box>
                                 )}
+                                {hostConfig &&
+                                  (() => {
+                                    const parseMoD = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+                                    const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
+                                    const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
+                                    const fromMoD = parseMoD(scheduledFrom || "08:00");
+                                    const toMoD = parseMoD(scheduledTo || "17:00");
+                                    if (fromMoD >= startMoD && toMoD <= endMoD) return null;
+                                    const fmt = (h24, min) => {
+                                      const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+                                      const ampm = h24 < 12 ? "AM" : "PM";
+                                      return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+                                    };
+                                    const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
+                                    const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                    return (
+                                      <Box sx={{ mt: 1, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                          <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
+                                          <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
+                                            {t("bookingSelectedTimeOutside").replace("{{start}}", s).replace("{{end}}", e)}
+                                          </Typography>
+                                        </Stack>
+                                      </Box>
+                                    );
+                                  })()}
                               </>
                             )}
                           </Box>

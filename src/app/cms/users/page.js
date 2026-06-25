@@ -48,7 +48,8 @@ import {
   assignUserDepartments,
 } from "@/services/userService";
 import { getDepartments } from "@/services/departmentService";
-import { listPermissions, getRolePermissions, getUserOverrides, setUserOverrides } from "@/services/permissionService";
+import { getRolePagePermissions, getUserPageOverrides, setUserPageOverrides } from "@/services/permissionService";
+import PAGES, { getPagesForRole } from "@/constants/pageCatalog";
 import AppCard from "@/components/cards/AppCard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
@@ -90,7 +91,6 @@ export default function UsersPage() {
   const canDelete = canAccessResource(currentUser, "users", { hardcodeAllowed: isSuperAdmin, action: "delete" });
   const canReadOverrides = canAccessResource(currentUser, "access-control", { hardcodeAllowed: currentUser?.role === "superadmin" || currentUser?.role === "dev", action: "read" });
   const canManageOverrides = canAccessResource(currentUser, "access-control", { hardcodeAllowed: currentUser?.role === "superadmin" || currentUser?.role === "dev", action: "update" });
-
   const [users, setUsers] = useState([]);
   const [allDepartments, setAllDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -128,13 +128,10 @@ export default function UsersPage() {
 
   // Permission override tab state
   const [modalTab, setModalTab] = useState(0);
-  const [allPermissions, setAllPermissions] = useState([]);
-  const [overrides, setOverrides] = useState({});       // create form: { [permId]: { [action]: "allow"|"deny"|"" } }
+  const [overrides, setOverrides] = useState({});       // create form: { [pageId]: { [action]: "allow"|"deny"|"" } }
   const [editOverrides, setEditOverrides] = useState({}); // edit form
-  const [rolePermissions, setRolePermissions] = useState({}); // create form base grants: { [permId]: string[] }
+  const [rolePermissions, setRolePermissions] = useState({}); // create form base grants: { [pageId]: string[] }
   const [editRolePermissions, setEditRolePermissions] = useState({}); // edit form base grants
-
-  const PERM_ACTIONS = ["read", "create", "update", "delete"];
 
   function getFormRoleKey(role, staff_type, adminType) {
     if (role === "admin") return `admin:${adminType || "departmental"}`;
@@ -142,21 +139,21 @@ export default function UsersPage() {
     return null;
   }
 
-  function handleToggleOverride(permId, action, isInherited, isEditing) {
+  function handleToggleOverride(pageId, action, isInherited, isEditing) {
     const setter = isEditing ? setEditOverrides : setOverrides;
     setter((prev) => {
-      const current = prev[permId]?.[action] || "";
+      const current = prev[pageId]?.[action] || "";
       const next = isInherited
         ? (current === "deny" ? "" : "deny")
         : (current === "allow" ? "" : "allow");
-      return { ...prev, [permId]: { ...(prev[permId] || {}), [action]: next } };
+      return { ...prev, [pageId]: { ...(prev[pageId] || {}), [action]: next } };
     });
   }
 
   function buildOverridesPayload(state) {
     return Object.entries(state)
-      .map(([permissionId, actions]) => ({
-        permissionId,
+      .map(([pageId, actions]) => ({
+        pageId,
         overrides: Object.entries(actions)
           .filter(([, effect]) => effect === "allow" || effect === "deny")
           .map(([action, effect]) => ({ action, effect })),
@@ -169,47 +166,37 @@ export default function UsersPage() {
     getDepartments().then((res) => {
       if (Array.isArray(res)) setAllDepartments(res);
     });
-    if (canReadOverrides || canManageOverrides) {
-      listPermissions().then((data) => {
-        if (Array.isArray(data)) setAllPermissions(data);
-      });
-    }
   }, []);
 
-  // Load base role permissions whenever the create form's role/type changes
+  // Load base role page permissions whenever the create form's role/type changes
   useEffect(() => {
     if (isEditMode) return;
     const roleKey = getFormRoleKey(form.role, form.staff_type, form.adminType);
     if (!roleKey) { setRolePermissions({}); return; }
-    getRolePermissions(roleKey).then((data) => {
+    getRolePagePermissions(roleKey).then((data) => {
       const map = {};
       if (Array.isArray(data)) {
         for (const entry of data) {
-          map[entry.permissionId] = Array.isArray(entry.actions) ? entry.actions : [];
+          map[entry.pageId] = Array.isArray(entry.actions) ? entry.actions : [];
         }
       }
       setRolePermissions(map);
     });
   }, [form.role, form.staff_type, form.adminType, isEditMode]);
 
-  // Live-sync permission data via socket events emitted by the backend after any permission write
+  // Live-sync permission data via socket events
   useEffect(() => {
     if (!socket) return;
-
-    // Permission record created/updated/deleted — refresh the accordion list in the dialog
-    const onResourcesUpdated = () => {
-      listPermissions().then((data) => { if (Array.isArray(data)) setAllPermissions(data); });
-    };
 
     // Role's base grants changed — refresh if the open dialog is editing a user with that role-key
     const onRoleUpdated = ({ roleKey }) => {
       if (!isEditMode || !selectedUserId) return;
       const openRoleKey = getFormRoleKey(form.role, form.staff_type, form.adminType);
       if (openRoleKey !== roleKey) return;
-      getRolePermissions(roleKey).then((data) => {
+      getRolePagePermissions(roleKey).then((data) => {
         const map = {};
         if (Array.isArray(data)) {
-          for (const entry of data) map[entry.permissionId] = Array.isArray(entry.actions) ? entry.actions : [];
+          for (const entry of data) map[entry.pageId] = Array.isArray(entry.actions) ? entry.actions : [];
         }
         setEditRolePermissions(map);
       });
@@ -218,11 +205,11 @@ export default function UsersPage() {
     // A specific user's overrides changed — refresh if that user's dialog is open
     const onUserUpdated = ({ userId }) => {
       if (!isEditMode || selectedUserId !== userId) return;
-      getUserOverrides(userId).then((data) => {
+      getUserPageOverrides(userId).then((data) => {
         if (!Array.isArray(data)) return;
         const loaded = {};
         data.forEach((item) => {
-          loaded[item.permissionId] = (item.overrides || []).reduce((acc, ov) => {
+          loaded[item.pageId] = (item.overrides || []).reduce((acc, ov) => {
             acc[ov.action] = ov.effect;
             return acc;
           }, {});
@@ -231,14 +218,12 @@ export default function UsersPage() {
       });
     };
 
-    socket.on("permissions:resources-updated", onResourcesUpdated);
-    socket.on("permissions:role-updated", onRoleUpdated);
-    socket.on("permissions:user-updated", onUserUpdated);
+    socket.on("page-permissions:role-updated", onRoleUpdated);
+    socket.on("page-permissions:user-updated", onUserUpdated);
 
     return () => {
-      socket.off("permissions:resources-updated", onResourcesUpdated);
-      socket.off("permissions:role-updated", onRoleUpdated);
-      socket.off("permissions:user-updated", onUserUpdated);
+      socket.off("page-permissions:role-updated", onRoleUpdated);
+      socket.off("page-permissions:user-updated", onUserUpdated);
     };
   }, [socket, isEditMode, selectedUserId, form.role, form.staff_type, form.adminType]);
 
@@ -295,23 +280,23 @@ export default function UsersPage() {
     // Load role base permissions
     const roleKey = getFormRoleKey(u.role, u.staff_type || "", u.adminType || "departmental");
     if (roleKey) {
-      getRolePermissions(roleKey).then((data) => {
+      getRolePagePermissions(roleKey).then((data) => {
         const map = {};
         if (Array.isArray(data)) {
           for (const entry of data) {
-            map[entry.permissionId] = Array.isArray(entry.actions) ? entry.actions : [];
+            map[entry.pageId] = Array.isArray(entry.actions) ? entry.actions : [];
           }
         }
         setEditRolePermissions(map);
       });
     }
 
-    // Load existing user overrides
-    getUserOverrides(u.id).then((data) => {
+    // Load existing user page overrides
+    getUserPageOverrides(u.id).then((data) => {
       if (Array.isArray(data)) {
         const loaded = {};
         data.forEach((item) => {
-          loaded[item.permissionId] = (item.overrides || []).reduce((acc, ov) => {
+          loaded[item.pageId] = (item.overrides || []).reduce((acc, ov) => {
             acc[ov.action] = ov.effect;
             return acc;
           }, {});
@@ -371,12 +356,12 @@ export default function UsersPage() {
         if (form.role === "admin" && savedId) {
           await assignUserDepartments(savedId, form.department_ids);
         }
-        // Save permission overrides only when user has update access on access-control
+        // Save page overrides only when user has update access on access-control
         if (savedId && canManageOverrides) {
           const overridesToSave = isEditMode ? editOverrides : overrides;
           const overridesPayload = buildOverridesPayload(overridesToSave);
           if (isEditMode || overridesPayload.length > 0) {
-            await setUserOverrides(savedId, overridesPayload);
+            await setUserPageOverrides(savedId, overridesPayload);
           }
         }
         setModalTab(0);
@@ -1122,7 +1107,7 @@ export default function UsersPage() {
                 }}
               >
                 <Tab label="Details" />
-                <Tab label="Permissions" />
+                <Tab label="Permissions Override" />
               </Tabs>
             </Box>
           )}
@@ -1261,54 +1246,51 @@ export default function UsersPage() {
             )}
           </Box>
 
-          {/* Tab 1: Permission Overrides — shown when user has read or manage permission, not editing self, and role supports it */}
+          {/* Tab 1: Page Overrides — shown when user has read or manage permission, not editing self, and role supports it */}
           <Box sx={{ display: form.role !== "superadmin" && form.role !== "visitor" && (canReadOverrides || canManageOverrides) && modalTab === 1 ? "flex" : "none", flexDirection: "column", gap: 1.5, p: 2.5 }}>
             {isEditingSelf ? (
               <Alert severity="info" sx={{ borderRadius: 2 }}>
-                You cannot modify your own permission overrides.
+                You cannot modify your own page overrides.
               </Alert>
             ) : form.role === "superadmin" ? (
               <Alert severity="warning" sx={{ borderRadius: 2 }}>
                 SuperAdmins bypass all permission checks — overrides have no effect for this role.
               </Alert>
-            ) : allPermissions.length === 0 ? (
-              <Alert severity="info" sx={{ borderRadius: 2 }}>
-                No permissions have been defined yet. Create permissions in Access Control first.
-              </Alert>
-            ) : (
-              <>
-                <Alert severity="info" sx={{ borderRadius: 2, fontSize: "0.82rem" }}>
-                  Checked actions are granted. Overrides layer on top of the role&apos;s base set — <strong>deny</strong> removes an inherited action, <strong>allow</strong> adds one the role doesn&apos;t have.
+            ) : (() => {
+              const overrideRolePages = getPagesForRole(getFormRoleKey(form.role, form.staff_type, form.adminType));
+              return overrideRolePages.length === 0 ? (
+                <Alert severity="info" sx={{ borderRadius: 2 }}>
+                  No pages are configured for this role.
                 </Alert>
-                {allPermissions.map((perm) => {
-                  const baseGrants = isEditMode ? (editRolePermissions[perm.id] || []) : (rolePermissions[perm.id] || []);
+              ) : (
+                <>
+                  <Alert severity="info" sx={{ borderRadius: 2, fontSize: "0.82rem" }}>
+                    Checked actions are granted. Overrides layer on top of the role&apos;s base set — <strong>deny</strong> removes an inherited action, <strong>allow</strong> adds one the role doesn&apos;t have.
+                  </Alert>
+                  {overrideRolePages.map((page) => {
+                  const baseGrants = isEditMode ? (editRolePermissions[page.pageId] || []) : (rolePermissions[page.pageId] || []);
                   const currentOverrides = isEditMode ? editOverrides : overrides;
                   return (
                     <Accordion
-                      key={perm.id}
+                      key={page.pageId}
                       variant="outlined"
                       disableGutters
                       sx={{ borderRadius: "8px !important", "&:before": { display: "none" }, overflow: "hidden" }}
                     >
                       <AccordionSummary expandIcon={<ICONS.expandMore />}>
-                        <Box>
-                          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", textTransform: "uppercase" }}>{perm.resource}</Typography>
-                          {perm.description && (
-                            <Typography variant="caption" color="text.secondary">{perm.description}</Typography>
-                          )}
-                        </Box>
+                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>{page.label}</Typography>
                       </AccordionSummary>
                       <AccordionDetails sx={{ bgcolor: "action.hover", borderTop: "1px solid", borderColor: "divider", p: 1.5 }}>
                         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" }, gap: 1 }}>
-                          {PERM_ACTIONS.map((action) => {
+                          {page.actions.map((action) => {
                             const isInherited = baseGrants.includes(action);
-                            const currentOverride = currentOverrides[perm.id]?.[action] || "";
+                            const currentOverride = currentOverrides[page.pageId]?.[action] || "";
                             const isChecked = isInherited ? currentOverride !== "deny" : currentOverride === "allow";
                             const isOverridden = currentOverride !== "";
                             return (
                               <Box
                                 key={action}
-                                onClick={() => canManageOverrides && handleToggleOverride(perm.id, action, isInherited, isEditMode)}
+                                onClick={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
                                 sx={{
                                   p: 1,
                                   borderRadius: 1.5,
@@ -1330,7 +1312,7 @@ export default function UsersPage() {
                                   sx={{ p: 0 }}
                                   disabled={!canManageOverrides}
                                   onClick={(e) => e.stopPropagation()}
-                                  onChange={() => canManageOverrides && handleToggleOverride(perm.id, action, isInherited, isEditMode)}
+                                  onChange={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
                                 />
                                 <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "capitalize", lineHeight: 1 }}>
                                   {action}
@@ -1356,7 +1338,8 @@ export default function UsersPage() {
                   );
                 })}
               </>
-            )}
+            );
+          })()}
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>

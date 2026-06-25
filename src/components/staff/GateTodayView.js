@@ -18,7 +18,7 @@ import { getTodayVisitors, updateStatus } from "@/services/registrationService";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import ICONS from "@/utils/iconUtil";
-import { formatTime } from "@/utils/dateUtils";
+import { formatDate, formatTime } from "@/utils/dateUtils";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 
 const STATUS_CONFIG = {
@@ -44,7 +44,7 @@ const STATUS_CONFIG = {
   },
 };
 
-export default function GateTodayView({ onBack }) {
+export default function GateTodayView({ onBack, canCheckout = true }) {
   const theme = useTheme();
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
@@ -100,8 +100,20 @@ export default function GateTodayView({ onBack }) {
     year: "numeric",
   });
 
-  const onSite = visitors.filter((v) => v.status === "checked_in");
-  const expected = visitors.filter((v) => v.status !== "checked_in");
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const filtered = visitors.filter((v) => {
+    if (v.status === "checked_in") return true;
+    const from = new Date(v.approved_from || v.approvedFrom);
+    const to = new Date(v.approved_to || v.approvedTo);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) return false;
+    return from <= todayEnd && to >= todayStart;
+  });
+  const onSite = filtered.filter((v) => v.status === "checked_in");
+  const expected = filtered.filter((v) => v.status !== "checked_in");
 
   return (
     <Box
@@ -191,7 +203,7 @@ export default function GateTodayView({ onBack }) {
               <Divider orientation="vertical" flexItem sx={{ height: 40 }} />
               <Box sx={{ textAlign: "center", flex: { xs: 1, sm: "none" } }}>
                 <Typography variant="h4" fontWeight={800} color="success.main">
-                  {visitors.length}
+                  {filtered.length}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Total
@@ -208,7 +220,7 @@ export default function GateTodayView({ onBack }) {
               Loading today&apos;s visitors…
             </Typography>
           </Box>
-        ) : visitors.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <Paper
             elevation={0}
             sx={{
@@ -241,7 +253,7 @@ export default function GateTodayView({ onBack }) {
               gap: { xs: 1.5, sm: 2 },
             }}
           >
-            {visitors.map((v) => {
+            {filtered.map((v) => {
               const sc = STATUS_CONFIG[v.status] || {
                 label: v.status,
                 color: "default",
@@ -400,19 +412,29 @@ export default function GateTodayView({ onBack }) {
                       )}
                     </Stack>
 
-                    {v.requestedFrom && v.requestedTo && (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                      >
-                        <ICONS.time fontSize="inherit" sx={{ opacity: 0.6 }} />
-                        {formatTime(v.requestedFrom)} –{" "}
-                        {formatTime(v.requestedTo)}
-                      </Typography>
-                    )}
+                    {(() => {
+                      const from = v.approved_from || v.approvedFrom || v.requestedFrom || v.requested_from;
+                      const to = v.approved_to || v.approvedTo || v.requestedTo || v.requested_to;
+                      if (!from || !to) return null;
+                      const sameDay =
+                        new Date(from).toDateString() ===
+                        new Date(to).toDateString();
+                      const label = sameDay
+                        ? `${formatTime(from)} – ${formatTime(to)}`
+                        : `${formatDate(from)} ${formatTime(from)} – ${formatDate(to)} ${formatTime(to)}`;
+                      return (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                        >
+                          <ICONS.time fontSize="inherit" sx={{ opacity: 0.6 }} />
+                          {label}
+                        </Typography>
+                      );
+                    })()}
 
-                    {isCheckedIn && (
+                    {isCheckedIn && canCheckout && (
                       <Button
                         fullWidth
                         variant="outlined"

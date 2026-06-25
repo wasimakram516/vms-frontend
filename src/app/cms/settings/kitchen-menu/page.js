@@ -341,28 +341,28 @@ function KitchenMenuContent() {
                   </Typography>
                 </Box>
 
-                {(canUpdate || canDelete) && (
-                  <Box
-                    sx={{
-                      p: 1.2,
-                      borderTop: "1px solid",
-                      borderColor: "divider",
-                      bgcolor: "action.hover",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 1,
-                    }}
-                  >
-                    <Box sx={{ width: "100%", overflow: "hidden" }}>
-                      <RecordMetadata
-                        createdByName={item.created_by}
-                        updatedByName={item.updated_by}
-                        createdAt={item.created_at}
-                        updatedAt={item.updated_at}
-                        locale="en-GB"
-                        sx={{ px: 0, py: 0 }}
-                      />
-                    </Box>
+                <Box
+                  sx={{
+                    p: 1.2,
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "action.hover",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                  }}
+                >
+                  <Box sx={{ width: "100%", overflow: "hidden" }}>
+                    <RecordMetadata
+                      createdByName={item.created_by}
+                      updatedByName={item.updated_by}
+                      createdAt={item.created_at}
+                      updatedAt={item.updated_at}
+                      locale="en-GB"
+                      sx={{ px: 0, py: 0 }}
+                    />
+                  </Box>
+                  {(canUpdate || canDelete) && (
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
                       {canUpdate && (
                       <>
@@ -417,8 +417,8 @@ function KitchenMenuContent() {
                       </Tooltip>
                       )}
                     </Stack>
-                  </Box>
-                )}
+                  )}
+                </Box>
               </AppCard>
             ))}
           </ResponsiveCardGrid>

@@ -1,4 +1,4 @@
-import api from "./api";
+﻿import api from "./api";
 import axios from "axios";
 import withApiHandler from "@/utils/withApiHandler";
 import {
@@ -21,7 +21,7 @@ const mapUserToFrontend = (user) => {
     name: user.fullName || user.full_name || user.name || "User",
     isSuper: user.isSuper ?? false,
     isDev: user.isDev ?? false,
-    managedResources: user.managedResources ?? [],
+
     permissions: user.permissions ?? [],
   };
 };
@@ -86,7 +86,7 @@ export const refreshToken = withApiHandler(async () => {
   return token;
 }, { silent: true });
 
-// Re-fetch /auth/me to get fresh managedResources + permissions.
+// Re-fetch /auth/me to get fresh permissions.
 // Call this on app mount and after any permission assignment.
 export const refreshUser = async () => {
   try {

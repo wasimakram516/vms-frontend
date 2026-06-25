@@ -38,6 +38,8 @@ import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessResource } from "@/utils/permissions";
 import { useSocket } from "@/contexts/SocketContext";
 import {
   verifyRegistrationByToken,
@@ -103,8 +105,14 @@ const STATUS_CONFIG = {
 
 export default function StaffVerifyPage() {
   const theme = useTheme();
+  const { user } = useAuth();
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
+  const canCheckin = canAccessResource(user, "verify", { action: "checkin" });
+  const canCheckout = canAccessResource(user, "verify", { action: "checkout" });
+  const canVipBypass = canAccessResource(user, "verify", { action: "vip-bypass" });
+  const canTodayVisitors = canAccessResource(user, "verify", { action: "todays-visitors" });
+  const canRead = canAccessResource(user, "verify", { action: "read" });
   const isDark = mode === "dark";
   const [showScanner, setShowScanner] = useState(false);
   const [vipModalOpen, setVipModalOpen] = useState(false);
@@ -144,7 +152,7 @@ export default function StaffVerifyPage() {
     setAccountedIds(new Set());
     try {
       const visitors = await getCurrentlyInside();
-      setAssemblyVisitors(visitors || []);
+      setAssemblyVisitors(Array.isArray(visitors) ? visitors : []);
     } finally {
       setAssemblyLoading(false);
     }
@@ -219,7 +227,7 @@ export default function StaffVerifyPage() {
           ["checked_in", "checked_out", "visit_ended"].includes(res.status)
         ) {
           const logs = await getRegistrationActivityLogs(res.id);
-          setActivityLogs(logs || []);
+          setActivityLogs(Array.isArray(logs) ? logs : []);
         } else {
           setActivityLogs([]);
         }
@@ -272,7 +280,7 @@ export default function StaffVerifyPage() {
       ["checked_in", "checked_out", "visit_ended"].includes(visitor.status)
     ) {
       const logs = await getRegistrationActivityLogs(visitor.id);
-      setActivityLogs(logs || []);
+      setActivityLogs(Array.isArray(logs) ? logs : []);
     } else {
       setActivityLogs([]);
     }
@@ -308,7 +316,7 @@ export default function StaffVerifyPage() {
           status: updated?.status || "checked_in",
         }));
         const logs = await getRegistrationActivityLogs(result.id);
-        setActivityLogs(logs || []);
+        setActivityLogs(Array.isArray(logs) ? logs : []);
         flagIfOutsideHours("check_in");
       }
     } finally {
@@ -328,7 +336,7 @@ export default function StaffVerifyPage() {
         const mapped = mapRegistration(newReg);
         setResult(mapped);
         const logs = await getRegistrationActivityLogs(newReg.id);
-        if (logs && !logs.error) setActivityLogs(logs);
+        if (Array.isArray(logs)) setActivityLogs(logs);
         showMessage("VIP visitor checked in successfully", "success");
       }
     } finally {
@@ -355,7 +363,7 @@ export default function StaffVerifyPage() {
           status: updated?.status || "checked_out",
         }));
         const logs = await getRegistrationActivityLogs(result.id);
-        setActivityLogs(logs || []);
+        setActivityLogs(Array.isArray(logs) ? logs : []);
         flagIfOutsideHours("check_out");
         setIdVerified(false);
       }
@@ -584,6 +592,7 @@ export default function StaffVerifyPage() {
   // Auto check-in: visitor scanned — open ID verification prompt if needed
   useEffect(() => {
     if (!result || result.status !== "approved") return;
+    if (!canCheckin) return;
     if (result.is_vip_fast_track || result.isVipFastTrack) return;
     if (!result.approved_from) {
       if (resolvedId && !idVerified) {
@@ -609,6 +618,7 @@ export default function StaffVerifyPage() {
   // Auto check-in: fires the moment ID is ticked green
   useEffect(() => {
     if (!idVerified || !result || result.status !== "approved") return;
+    if (!canCheckin) return;
     if (result.is_vip_fast_track || result.isVipFastTrack) return;
     if (!result.approved_from) {
       handleCheckInAction();
@@ -645,9 +655,9 @@ export default function StaffVerifyPage() {
       if (
         ["checked_in", "checked_out", "visit_ended"].includes(updatedReg.status)
       ) {
-        getRegistrationActivityLogs(updatedReg.id).then((logs) =>
-          setActivityLogs(logs || []),
-        );
+        getRegistrationActivityLogs(updatedReg.id).then((logs) => {
+        if (Array.isArray(logs)) setActivityLogs(logs);
+        });
       }
 
       const isSelfEcho =
@@ -672,9 +682,9 @@ export default function StaffVerifyPage() {
       if (currentRegistrationIdRef.current !== data.registrationId) return;
       // Update overstay flag on current result and refresh activity logs
       setResult((prev) => (prev ? { ...prev, overstay: true } : prev));
-      getRegistrationActivityLogs(data.registrationId).then((logs) =>
-        setActivityLogs(logs || []),
-      );
+      getRegistrationActivityLogs(data.registrationId).then((logs) => {
+        if (Array.isArray(logs)) setActivityLogs(logs);
+      });
     });
 
     return () => {
@@ -690,7 +700,7 @@ export default function StaffVerifyPage() {
   if (todayView) {
     return (
       <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
-        <GateTodayView onBack={() => setTodayView(false)} />
+        <GateTodayView onBack={() => setTodayView(false)} canCheckout={canCheckout} />
       </RoleGuard>
     );
   }
@@ -923,7 +933,7 @@ export default function StaffVerifyPage() {
             color="error"
             startIcon={<ICONS.close />}
             onClick={exitAssemblyMode}
-            sx={{ borderRadius: 3, py: 1.5 }}
+            sx={{ borderRadius: 3, py: 1.5, mt: 2 }}
           >
             Exit Assembly Mode
           </Button>
@@ -936,6 +946,17 @@ export default function StaffVerifyPage() {
     <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
       <Container maxWidth="sm">
         <Box sx={{ py: 4 }}>
+          {!canRead ? (
+            <Box sx={{ textAlign: "center", py: 8 }}>
+              <Typography variant="h5" fontWeight={700} color="text.secondary">
+                Access Denied
+              </Typography>
+              <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
+                You do not have permission to access this page.
+              </Typography>
+            </Box>
+          ) : (
+            <>
           <Typography
             variant="h4"
             fontWeight={800}
@@ -1176,24 +1197,28 @@ export default function StaffVerifyPage() {
                     >
                       QR Check-in
                     </Button>
-                    <Button
-                      variant="outlined"
-                      fullWidth
-                      startIcon={<ICONS.key />}
-                      onClick={() => setVipModalOpen(true)}
-                      sx={{ py: 1.5, borderRadius: 3 }}
-                    >
-                      VIP Fast Track
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      fullWidth
-                      startIcon={<ICONS.event />}
-                      onClick={() => setTodayView(true)}
-                      sx={{ py: 1.5, borderRadius: 3 }}
-                    >
-                      Today&apos;s Visitors
-                    </Button>
+                    {canVipBypass && (
+                      <Button
+                        variant="outlined"
+                        fullWidth
+                        startIcon={<ICONS.key />}
+                        onClick={() => setVipModalOpen(true)}
+                        sx={{ py: 1.5, borderRadius: 3 }}
+                      >
+                        VIP Fast Track
+                      </Button>
+                    )}
+                    {canTodayVisitors && (
+                      <Button
+                        variant="outlined"
+                        fullWidth
+                        startIcon={<ICONS.event />}
+                        onClick={() => setTodayView(true)}
+                        sx={{ py: 1.5, borderRadius: 3 }}
+                      >
+                        Today&apos;s Visitors
+                      </Button>
+                    )}
                     <Button
                       variant="outlined"
                       fullWidth
@@ -1389,7 +1414,7 @@ export default function StaffVerifyPage() {
                     review.
                   </Alert>
                 )}
-                {["pending", "admin_approved"].includes(result.status) && (
+                {result.status === "pending" && (
                   <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
                     Not yet approved
                   </Alert>
@@ -1423,10 +1448,10 @@ export default function StaffVerifyPage() {
                 <List dense disablePadding>
                   {(() => {
                     const status = result.status;
-                    const isPending = ["pending", "admin_approved"].includes(
+                    const isPending = status === "pending";
+                    const isApproved = ["approved", "admin_approved"].includes(
                       status,
                     );
-                    const isApproved = status === "approved";
                     const isCheckedIn = status === "checked_in";
                     const isCheckedOut = status === "checked_out";
                     const isEnded = status === "visit_ended";
@@ -1884,13 +1909,13 @@ export default function StaffVerifyPage() {
                 <Stack spacing={2} mt={4}>
                   {(() => {
                     const status = result.status;
-                    const isPending = ["pending", "admin_approved"].includes(
-                      status,
+                    const isPending = result.status === "pending";
+                    const isApproved = ["approved", "admin_approved"].includes(
+                      result.status,
                     );
-                    const isApproved = status === "approved";
-                    const isCheckedIn = status === "checked_in";
-                    const isCheckedOut = status === "checked_out";
-                    const isEnded = status === "visit_ended";
+                    const isCheckedIn = result.status === "checked_in";
+                    const isCheckedOut = result.status === "checked_out";
+                    const isEnded = result.status === "visit_ended";
                     const isMulti =
                       result.allow_multi_checkin ?? result.allowMultiCheckin;
                     const isVipEnded =
@@ -1966,27 +1991,25 @@ export default function StaffVerifyPage() {
                     const bufferMs =
                       (workingHours?.checkInBufferMinutes ?? 60) * 60 * 1000;
 
-                    // Check-in window: ±buffer around approvedFrom only
+                    // Check-in window: full approvedFrom–approvedTo range
                     const outsideWindow = (() => {
                       if (isVipFastTrack || !isApproved) return false;
-                      if (!result.approved_from) return false;
+                      if (result.status === "admin_approved") return false;
+                      if (!result.approved_from || !result.approved_to) return false;
                       const now = Date.now();
-                      const approvedFromMs = new Date(
-                        result.approved_from,
-                      ).getTime();
-                      return (
-                        now < approvedFromMs - bufferMs ||
-                        now > approvedFromMs + bufferMs
-                      );
+                      const fromMs = new Date(result.approved_from).getTime();
+                      const toMs = new Date(result.approved_to).getTime();
+                      return now < fromMs - bufferMs || now > toMs + bufferMs;
                     })();
 
                     const fmtWindow = () => {
                       const fmt = (d) => `${formatDate(d)} ${formatTime(d)}`;
-                      const approvedFromMs = new Date(
-                        result.approved_from,
-                      ).getTime();
-                      const from = new Date(approvedFromMs - bufferMs);
-                      const to = new Date(approvedFromMs + bufferMs);
+                      const from = new Date(
+                        new Date(result.approved_from).getTime() - bufferMs,
+                      );
+                      const to = new Date(
+                        new Date(result.approved_to).getTime() + bufferMs,
+                      );
                       return `${fmt(from)} – ${fmt(to)}`;
                     };
 
@@ -2143,7 +2166,7 @@ export default function StaffVerifyPage() {
                             </Button>
                           )}
 
-                          {isApproved && (
+                          {isApproved && canCheckin && (
                             <Button
                               fullWidth
                               variant="contained"
@@ -2166,7 +2189,7 @@ export default function StaffVerifyPage() {
                             </Button>
                           )}
 
-                          {isCheckedIn && (
+                          {isCheckedIn && canCheckout && (
                             <Button
                               fullWidth
                               variant="contained"
@@ -2185,7 +2208,7 @@ export default function StaffVerifyPage() {
                             </Button>
                           )}
 
-                          {isCheckedOut && isMulti && (
+                          {isCheckedOut && isMulti && canCheckin && (
                             <Button
                               fullWidth
                               variant="contained"
@@ -2272,6 +2295,8 @@ export default function StaffVerifyPage() {
               </Paper>
             )}
           </Box>
+        </>
+        )}
         </Box>
       </Container>
 

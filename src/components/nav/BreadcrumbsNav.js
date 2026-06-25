@@ -128,11 +128,12 @@ export default function BreadcrumbsNav() {
     };
   });
 
-  const kitchenAdminAllowedPaths = ["/cms/kitchen", "/cms/settings/kitchen-menu"];
+  const kitchenAdminAllowedPaths = ["/cms/kitchen", "/cms/settings", "/cms/settings/kitchen-menu"];
 
   return (
     <Box sx={{ mb: 3 }}>
       <Breadcrumbs separator="›" aria-label="breadcrumb">
+        {!isKitchenAdmin && (
         <Link
           underline="hover"
           color="inherit"
@@ -147,6 +148,7 @@ export default function BreadcrumbsNav() {
             Dashboard
           </Box>
         </Link>
+        )}
 
         {paths.map((p, i) => {
           const segment = formatSegment(p.segment);

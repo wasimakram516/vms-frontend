@@ -67,37 +67,11 @@ const buildAllHours = () => {
   return all;
 };
 
-/**
- * Return hour slots allowed for the given tab.
- * Working tab: constrained to the configured bracket.
- * Outside tab (and no config): all 24 hours — backend flags the truth.
- */
-const getAllowedHours12 = (hostConfig, timeTypeTab) => {
-  if (!hostConfig || timeTypeTab !== "working") return buildAllHours();
-  const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-  const endMoD   = hostConfig.end   * 60 + (hostConfig.endMinute   ?? 0);
-  // Use hour END (h24*60+59) for lower-bound so boundary hours (e.g. 07 when
-  // startMoD=450) are included — getAllowedMinutes clips their minute options.
-  return buildAllHours().filter(({ h24 }) => {
-    const moD = h24 * 60;
-    return (h24 * 60 + 59) >= startMoD && moD <= endMoD;
-  });
-};
+/** Return all 24 hour slots (no filtering — backend flags outside hours). */
+const getAllowedHours12 = () => buildAllHours();
 
-/**
- * Given a selected 24-hour value and config, return the allowed minutes (5-step)
- * for that hour.  Working tab: boundary hours are clipped to the bracket edge.
- * Outside tab: all minutes — backend flags the truth.
- */
-const getAllowedMinutes = (h24, hostConfig, timeTypeTab) => {
-  if (!hostConfig || timeTypeTab !== "working") return MINUTES;
-  const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-  const endMoD   = hostConfig.end   * 60 + (hostConfig.endMinute   ?? 0);
-  return MINUTES.filter((mStr) => {
-    const moD = h24 * 60 + Number(mStr);
-    return moD >= startMoD && moD <= endMoD;
-  });
-};
+/** Return all minutes (no filtering — backend flags outside hours). */
+const getAllowedMinutes = () => MINUTES;
 
 export default function BookingPage() {
   const router = useRouter();
@@ -135,8 +109,6 @@ export default function BookingPage() {
 
   // "working" | "weekend" — which day category the visitor is booking for
   const [dayTypeTab, setDayTypeTab] = useState("working");
-  // "working" | "outside" — which time bracket the visitor chooses
-  const [timeTypeTab, setTimeTypeTab] = useState("working");
 
   // Host working-hours/days config loaded on mount
   const [hostConfig, setHostConfig] = useState(null);
@@ -348,25 +320,21 @@ export default function BookingPage() {
     });
   };
 
-  // Hour + Minute + AM/PM selectors, all filtered to the allowed bracket.
-  // unrestricted=true → bypass working-hours bracket (used by custom mode and outside tab)
-  const renderTimeDropdowns = (type, label, unrestricted = false) => {
+  // Hour + Minute + AM/PM selectors — no filtering, backend flags outside hours.
+  const renderTimeDropdowns = (type, label) => {
     const parts = (bookingData[type] || "08:00").split(":");
     const h24 = Number(parts[0] ?? 8);
     const minute = parts[1] ?? "00";
     const curAmPm = h24 < 12 ? "AM" : "PM";
 
-    const effectiveTab = unrestricted ? "outside" : timeTypeTab;
-    const allowedHours = getAllowedHours12(hostConfig, effectiveTab);
-    // Only show AM/PM values that have at least one allowed hour
-    const allowedPeriods = [...new Set(allowedHours.map((s) => s.ampm))];
-    const resolvedAmPm = allowedPeriods.includes(curAmPm) ? curAmPm : (allowedPeriods[0] ?? "AM");
-    // Hours within the resolved period, sorted 1→12 (12 at end)
-    const hoursInPeriod = allowedHours
+    const allHours = getAllowedHours12();
+    const allowedPeriods = ["AM", "PM"];
+    const resolvedAmPm = allowedPeriods.includes(curAmPm) ? curAmPm : "AM";
+    const hoursInPeriod = allHours
       .filter((s) => s.ampm === resolvedAmPm)
       .sort((a, b) => (a.h12 === 12 ? 13 : a.h12) - (b.h12 === 12 ? 13 : b.h12));
     const resolvedH24 = hoursInPeriod.some((s) => s.h24 === h24) ? h24 : (hoursInPeriod[0]?.h24 ?? 8);
-    const allowedMinutes = getAllowedMinutes(resolvedH24, hostConfig, effectiveTab);
+    const allowedMinutes = getAllowedMinutes();
     const resolvedMinute = allowedMinutes.includes(minute) ? minute : (allowedMinutes[0] ?? "00");
 
     return (
@@ -382,7 +350,7 @@ export default function BookingPage() {
               value={resolvedH24}
               onChange={(e) => {
                 const newH24 = Number(e.target.value);
-                const newMins = getAllowedMinutes(newH24, hostConfig, effectiveTab);
+                const newMins = getAllowedMinutes();
                 const snapMin = newMins.includes(resolvedMinute) ? resolvedMinute : (newMins[0] ?? "00");
                 handleTimeChange(type, `${String(newH24).padStart(2, "0")}:${snapMin}`);
               }}
@@ -411,11 +379,11 @@ export default function BookingPage() {
               value={resolvedAmPm}
               onChange={(e) => {
                 const newAmPm = e.target.value;
-                const newPeriodHours = allowedHours.filter((s) => s.ampm === newAmPm);
+                const newPeriodHours = allHours.filter((s) => s.ampm === newAmPm);
                 const newH24 = newPeriodHours.some((s) => s.h24 === resolvedH24)
                   ? resolvedH24
                   : (newPeriodHours[0]?.h24 ?? 8);
-                const newMins = getAllowedMinutes(newH24, hostConfig, effectiveTab);
+                const newMins = getAllowedMinutes();
                 const snapMin = newMins.includes(resolvedMinute) ? resolvedMinute : (newMins[0] ?? "00");
                 handleTimeChange(type, `${String(newH24).padStart(2, "0")}:${snapMin}`);
               }}
@@ -785,8 +753,8 @@ export default function BookingPage() {
                   {bookingType === "custom" && (
                     <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 320 }}>
                       <Stack spacing={2} sx={{ mb: 2 }}>
-                        {renderTimeDropdowns("timeFrom", t("bookingArrival"), true)}
-                        {renderTimeDropdowns("timeTo", t("bookingDeparture"), true)}
+                        {renderTimeDropdowns("timeFrom", t("bookingArrival"))}
+                        {renderTimeDropdowns("timeTo", t("bookingDeparture"))}
                       </Stack>
                       <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                         <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
@@ -1021,21 +989,9 @@ export default function BookingPage() {
                           </Stack>
                         </Box>
                       ) : (
-                        /* ── Time-type tabs + dropdowns (for all presets except Full Day) ── */
+                        /* ── Time dropdowns (no working/outside tab filter) ── */
                         <Box>
                           <Box sx={{ mb: 1.5 }}>
-                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                              {t("bookingTimeType")}
-                            </Typography>
-                            <Tabs
-                              value={timeTypeTab}
-                              onChange={(_, v) => setTimeTypeTab(v)}
-                              TabIndicatorProps={{ sx: { height: 3, borderRadius: 1 } }}
-                              sx={{ minHeight: 32, "& .MuiTab-root": { minHeight: 32, py: 0.5, fontSize: "0.72rem", fontWeight: 700 } }}
-                            >
-                              <Tab value="working" label={t("bookingWorkingHours")} />
-                              <Tab value="outside" label={t("bookingOutsideHours")} />
-                            </Tabs>
                             {hostConfig && (() => {
                               const fmtH12 = (h24, min) => {
                                 const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
@@ -1044,13 +1000,9 @@ export default function BookingPage() {
                               };
                               const s = fmtH12(hostConfig.start, hostConfig.startMinute ?? 0);
                               const e = fmtH12(hostConfig.end, hostConfig.endMinute ?? 0);
-                              return timeTypeTab === "working" ? (
-                                <Typography variant="caption" color="info.main" sx={{ display: "block", mt: 0.75, fontSize: "0.68rem" }}>
+                              return (
+                                <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
                                   {t("bookingWorkingHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
-                                </Typography>
-                              ) : (
-                                <Typography variant="caption" color="info.main" sx={{ display: "block", mt: 0.75, fontSize: "0.68rem" }}>
-                                  {t("bookingOutsideHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
                                 </Typography>
                               );
                             })()}
@@ -1071,6 +1023,31 @@ export default function BookingPage() {
                                   <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
                                   <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
                                     {t("bookingDuration").replace("{{min}}", mins)}
+                                  </Typography>
+                                </Stack>
+                              </Box>
+                            );
+                          })()}
+                          {hostConfig && (() => {
+                            const parseMoD = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+                            const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
+                            const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
+                            const fromMoD = parseMoD(bookingData.timeFrom || "08:00");
+                            const toMoD = parseMoD(bookingData.timeTo || "17:00");
+                            if (fromMoD >= startMoD && toMoD <= endMoD) return null;
+                            const fmtH12 = (h24, min) => {
+                              const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+                              const ampm = h24 < 12 ? "AM" : "PM";
+                              return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+                            };
+                            const s = fmtH12(hostConfig.start, hostConfig.startMinute ?? 0);
+                            const e = fmtH12(hostConfig.end, hostConfig.endMinute ?? 0);
+                            return (
+                              <Box sx={{ mt: 1.5, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
+                                <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
+                                  <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
+                                  <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
+                                    {t("bookingSelectedTimeOutside").replace("{{start}}", s).replace("{{end}}", e)}
                                   </Typography>
                                 </Stack>
                               </Box>

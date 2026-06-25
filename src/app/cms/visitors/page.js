@@ -64,6 +64,7 @@ import { formatDate, formatDateTimeWithLocale } from "@/utils/dateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
+import { validatePhone, isRequiredField } from "@/utils/validationUtils";
 
 const STATUS_CONFIG = {
   pending: {
@@ -238,6 +239,7 @@ export default function VisitorsPage() {
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const [activeCustomFields, setActiveCustomFields] = useState([]);
   const [editCountryIsoCodes, setEditCountryIsoCodes] = useState({});
+  const [phoneErrors, setPhoneErrors] = useState({});
   const [timelineModal, setTimelineModal] = useState({
     open: false,
     visitId: null,
@@ -424,7 +426,15 @@ export default function VisitorsPage() {
         (f) => (f.fieldKey || f.field_key) === key,
       );
       if (field) clearHiddenChildren(field, value, updated);
-      return { ...prev, fieldValues: updated };
+      const nk = key.toLowerCase().replace(/[^a-z]/g, "");
+      const userFieldMap = {
+        fullname: "fullName",
+        full_name: "fullName",
+        email: "email",
+        phone: "phone",
+      };
+      const extra = userFieldMap[nk] ? { [userFieldMap[nk]]: value } : {};
+      return { ...prev, fieldValues: updated, ...extra };
     });
   };
 
@@ -497,11 +507,15 @@ export default function VisitorsPage() {
         const visible = getVisibleFieldValues(reg);
         Object.entries(visible).forEach(([key, val]) => {
           if (val != null && String(val).trim() !== "") {
-            mergedFields[key] = val;
+            if (!(key in mergedFields)) {
+              mergedFields[key] = val;
+            }
           }
         });
       });
       full.fields = Object.keys(mergedFields).length ? mergedFields : {};
+      full._idValue = visitor._idValue;
+      full._idLabel = visitor._idLabel;
       setSelected(full);
     } catch {
     } finally {
@@ -531,30 +545,43 @@ export default function VisitorsPage() {
       );
     } catch {}
     setEditModal({ ...visitor, _latestRegId: latestRegId });
+    setPhoneErrors({});
     setEditForm({
-      fullName: visitor.fullName || "",
-      email: visitor.email || "",
-      phone: visitor.phone || "",
+      fullName: fvMap["full_name"] || visitor.fullName || "",
+      email: fvMap["email"] || visitor.email || "",
+      phone: fvMap["phone"] || visitor.phone || "",
+      phoneIsoCode: visitor.phoneIsoCode || visitor.phone_iso_code || "",
+      status: visitor.status || "active",
       fieldValues: fvMap,
     });
   };
 
   const handleSaveEdit = async () => {
     if (!editModal) return;
+    const activePhoneErrors = Object.values(phoneErrors).filter(Boolean);
+    if (activePhoneErrors.length > 0) {
+      showMessage("Please fix invalid phone numbers before saving.", "warning");
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
         full_name: editForm.fullName ?? editModal.fullName,
+        email: editForm.email ?? "",
+        phone: editForm.phone ?? "",
+        phoneIsoCode: editForm.phoneIsoCode || "",
+        status: editForm.status || "active",
       };
-      if (editForm.email) payload.email = editForm.email;
-      if (editForm.phone) payload.phone = editForm.phone;
       const userResult = await updateVisitorUser(editModal.id, payload);
       if (userResult?.error) return;
-      if (editModal._latestRegId && editForm.fieldValues) {
-        const regResult = await updateRegistration(editModal._latestRegId, {
-          fieldValues: editForm.fieldValues,
-        });
-        if (regResult?.error) return;
+      if (editModal._latestRegId) {
+        const fieldValues = editForm?.fieldValues;
+        if (fieldValues && Object.keys(fieldValues).length > 0) {
+          const regResult = await updateRegistration(editModal._latestRegId, {
+            fieldValues,
+          });
+          if (regResult?.error) return;
+        }
       }
       showMessage("Visitor updated", "success");
       setEditModal(null);
@@ -1447,6 +1474,7 @@ export default function VisitorsPage() {
                   if (isPhoneField(field)) {
                     const isoCode =
                       editCountryIsoCodes[field.fieldKey] || DEFAULT_ISO_CODE;
+                    const phoneErr = phoneErrors[field.fieldKey] || "";
                     return (
                       <TextField
                         key={field.fieldKey}
@@ -1456,20 +1484,36 @@ export default function VisitorsPage() {
                         onChange={(e) => {
                           const digitsOnly = e.target.value.replace(/\D/g, "");
                           setVal(digitsOnly);
+                          const err = digitsOnly
+                            ? validatePhone(digitsOnly, isoCode) || ""
+                            : "";
+                          setPhoneErrors((prev) => ({
+                            ...prev,
+                            [field.fieldKey]: err,
+                          }));
                         }}
                         type="tel"
-                        helperText="Enter your phone number"
+                        error={!!phoneErr}
+                        helperText={phoneErr || "Enter your phone number"}
                         InputProps={{
                           sx: { borderRadius: 2 },
                           startAdornment: (
                             <CountryCodeSelector
                               value={isoCode}
-                              onChange={(iso) =>
+                              onChange={(iso) => {
                                 setEditCountryIsoCodes((prev) => ({
                                   ...prev,
                                   [field.fieldKey]: iso,
-                                }))
-                              }
+                                }));
+                                const currentVal = editForm?.fieldValues?.[field.fieldKey] || "";
+                                const err = currentVal
+                                  ? validatePhone(currentVal, iso) || ""
+                                  : "";
+                                setPhoneErrors((prev) => ({
+                                  ...prev,
+                                  [field.fieldKey]: err,
+                                }));
+                              }}
                               dir="ltr"
                             />
                           ),

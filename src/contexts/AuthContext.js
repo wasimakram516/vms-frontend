@@ -58,19 +58,12 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    const onResourcesUpdated = () => {
-      // managedResources changed — everyone needs a fresh /auth/me
-      refreshUser().then((fresh) => { if (fresh) setUser(fresh); });
-    };
-
-    socket.on("permissions:role-updated", onRoleUpdated);
-    socket.on("permissions:user-updated", onUserUpdated);
-    socket.on("permissions:resources-updated", onResourcesUpdated);
+    socket.on("page-permissions:role-updated", onRoleUpdated);
+    socket.on("page-permissions:user-updated", onUserUpdated);
 
     return () => {
-      socket.off("permissions:role-updated", onRoleUpdated);
-      socket.off("permissions:user-updated", onUserUpdated);
-      socket.off("permissions:resources-updated", onResourcesUpdated);
+      socket.off("page-permissions:role-updated", onRoleUpdated);
+      socket.off("page-permissions:user-updated", onUserUpdated);
     };
   }, [socket]);
 

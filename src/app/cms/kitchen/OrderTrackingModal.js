@@ -39,7 +39,7 @@ import useSocket from "@/utils/useSocket";
 
 dayjs.extend(isBetween);
 
-export default function OrderTrackingModal({ open, onClose, user, canCancel }) {
+export default function OrderTrackingModal({ open, onClose, user, canCancel, canUpdate }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const isSuperAdmin = user?.role?.toLowerCase() === "superadmin";
@@ -112,8 +112,8 @@ export default function OrderTrackingModal({ open, onClose, user, canCancel }) {
             myUnseen.forEach(id => next.add(id));
             return next;
           });
-          markOrdersAsSeen(); 
-          markAllAsSeen(); 
+          if (canUpdate) markOrdersAsSeen(); 
+          if (canUpdate) markAllAsSeen(); 
         }
       }
     } finally {

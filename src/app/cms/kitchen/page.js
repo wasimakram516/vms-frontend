@@ -324,11 +324,13 @@ function OrderingContent() {
           getOptionLabel={(option) => {
             const name = option.user?.fullName || option.full_name || "Visitor";
             const org = option.organisation || option.companyName || "";
-            return `${name} (${org})`;
+            return org ? `${name} (${org})` : name;
           }}
           renderOption={(props, option) => {
             const { key: _muiKey, ...rest } = props;
-            return <li {...rest} key={String(getVisitorOptionKey(option))}>{`${option.user?.fullName || option.full_name || "Visitor"} (${option.organisation || option.companyName || ""})`}</li>;
+            const name = option.user?.fullName || option.full_name || "Visitor";
+            const org = option.organisation || option.companyName || "";
+            return <li {...rest} key={String(getVisitorOptionKey(option))}>{org ? `${name} (${org})` : name}</li>;
           }}
           noOptionsText="No checked-in visitors found"
           value={selectedVisitor}
@@ -774,6 +776,7 @@ function OrderingContent() {
         onClose={() => setTrackingOpen(false)}
         user={user}
         canCancel={canCancel}
+        canUpdate={canCancel}
       />
 
       {/* Duplicate Order Confirmation */}

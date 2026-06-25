@@ -37,7 +37,7 @@ export default function SettingsPage() {
       ...(isKitchenEnabled ? [{ icon: ICONS.diningTable, label: "Kitchen Menu", description: "Manage the food and beverages available in the staff kitchen. Add new items, update descriptions, and toggle availability.", path: "/cms/settings/kitchen-menu", resource: "kitchen-menu", readHardcode: isKitchenAdmin || isSuperAdmin, writeHardcode: isKitchenAdmin || isSuperAdmin }] : []),
     ] : []),
     ...(canAccessResource(user, "access-control", { hardcodeAllowed: isSuperAdmin }) ? [
-      { icon: ICONS.security, label: "Access Control", description: "Manage dynamic permissions, assign base permission sets per role, and configure per-user overrides for fine-grained access control.", path: "/cms/settings/access-control", resource: "access-control", readHardcode: isSuperAdmin, writeHardcode: isSuperAdmin },
+      { icon: ICONS.security, label: "Access Control", description: "Assign page-level permissions to each role. Control which pages and actions are available to different user types.", path: "/cms/settings/access-control", resource: "access-control", readHardcode: isSuperAdmin, writeHardcode: isSuperAdmin },
     ] : []),
   ];
 

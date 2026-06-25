@@ -28,17 +28,28 @@ export default function CmsLayout({ children }) {
   
   const isOnKitchenPage = pathname.startsWith("/cms/kitchen");
   const isOnKitchenSettingsPage = pathname.startsWith("/cms/settings/kitchen-menu");
+  const isOnSettingsIndex = pathname === "/cms/settings";
   const isOnDashboard = pathname === "/cms" || pathname === "/cms/dashboard";
 
-  // Redirect kitchen admin from dashboard/root to their home page
+  // Kitchen Admin permission check
+  const hasKitchenAccess = canAccessResource(user, "kitchen");
+  const hasKitchenMenuAccess = canAccessResource(user, "kitchen-menu");
+  const kitchenAdminNoPermissions = isKitchenAdmin && !hasKitchenAccess && !hasKitchenMenuAccess;
+
+  // Redirect kitchen admin from dashboard/root to the page they have access to
   useEffect(() => {
     if (isKitchenAdmin && isOnDashboard) {
-      router.replace("/cms/kitchen");
+      if (hasKitchenAccess) {
+        router.replace("/cms/kitchen");
+      } else if (hasKitchenMenuAccess) {
+        router.replace("/cms/settings/kitchen-menu");
+      }
     }
-  }, [isKitchenAdmin, isOnDashboard, router]);
+  }, [isKitchenAdmin, isOnDashboard, hasKitchenAccess, hasKitchenMenuAccess, router]);
 
-  // Kitchen Admin can ONLY see Kitchen page and Kitchen Menu Settings
-  const kitchenAdminDenied = isKitchenAdmin && !isOnKitchenPage && !isOnKitchenSettingsPage && !isOnDashboard;
+  // Kitchen Admin: if no permissions at all, deny everything; otherwise only kitchen/kitchen-menu/settings
+  const kitchenAdminDenied = kitchenAdminNoPermissions ||
+    (isKitchenAdmin && !isOnKitchenPage && !isOnKitchenSettingsPage && !isOnSettingsIndex && !isOnDashboard);
   // Departmental Admin is blocked from kitchen pages UNLESS dynamic permission grants access
   const departmentalAdminDenied = isDepartmentalAdmin && (
     (isOnKitchenPage && !canAccessResource(user, "kitchen", { hardcodeAllowed: false })) ||

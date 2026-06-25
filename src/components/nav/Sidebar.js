@@ -21,33 +21,33 @@ import { useState } from "react";
 import ICONS from "@/utils/iconUtil";
 import { canAccessResource } from "@/utils/permissions";
 
-// Full catalog: every CMS nav item with its resource and the hardcoded-allowed rule
+// Full catalog: every CMS nav item with its pageId
 const buildCatalog = (user, isKitchenModuleEnabled = true) => {
   const role = user?.role;
   const adminType = user?.role === "admin" ? (user?.adminType || "departmental") : user?.adminType;
-  const isSuperAdmin = role === "superadmin";
-  const isDev = role === "dev";
-  const isDeptAdmin = role === "admin" && adminType === "departmental";
   const isKitchenAdmin = role === "admin" && adminType === "kitchen";
 
-  return [
-    { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard", resource: "dashboard", hardcodeAllowed: true },
-    { label: "Analytics", icon: ICONS.insights, path: "/cms/analytics", resource: "analytics", hardcodeAllowed: isSuperAdmin },
-    { label: "Visitors", icon: ICONS.badge, path: "/cms/visitors", resource: "visitors", hardcodeAllowed: !isKitchenAdmin },
-    { label: "Visits", icon: ICONS.checkin, path: "/cms/visits", resource: "visits", hardcodeAllowed: !isKitchenAdmin },
-    { label: "Fields", icon: ICONS.form, path: "/cms/fields", resource: "fields", hardcodeAllowed: isSuperAdmin },
-    { label: "NDA Forms", icon: ICONS.verified, path: "/cms/nda-forms", resource: "nda-forms", hardcodeAllowed: isSuperAdmin },
-    { label: "Users", icon: ICONS.people, path: "/cms/users", resource: "users", hardcodeAllowed: isSuperAdmin },
-    { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen", resource: "kitchen", hardcodeAllowed: (isKitchenAdmin || isSuperAdmin) && !!isKitchenModuleEnabled },
-    { label: "Settings", icon: ICONS.settings, path: "/cms/settings", resource: "settings", hardcodeAllowed: !isKitchenAdmin },
+  const items = [
+    { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard", pageId: "dashboard" },
+    { label: "Analytics", icon: ICONS.insights, path: "/cms/analytics", pageId: "analytics" },
+    { label: "Visitors", icon: ICONS.badge, path: "/cms/visitors", pageId: "visitors" },
+    { label: "Visits", icon: ICONS.checkin, path: "/cms/visits", pageId: "visits" },
+    { label: "Fields", icon: ICONS.form, path: "/cms/fields", pageId: "fields" },
+    { label: "Users", icon: ICONS.people, path: "/cms/users", pageId: "users" },
+    { label: "Settings", icon: ICONS.settings, path: "/cms/settings", pageId: "settings" },
   ];
+
+  if (isKitchenModuleEnabled) {
+    items.splice(items.length - 1, 0, { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen", pageId: "kitchen" });
+  }
+
+  return items;
 };
 
 const getNavItems = (user, isKitchenModuleEnabled = true) => {
   const role = user?.role;
   const isDev = role === "dev";
 
-  // Dev: keep existing hardcoded behavior (no permission layer)
   if (isDev) {
     return [
       { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
@@ -55,20 +55,23 @@ const getNavItems = (user, isKitchenModuleEnabled = true) => {
   }
 
   const catalog = buildCatalog(user, isKitchenModuleEnabled);
-
   const isKitchenAdmin = role === "admin" && (user?.adminType || "departmental") === "kitchen";
+  const isSuperAdmin = role === "superadmin";
 
   return catalog.filter((item) => {
-    if (item.resource === "dashboard") return !isKitchenAdmin;
-    if (item.resource === "settings") {
-      if (isKitchenAdmin) return false;
-      if (user?.role === "superadmin") return true;
-      // Only show Settings when at least one settings sub-resource is managed and granted
-      return ["host-details", "departments", "access-levels", "nda-forms", "kitchen-menu", "access-control"].some(
-        (r) => canAccessResource(user, r, { hardcodeAllowed: false })
+    if (item.pageId === "dashboard") return !isKitchenAdmin;
+    if (item.pageId === "settings") {
+      if (isKitchenAdmin) {
+        return canAccessResource(user, "kitchen-menu", { hardcodeAllowed: false });
+      }
+      if (isSuperAdmin) return true;
+      const settingsPages = ["access-control", "host-details", "departments", "access-levels", "kitchen-menu"];
+      return settingsPages.some((pageId) =>
+        canAccessResource(user, pageId, { hardcodeAllowed: false, action: "read" }),
       );
     }
-    return canAccessResource(user, item.resource, { hardcodeAllowed: item.hardcodeAllowed });
+    if (isSuperAdmin) return true;
+    return canAccessResource(user, item.pageId, { hardcodeAllowed: false });
   });
 };
 

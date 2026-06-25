@@ -22,6 +22,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { canAccessResource } from "@/utils/permissions";
 import useSocket from "@/utils/useSocket";
 import { getAllOrders, updateOrderStatus, updateOrderStatusSilent } from "@/services/kitchenService";
 import { useMessage } from "@/contexts/MessageContext";
@@ -41,28 +42,28 @@ const STATUS_CONFIG = {
     icon: ICONS.info,
     chipColor: "secondary",
     dotColor: "#8B5CF6",
-    next: { status: "received", label: "Mark Received", icon: ICONS.inbox },
+    next: { status: "received", label: "Mark Received", icon: ICONS.inbox, actionPerm: "receive" },
   },
   received: {
     label: "Received",
     icon: ICONS.inbox,
     chipColor: "warning",
     dotColor: "#F97316",
-    next: { status: "in_preparation", label: "Start Prep", icon: ICONS.restaurant },
+    next: { status: "in_preparation", label: "Start Prep", icon: ICONS.restaurant, actionPerm: "prepare" },
   },
   in_preparation: {
     label: "Preparing",
     icon: ICONS.restaurant,
     chipColor: "info",
     dotColor: "#3B82F6",
-    next: { status: "ready", label: "Mark Ready", icon: ICONS.checkCircle },
+    next: { status: "ready", label: "Mark Ready", icon: ICONS.checkCircle, actionPerm: "ready" },
   },
   ready: {
     label: "Ready",
     icon: ICONS.checkCircle,
     chipColor: "success",
     dotColor: "#22C55E",
-    next: { status: "delivered", label: "Mark Delivered", icon: ICONS.roomService },
+    next: { status: "delivered", label: "Mark Delivered", icon: ICONS.roomService, actionPerm: "deliver" },
   },
   delivered: {
     label: "Delivered",
@@ -82,13 +83,14 @@ const STATUS_CONFIG = {
 
 const ACTIVE_STATUSES = ["received", "in_preparation", "ready"];
 
-function OrderCard({ order, onStatusUpdate, onCancel, updatingId, currentUser }) {
+function OrderCard({ order, onStatusUpdate, onCancel, updatingId, currentUser, perms }) {
   const theme = useTheme();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.received;
   const isUpdating = updatingId === order.id;
   const isRecent = dayjs().diff(dayjs(order.created_at), "minute") <= 15;
+  const hasNextPerm = !cfg.next?.actionPerm || (perms && perms[cfg.next.actionPerm]);
 
   return (
     <AppCard
@@ -215,7 +217,7 @@ function OrderCard({ order, onStatusUpdate, onCancel, updatingId, currentUser })
         </Stack>
 
         <Stack direction="row" spacing={1}>
-          {cfg.next && (
+          {cfg.next && hasNextPerm && (
             <Button
               fullWidth
               variant="contained"
@@ -344,7 +346,7 @@ function ColumnHeader({ statusKey, count }) {
   );
 }
 
-function KitchenDashboardContent() {
+function KitchenDashboardContent({ canViewHistory }) {
   const theme = useTheme();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
@@ -352,6 +354,12 @@ function KitchenDashboardContent() {
   const { showMessage } = useMessage();
   const { hostSettings, loading: settingsLoading } = useSettings();
   const { user: currentUser } = useAuth();
+  const perms = {
+    receive: canAccessResource(currentUser, "kitchen", { action: "receive" }),
+    prepare: canAccessResource(currentUser, "kitchen", { action: "prepare" }),
+    ready: canAccessResource(currentUser, "kitchen", { action: "ready" }),
+    deliver: canAccessResource(currentUser, "kitchen", { action: "deliver" }),
+  };
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -489,7 +497,7 @@ function KitchenDashboardContent() {
         playAlert();
         
         // Auto-receive new orders
-        if (mapped.status === "initiated") {
+        if (mapped.status === "initiated" && perms.receive) {
           updateOrderStatusSilent(mapped.id, { status: "received" });
         }
       },
@@ -536,7 +544,7 @@ function KitchenDashboardContent() {
   
   // Auto-receive effect for initial load
   useEffect(() => {
-    if (loading || orders.length === 0) return;
+    if (loading || orders.length === 0 || !perms.receive) return;
     
     const initiatedOrders = orders.filter(o => o.status === "initiated");
     if (initiatedOrders.length > 0) {
@@ -544,7 +552,7 @@ function KitchenDashboardContent() {
         updateOrderStatusSilent(order.id, { status: "received" });
       });
     }
-  }, [orders, loading]);
+  }, [orders, loading, perms.receive]);
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     setUpdatingId(orderId);
@@ -700,6 +708,7 @@ function KitchenDashboardContent() {
                   </IconButton>
                 </Tooltip>
 
+                {canViewHistory && (
                 <Tooltip title="View History">
                   <IconButton 
                     size="small"
@@ -723,6 +732,7 @@ function KitchenDashboardContent() {
                     </Badge>
                   </IconButton>
                 </Tooltip>
+                )}
               </Stack>
               <Stack direction="row" alignItems="center" spacing={1} mt={0.5}>
                 {lastUpdated && (
@@ -897,13 +907,14 @@ function KitchenDashboardContent() {
                     onStatusUpdate={handleStatusUpdate}
                     updatingId={updatingId}
                     currentUser={currentUser}
+                    perms={perms}
                   />
                 ))
               )}
-            </Stack>
-          </>
-        ) : (
-          /* Desktop: Horizontal Scrollboard */
+                </Stack>
+              </>
+            ) : (
+              /* Desktop: Horizontal Scrollboard */
           <Box
             sx={{
               display: "grid",
@@ -935,6 +946,7 @@ function KitchenDashboardContent() {
                         onStatusUpdate={handleStatusUpdate}
                         updatingId={updatingId}
                         currentUser={currentUser}
+                        perms={perms}
                       />
                     ))
                   )}
@@ -942,9 +954,10 @@ function KitchenDashboardContent() {
               </Box>
             ))}
           </Box>
-        )}
+          )}
 
         {/* History Drawer */}
+        {canViewHistory && (
         <Drawer
           anchor="right"
           open={historyOpen}
@@ -1034,6 +1047,7 @@ function KitchenDashboardContent() {
                         onStatusUpdate={handleStatusUpdate}
                         updatingId={updatingId}
                         currentUser={currentUser}
+                        perms={perms}
                       />
                     ))}
                   </Stack>
@@ -1056,6 +1070,7 @@ function KitchenDashboardContent() {
                         onStatusUpdate={handleStatusUpdate}
                         updatingId={updatingId}
                         currentUser={currentUser}
+                        perms={perms}
                       />
                     ))}
                   </Stack>
@@ -1075,6 +1090,7 @@ function KitchenDashboardContent() {
             </Box>
           </Box>
         </Drawer>
+        )}
       </Box>
 
     </Box>
@@ -1082,9 +1098,24 @@ function KitchenDashboardContent() {
 }
 
 export default function KitchenOrdersPage() {
+  const { user } = useAuth();
+  const staffActions = ["receive", "prepare", "ready", "deliver", "history"];
+  const hasAnyAction = staffActions.some((a) => canAccessResource(user, "kitchen", { action: a }));
+  const canViewHistory = canAccessResource(user, "kitchen", { action: "history" });
   return (
     <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["kitchen"]}>
-      <KitchenDashboardContent />
+      {!hasAnyAction ? (
+        <Box sx={{ textAlign: "center", py: 8 }}>
+          <Typography variant="h5" fontWeight={700} color="text.secondary">
+            Access Denied
+          </Typography>
+          <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
+            You do not have permission to access this page.
+          </Typography>
+        </Box>
+      ) : (
+        <KitchenDashboardContent canViewHistory={canViewHistory} />
+      )}
     </RoleGuard>
   );
 }

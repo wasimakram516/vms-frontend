@@ -81,7 +81,7 @@ export const mapRegistration = (r) => {
     id: r.id,
     full_name: r.user?.fullName || "N/A",
     email: r.user?.email || null,
-    phone: r.user?.phone || "N/A",
+    phone: r.user?.phone || null,
     purpose_of_visit: (() => {
       const col = r.purposeOfVisit || null;
       if (col && col !== 'Other') return col;
@@ -105,7 +105,7 @@ export const mapRegistration = (r) => {
     requested_to: r.requestedTo,
     approved_from: r.approvedFrom,
     approved_to: r.approvedTo,
-    phone_iso_code: r.phoneIsoCode,
+    phone_iso_code: r.phoneIsoCode || r.user?.iso_code || r.user?.phoneIsoCode || r.user?.isoCode,
     created_at: r.createdAt,
     qr_token: r.qrToken,
     rejection_reason: r.rejectionReason,
@@ -186,8 +186,9 @@ export const updateRegistration = withApiHandler(
 
 export const getRegistrationActivityLogs = withApiHandler(async (id) => {
   const res = await api.get(`/registrations/${id}/activity-logs`);
-  return res.data?.data || res.data || [];
-});
+  const payload = res.data?.data;
+  return Array.isArray(payload) ? payload : [];
+}, { suppressErrorStatus: [403, 404] });
 
 export async function exportVisitorHistoryCsv(registrationId) {
   const params = new URLSearchParams({
