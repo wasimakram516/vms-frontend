@@ -985,7 +985,7 @@ export default function HostDetailsPage() {
           <Dialog
             open={dialogOpen}
             onClose={() => { setDialogOpen(false); setModalTab(0); }}
-            maxWidth="sm"
+            maxWidth="md"
             fullWidth
             PaperProps={{ sx: { borderRadius: 4 } }}
           >
@@ -1016,10 +1016,10 @@ export default function HostDetailsPage() {
                     "& .MuiTabs-scrollButtons.Mui-disabled": { opacity: 0.3 },
                   }}
                 >
-                  <Tab label="General" />
+                  <Tab label="Profile" />
                   <Tab label="Contact & NDA" />
-                  <Tab label="Schedule" />
-                  <Tab label="Overstay" />
+                  <Tab label="Working Hours" />
+                  <Tab label="Check-in & Overstay" />
                   <Tab label="Kitchen" />
                 </Tabs>
               </Box>
