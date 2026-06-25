@@ -32,6 +32,7 @@ const buildCatalog = (user, isKitchenModuleEnabled = true) => {
     { label: "Analytics", icon: ICONS.insights, path: "/cms/analytics", pageId: "analytics" },
     { label: "Visitors", icon: ICONS.badge, path: "/cms/visitors", pageId: "visitors" },
     { label: "Visits", icon: ICONS.checkin, path: "/cms/visits", pageId: "visits" },
+    { label: "NDA Forms", icon: ICONS.verified, path: "/cms/nda-forms", pageId: "nda-forms" },
     { label: "Fields", icon: ICONS.form, path: "/cms/fields", pageId: "fields" },
     { label: "Users", icon: ICONS.people, path: "/cms/users", pageId: "users" },
     { label: "Settings", icon: ICONS.settings, path: "/cms/settings", pageId: "settings" },
