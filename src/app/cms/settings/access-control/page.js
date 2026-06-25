@@ -6,9 +6,6 @@ import {
   Button,
   Tooltip,
   Divider,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   FormControlLabel,
   Checkbox,
   Switch,
@@ -31,6 +28,7 @@ import ICONS from "@/utils/iconUtil";
 import { getRolePagePermissions, setRolePagePermissions } from "@/services/permissionService";
 import { refreshUser } from "@/services/authService";
 import { ROLE_KEYS, getPagesForRole } from "@/constants/pageCatalog";
+import { PAGE_ICONS } from "@/constants/pageIcons";
 
 const ACTION_LABELS = {
   "vip-bypass": "VIP Fast Track",
@@ -38,6 +36,16 @@ const ACTION_LABELS = {
 
 function actionLabel(action) {
   return ACTION_LABELS[action] || action.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Render CRUD actions in logical order (Create, Read, Update, Delete);
+// any non-CRUD actions keep their catalog order after them.
+const ACTION_ORDER = { create: 0, read: 1, update: 2, delete: 3 };
+
+function sortActions(actions) {
+  return [...actions].sort(
+    (a, b) => (ACTION_ORDER[a] ?? 99) - (ACTION_ORDER[b] ?? 99),
+  );
 }
 
 function RoleItem({ roleKey, label, description, isActive, onClick, showChevron }) {
@@ -231,77 +239,22 @@ export default function AccessControlPage() {
             Actions checked here become the base set for <strong>{selectedRole.label}</strong>.
           </Alert>
 
-          {rolePages.length === 0 ? (
-            <Alert severity="info">No page permissions configured for this role.</Alert>
-          ) : rolePages.map((page) => {
-            const granted = assignments[page.pageId] || new Set();
-            const pageActions = page.actions;
-            const allChecked = pageActions.every((a) => granted.has(a));
-            const someChecked = pageActions.some((a) => granted.has(a));
-
-            return (
-              <Accordion
-                key={page.pageId}
-                variant="outlined"
-                disableGutters
-                sx={{ mb: 1, borderRadius: "8px !important", "&:before": { display: "none" }, overflow: "hidden" }}
-              >
-                <AccordionSummary expandIcon={<ICONS.expandMore />}>
-                  <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flex: 1, mr: 1 }}>
-                    <Chip
-                      label={page.label}
-                      size="small"
-                      sx={{ fontWeight: 700, textTransform: "uppercase", fontSize: "0.7rem", borderRadius: 999 }}
-                    />
-                  </Stack>
-                  {canUpdate && (
-                    <Tooltip title={allChecked ? "Deselect all actions" : "Select all actions"}>
-                      <Switch
-                        checked={allChecked}
-                        size="small"
-                        color={someChecked && !allChecked ? "warning" : "primary"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleAll(page.pageId, allChecked);
-                        }}
-                        sx={{ mr: 0.5 }}
-                      />
-                    </Tooltip>
-                  )}
-                </AccordionSummary>
-                <AccordionDetails sx={{ bgcolor: "background.paper", borderTop: "1px solid", borderColor: "divider", py: 1.5 }}>
-                  <Stack direction="row" flexWrap="wrap" gap={0.5}>
-                    {pageActions.map((action) => (
-                      <FormControlLabel
-                        key={action}
-                        control={
-                          <Checkbox
-                            checked={granted.has(action)}
-                            onChange={() => canUpdate && toggleAction(page.pageId, action)}
-                            disabled={!canUpdate}
-                            size="small"
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: "0.85rem" }}>
-                            {actionLabel(action)}
-                          </Typography>
-                        }
-                        sx={{ mr: 1 }}
-                      />
-                    ))}
-                  </Stack>
-                </AccordionDetails>
-              </Accordion>
-            );
-          })}
-
           {canUpdate && (
             <Stack
               direction={{ xs: "column-reverse", sm: "row" }}
+              alignItems={{ sm: "center" }}
               justifyContent={{ sm: "flex-end" }}
               gap={{ xs: 1.5, sm: 1 }}
-              sx={{ mt: 3 }}
+              sx={{
+                position: "sticky",
+                top: 0,
+                zIndex: 5,
+                bgcolor: "background.default",
+                borderBottom: "1px solid",
+                borderColor: "divider",
+                py: 1.5,
+                mb: 1.5,
+              }}
             >
               <Button
                 variant="outlined"
@@ -323,6 +276,112 @@ export default function AccessControlPage() {
               </Button>
             </Stack>
           )}
+
+          {rolePages.length === 0 ? (
+            <Alert severity="info">No page permissions configured for this role.</Alert>
+          ) : rolePages.map((page) => {
+            const granted = assignments[page.pageId] || new Set();
+            const pageActions = sortActions(page.actions);
+            const allChecked = pageActions.every((a) => granted.has(a));
+            const someChecked = pageActions.some((a) => granted.has(a));
+            const PageIcon = PAGE_ICONS[page.pageId];
+
+            return (
+              <Box
+                key={page.pageId}
+                sx={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: 1,
+                  rowGap: 0.5,
+                  mb: 1,
+                  px: { xs: 1.5, sm: 2 },
+                  py: { xs: 1.25, sm: 1 },
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 2,
+                  bgcolor: "background.paper",
+                }}
+              >
+                <Chip
+                  label={page.label}
+                  size="small"
+                  icon={PageIcon ? <PageIcon sx={{ fontSize: "1rem !important" }} /> : undefined}
+                  sx={{
+                    order: 1,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    fontSize: "0.7rem",
+                    borderRadius: 999,
+                    minWidth: { sm: 150 },
+                    justifyContent: "flex-start",
+                  }}
+                />
+
+                <Stack
+                  direction="row"
+                  flexWrap="wrap"
+                  alignItems="center"
+                  sx={{
+                    order: { xs: 3, sm: 2 },
+                    flexBasis: { xs: "100%", sm: "auto" },
+                    flexGrow: { sm: 1 },
+                    columnGap: 0.5,
+                  }}
+                >
+                  {pageActions.map((action) => (
+                    <FormControlLabel
+                      key={action}
+                      control={
+                        <Checkbox
+                          checked={granted.has(action)}
+                          onChange={() => canUpdate && toggleAction(page.pageId, action)}
+                          disabled={!canUpdate}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography sx={{ fontSize: "0.85rem" }}>
+                          {actionLabel(action)}
+                        </Typography>
+                      }
+                      sx={{ mr: 1 }}
+                    />
+                  ))}
+                </Stack>
+
+                {canUpdate && (
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    spacing={0.5}
+                    sx={{ order: { xs: 2, sm: 3 }, ml: "auto" }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        color: "text.secondary",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {allChecked ? "Deselect all" : "Select all"}
+                    </Typography>
+                    <Tooltip title={allChecked ? "Deselect all actions" : "Select all actions"}>
+                      <Switch
+                        checked={allChecked}
+                        size="small"
+                        color={someChecked && !allChecked ? "warning" : "success"}
+                        onClick={() => toggleAll(page.pageId, allChecked)}
+                      />
+                    </Tooltip>
+                  </Stack>
+                )}
+              </Box>
+            );
+          })}
+
         </>
       )}
     </Box>
