@@ -462,15 +462,15 @@ export default function HostDetailsPage() {
           >
             <Box sx={{ flex: 1 }}>
               <Typography variant="h5" fontWeight="bold">
-                Organization Details
+                Global Settings
               </Typography>
               <Typography
                 variant="body2"
                 color="text.secondary"
                 sx={{ mt: 0.5, opacity: 0.8 }}
               >
-                Organization profile displayed on visitor-facing communications
-                and documents.
+                System-wide configuration: organization profile, contact & NDA,
+                working days and hours, check-in & overstay, and kitchen module.
               </Typography>
             </Box>
             {host && (canUpdate || canDelete) && (
@@ -563,9 +563,9 @@ export default function HostDetailsPage() {
               <Divider />
 
               <Grid container spacing={3} sx={{ mt: 0.5 }} alignItems="stretch">
-                {/* Left column */}
+                {/* Column 1 — General, Overstay & Kitchen */}
                 <Grid
-                  size={{ xs: 12, md: 6 }}
+                  size={{ xs: 12, md: 4 }}
                   sx={{
                     borderRight: { md: "1px solid" },
                     borderColor: { md: "divider" },
@@ -742,8 +742,15 @@ export default function HostDetailsPage() {
                   </List>
                 </Grid>
 
-                {/* Right column */}
-                <Grid size={{ xs: 12, md: 6 }}>
+                {/* Column 2 — Contact & NDA */}
+                <Grid
+                  size={{ xs: 12, md: 4 }}
+                  sx={{
+                    borderRight: { md: "1px solid" },
+                    borderColor: { md: "divider" },
+                    pr: { md: 3 },
+                  }}
+                >
                   <SectionLabel>Contact & NDA</SectionLabel>
                   <List dense disablePadding>
                     <DetailItem
@@ -772,8 +779,10 @@ export default function HostDetailsPage() {
                       secondary={host.ndaNotificationEmail}
                     />
                   </List>
+                </Grid>
 
-                  <Divider sx={{ mt: 2 }} />
+                {/* Column 3 — Schedule & Logs */}
+                <Grid size={{ xs: 12, md: 4 }}>
                   <SectionLabel>Schedule</SectionLabel>
                   {(() => {
                     const DAY_ABB = [
@@ -1235,8 +1244,8 @@ export default function HostDetailsPage() {
             open={deleteOpen}
             onClose={() => setDeleteOpen(false)}
             onConfirm={handleDelete}
-            title="Delete Organization Profile"
-            message="Are you sure you want to delete the organization profile? This action cannot be undone."
+            title="Delete Global Settings"
+            message="Are you sure you want to delete the global settings? This action cannot be undone."
             confirmButtonText="Delete"
             confirmButtonIcon={<ICONS.delete fontSize="small" />}
           />

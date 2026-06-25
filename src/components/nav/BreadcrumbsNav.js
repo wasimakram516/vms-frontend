@@ -36,8 +36,8 @@ const segmentMap = {
     label: "NDA Templates",
     icon: <ICONS.description fontSize="small" sx={{ mr: 0.5 }} />,
   },
-  "host-details": {
-    label: "Host Details",
+  "global-settings": {
+    label: "Global Settings",
     icon: <ICONS.business fontSize="small" sx={{ mr: 0.5 }} />,
   },
   "nda-forms": {

@@ -31,7 +31,7 @@ export default function SettingsPage() {
       { icon: ICONS.badge, label: "Badge Customization", description: "Design and customize visitor badges with fields, layout, QR codes, and styling. Create multiple templates and set one as default.", path: "/cms/settings/badge-customization", resource: null },
     ] : []),
     ...(!isDev ? [
-      { icon: ICONS.business, label: "Host Details", description: "Set up your organization profile — name, logo, contact info, and more. This profile is displayed on visitor-facing communications and documents.", path: "/cms/settings/host-details", resource: "host-details", readHardcode: isSuperAdmin, writeHardcode: isSuperAdmin },
+      { icon: ICONS.business, label: "Global Settings", description: "Configure system-wide settings: organization profile (name, logo, contact, address, map), NDA & contact details, working days and hours, check-in buffer and overstay rules, and the kitchen module toggle.", path: "/cms/settings/global-settings", resource: "host-details", readHardcode: isSuperAdmin, writeHardcode: isSuperAdmin },
     ] : []),
     ...(canAccessResource(user, "access-control", { hardcodeAllowed: isSuperAdmin }) ? [
       { icon: ICONS.security, label: "Access Control", description: "Assign page-level permissions to each role. Control which pages and actions are available to different user types.", path: "/cms/settings/access-control", resource: "access-control", readHardcode: isSuperAdmin, writeHardcode: isSuperAdmin },
