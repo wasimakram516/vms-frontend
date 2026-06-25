@@ -1,14 +1,15 @@
 ﻿const PAGES = [
   // ── Departmental Admin ──
-  { pageId: "users", label: "Users", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
+  // Ordered by mental model: operations → visit config → insights → administration → kitchen
   { pageId: "visits", label: "Visits", actions: ["read", "create", "update"], roles: ["admin:departmental"] },
   { pageId: "visitors", label: "Visitors", actions: ["read", "update"], roles: ["admin:departmental"] },
+  { pageId: "nda-forms", label: "NDA Forms", actions: ["read"], roles: ["admin:departmental"] },
   { pageId: "departments", label: "Departments", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
-  { pageId: "fields", label: "Custom Fields", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "access-levels", label: "Access Levels", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
-  { pageId: "host-details", label: "Host Details", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
+  { pageId: "fields", label: "Custom Fields", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "analytics", label: "Analytics", actions: ["read"], roles: ["admin:departmental"] },
-  { pageId: "access-control", label: "Access Control", actions: ["read", "update"], roles: ["admin:departmental"] },
+  { pageId: "users", label: "Users", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
+  { pageId: "host-details", label: "Host Details", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "kitchen", label: "Kitchen Orders", actions: ["read", "create", "update"], roles: ["admin:departmental", "admin:kitchen"] },
   { pageId: "kitchen-menu", label: "Kitchen Menu", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental", "admin:kitchen"] },
   // ── Kitchen Staff ──
