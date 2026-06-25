@@ -4,7 +4,7 @@ import { Box } from "@mui/material";
 
 export default function ResponsiveCardGrid({
   children,
-  minItemWidth = 280,
+  minItemWidth = 320,
   maxItemWidth = 480,
   gap = { xs: 3, md: 4 },
   sx = {},
@@ -21,28 +21,27 @@ export default function ResponsiveCardGrid({
           display: "flex",
           flexWrap: "wrap",
           justifyContent: "center",
+          alignItems: "stretch",
           gap: { xs: 3, sm: 3, md: 4, lg: 4 },
           width: "100%",
+          // Cards keep a consistent fixed width on every row and wrap up/down
+          // with screen size — the column count adapts to the viewport while
+          // each card stays the same size. justifyContent:center keeps every
+          // row centered, including a partial last row (no left-align, no
+          // over-stretched cards).
           "& > *": {
             boxSizing: "border-box",
-            width: {
-              xs: "100%",
-              sm: "calc(50% - 12px)",
-              md: "calc(50% - 16px)",
-            },
-            flex: {
-              xs: "0 0 100%",
-              sm: "0 0 calc(50% - 12px)",
-              md: "0 0 calc(50% - 16px)",
-              lg: `0 1 ${minW}`,
-            },
-            maxWidth: {
-              xs: maxW,
-              sm: "calc(50% - 12px)",
-              md: "calc(50% - 16px)",
-              lg: maxW,
-            },
-            minWidth: { xs: minW, sm: 0, md: 0, lg: minW },
+            flexGrow: 0,
+            flexShrink: 1,
+            flexBasis: { xs: "100%", sm: minW },
+            width: { xs: "100%", sm: minW },
+            minWidth: 0,
+            maxWidth: { xs: maxW, sm: minW },
+            // Force auto height so align-items:stretch can equalize every card
+            // in a row. A child height:100% computes to non-auto and opts the
+            // card out of stretching, which causes variable heights.
+            alignSelf: "stretch",
+            height: "auto !important",
           },
         },
         sx,
