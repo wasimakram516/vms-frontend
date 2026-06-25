@@ -50,6 +50,7 @@ import {
 import { getDepartments } from "@/services/departmentService";
 import { getRolePagePermissions, getUserPageOverrides, setUserPageOverrides } from "@/services/permissionService";
 import PAGES, { getPagesForRole } from "@/constants/pageCatalog";
+import { PAGE_ICONS } from "@/constants/pageIcons";
 import AppCard from "@/components/cards/AppCard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
@@ -1084,7 +1085,7 @@ export default function UsersPage() {
         open={modalOpen}
         onClose={() => { if (!submitting) { setModalOpen(false); setModalTab(0); } }}
         fullWidth
-        maxWidth="sm"
+        maxWidth="md"
         PaperProps={{ sx: { variant: "frosted", borderRadius: 4 } }}
       >
         <DialogHeader
@@ -1270,71 +1271,90 @@ export default function UsersPage() {
                   {overrideRolePages.map((page) => {
                   const baseGrants = isEditMode ? (editRolePermissions[page.pageId] || []) : (rolePermissions[page.pageId] || []);
                   const currentOverrides = isEditMode ? editOverrides : overrides;
+                  const PageIcon = PAGE_ICONS[page.pageId];
                   return (
-                    <Accordion
+                    <Box
                       key={page.pageId}
-                      variant="outlined"
-                      disableGutters
-                      sx={{ borderRadius: "8px !important", "&:before": { display: "none" }, overflow: "hidden" }}
+                      sx={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        gap: 1,
+                        rowGap: 0.75,
+                        mb: 1,
+                        px: { xs: 1.5, sm: 2 },
+                        py: { xs: 1.25, sm: 1 },
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 2,
+                        bgcolor: "background.paper",
+                      }}
                     >
-                      <AccordionSummary expandIcon={<ICONS.expandMore />}>
-                        <Typography sx={{ fontWeight: 700, fontSize: "0.9rem" }}>{page.label}</Typography>
-                      </AccordionSummary>
-                      <AccordionDetails sx={{ bgcolor: "action.hover", borderTop: "1px solid", borderColor: "divider", p: 1.5 }}>
-                        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" }, gap: 1 }}>
-                          {page.actions.map((action) => {
-                            const isInherited = baseGrants.includes(action);
-                            const currentOverride = currentOverrides[page.pageId]?.[action] || "";
-                            const isChecked = isInherited ? currentOverride !== "deny" : currentOverride === "allow";
-                            const isOverridden = currentOverride !== "";
-                            return (
-                              <Box
-                                key={action}
-                                onClick={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
-                                sx={{
-                                  p: 1,
-                                  borderRadius: 1.5,
-                                  border: "1px solid",
-                                  borderColor: isChecked ? "primary.main" : "divider",
-                                  bgcolor: isChecked ? "action.selected" : "background.paper",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "center",
-                                  gap: 0.5,
-                                  cursor: canManageOverrides ? "pointer" : "default",
-                                  transition: "all 0.15s ease",
-                                  "&:hover": canManageOverrides ? { borderColor: "primary.main", bgcolor: "action.hover" } : {},
-                                }}
-                              >
+                      <Chip
+                        label={page.label}
+                        size="small"
+                        icon={PageIcon ? <PageIcon sx={{ fontSize: "1rem !important" }} /> : undefined}
+                        sx={{
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          fontSize: "0.7rem",
+                          borderRadius: 999,
+                          minWidth: { sm: 150 },
+                          justifyContent: "flex-start",
+                        }}
+                      />
+                      <Stack
+                        direction="row"
+                        flexWrap="wrap"
+                        alignItems="center"
+                        sx={{
+                          flexBasis: { xs: "100%", sm: "auto" },
+                          flexGrow: { sm: 1 },
+                          columnGap: 1,
+                          rowGap: 0.5,
+                        }}
+                      >
+                        {page.actions.map((action) => {
+                          const isInherited = baseGrants.includes(action);
+                          const currentOverride = currentOverrides[page.pageId]?.[action] || "";
+                          const isChecked = isInherited ? currentOverride !== "deny" : currentOverride === "allow";
+                          const isOverridden = currentOverride !== "";
+                          return (
+                            <FormControlLabel
+                              key={action}
+                              control={
                                 <Checkbox
                                   checked={isChecked}
                                   size="small"
-                                  sx={{ p: 0 }}
                                   disabled={!canManageOverrides}
-                                  onClick={(e) => e.stopPropagation()}
                                   onChange={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
                                 />
-                                <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "capitalize", lineHeight: 1 }}>
-                                  {action}
-                                </Typography>
-                                {isOverridden ? (
-                                  <Chip
-                                    label={currentOverride}
-                                    size="small"
-                                    color={currentOverride === "allow" ? "success" : "error"}
-                                    sx={{ height: 16, fontSize: "0.6rem", "& .MuiChip-label": { px: 0.75 } }}
-                                  />
-                                ) : isInherited ? (
-                                  <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary", lineHeight: 1 }}>
-                                    inherited
+                              }
+                              label={
+                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                  <Typography sx={{ fontSize: "0.85rem", textTransform: "capitalize" }}>
+                                    {action.replace(/-/g, " ")}
                                   </Typography>
-                                ) : null}
-                              </Box>
-                            );
-                          })}
-                        </Box>
-                      </AccordionDetails>
-                    </Accordion>
+                                  {isOverridden ? (
+                                    <Chip
+                                      label={currentOverride}
+                                      size="small"
+                                      color={currentOverride === "allow" ? "success" : "error"}
+                                      sx={{ height: 16, fontSize: "0.6rem", "& .MuiChip-label": { px: 0.6 } }}
+                                    />
+                                  ) : isInherited ? (
+                                    <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary" }}>
+                                      inherited
+                                    </Typography>
+                                  ) : null}
+                                </Stack>
+                              }
+                              sx={{ mr: 1 }}
+                            />
+                          );
+                        })}
+                      </Stack>
+                    </Box>
                   );
                 })}
               </>
