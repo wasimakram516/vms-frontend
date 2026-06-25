@@ -32,12 +32,14 @@ export default function SettingsPage() {
     ] : []),
     ...(!isDev ? [
       { icon: ICONS.business, label: "Host Details", description: "Set up your organization profile — name, logo, contact info, and more. This profile is displayed on visitor-facing communications and documents.", path: "/cms/settings/host-details", resource: "host-details", readHardcode: isSuperAdmin, writeHardcode: isSuperAdmin },
-      { icon: ICONS.apartment, label: "Departments", description: "Manage the departments available for visitor registrations. Visitors select a department when submitting a request.", path: "/cms/settings/departments", resource: "departments", readHardcode: true, writeHardcode: isSuperAdmin },
-      { icon: ICONS.key, label: "Access Levels", description: "Define access levels (e.g. Restricted, General, Escorted) that admins assign to approved visits.", path: "/cms/settings/access-levels", resource: "access-levels", readHardcode: true, writeHardcode: isSuperAdmin },
-      ...(isKitchenEnabled ? [{ icon: ICONS.diningTable, label: "Kitchen Menu", description: "Manage the food and beverages available in the staff kitchen. Add new items, update descriptions, and toggle availability.", path: "/cms/settings/kitchen-menu", resource: "kitchen-menu", readHardcode: isKitchenAdmin || isSuperAdmin, writeHardcode: isKitchenAdmin || isSuperAdmin }] : []),
     ] : []),
     ...(canAccessResource(user, "access-control", { hardcodeAllowed: isSuperAdmin }) ? [
       { icon: ICONS.security, label: "Access Control", description: "Assign page-level permissions to each role. Control which pages and actions are available to different user types.", path: "/cms/settings/access-control", resource: "access-control", readHardcode: isSuperAdmin, writeHardcode: isSuperAdmin },
+    ] : []),
+    ...(!isDev ? [
+      { icon: ICONS.apartment, label: "Departments", description: "Manage the departments available for visitor registrations. Visitors select a department when submitting a request.", path: "/cms/settings/departments", resource: "departments", readHardcode: true, writeHardcode: isSuperAdmin },
+      { icon: ICONS.key, label: "Access Levels", description: "Define access levels (e.g. Restricted, General, Escorted) that admins assign to approved visits.", path: "/cms/settings/access-levels", resource: "access-levels", readHardcode: true, writeHardcode: isSuperAdmin },
+      ...(isKitchenEnabled ? [{ icon: ICONS.diningTable, label: "Kitchen Menu", description: "Manage the food and beverages available in the staff kitchen. Add new items, update descriptions, and toggle availability.", path: "/cms/settings/kitchen-menu", resource: "kitchen-menu", readHardcode: isKitchenAdmin || isSuperAdmin, writeHardcode: isKitchenAdmin || isSuperAdmin }] : []),
     ] : []),
   ];
 
