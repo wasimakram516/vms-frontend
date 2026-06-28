@@ -102,7 +102,7 @@ export default function BookingPage() {
   const [ndaLoading, setNdaLoading] = useState(false);
   const [translatedNda, setTranslatedNda] = useState(null);
 
-  const [bookingType, setBookingType] = useState("preset");
+  const [bookingType, setBookingType] = useState("custom");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
   const [specificDays, setSpecificDays] = useState([]); // day indices [0=Sun..6=Sat]
   const [specificEndDate, setSpecificEndDate] = useState(null); // dayjs end date for specificDays preset
@@ -262,10 +262,11 @@ export default function BookingPage() {
         timeTo: `${toH}:${toM}`,
       }));
     }
-    // Restore recurring preset when editing
+    // Restore recurring preset when editing (re-open the preset tab for recurring visits)
     if (activeRegistration.recurringType) {
       const typeMap = { full_week: "fullWeek", full_month: "fullMonth", specific_days: "specificDays" };
       const preset = typeMap[activeRegistration.recurringType] || "fullDay";
+      setBookingType("preset");
       setSelectedPreset(preset);
       if (preset === "specificDays" && Array.isArray(activeRegistration.recurringDays)) {
         setSpecificDays(activeRegistration.recurringDays);
@@ -746,8 +747,8 @@ export default function BookingPage() {
                     variant="fullWidth"
                     sx={{ minHeight: 46, bgcolor: (theme) => alpha(theme.palette.text.primary, isDark ? 0.06 : 0.04), borderRadius: 999, p: 0.5, "& .MuiTabs-indicator": { display: "none" }, "& .MuiTab-iconWrapper": { marginRight: isRtl ? 0 : "8px", marginLeft: isRtl ? "8px" : 0 } }}
                   >
-                    <Tab value="preset" icon={<ICONS.event fontSize="small" />} iconPosition="start" label={t("bookingPresetTab")} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
                     <Tab value="custom" icon={<ICONS.time fontSize="small" />} iconPosition="start" label={t("bookingCustomTab")} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
+                    <Tab value="preset" icon={<ICONS.event fontSize="small" />} iconPosition="start" label={t("bookingPresetTab")} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
                   </Tabs>
 
                   {bookingType === "custom" && (
