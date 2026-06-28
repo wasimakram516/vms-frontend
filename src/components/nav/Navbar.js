@@ -139,15 +139,7 @@ export default function Navbar() {
               </IconButton>
             </Tooltip>
 
-            {!user && !isStaffArea ? (
-              <Link href="/auth/login">
-                <Tooltip title="Sign In">
-                  <IconButton color="primary" sx={avatarButtonStyle}>
-                    <ICONS.login fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Link>
-            ) : user ? (
+            {user ? (
               <>
                 <Tooltip title="View profile">
                   <IconButton onClick={handleOpen} sx={avatarButtonStyle}>
