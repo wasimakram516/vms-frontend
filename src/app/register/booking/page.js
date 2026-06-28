@@ -715,12 +715,10 @@ export default function BookingPage() {
                   onChange={handleDateChange}
                   disablePast
                   slots={{
-                    leftArrowIcon: () => (
-                      <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1, fontFamily: "monospace" }}>{">"}</span>
-                    ),
-                    rightArrowIcon: () => (
-                      <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1, fontFamily: "monospace" }}>{"<"}</span>
-                    ),
+                    leftArrowIcon: () =>
+                      isRtl ? <ICONS.chevronRight fontSize="small" /> : <ICONS.chevronLeft fontSize="small" />,
+                    rightArrowIcon: () =>
+                      isRtl ? <ICONS.chevronLeft fontSize="small" /> : <ICONS.chevronRight fontSize="small" />,
                   }}
                 />
               </Box>

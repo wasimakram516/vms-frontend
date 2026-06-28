@@ -36,6 +36,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Remove as RemoveIcon,
   ChevronRight as ChevronRightIcon,
+  ChevronLeft as ChevronLeftIcon,
 } from "@mui/icons-material";
 
 // Social Media
@@ -184,6 +185,7 @@ const ICONS = {
   close: CloseIcon,
   create: AddIcon,
   chevronRight: ChevronRightIcon,
+  chevronLeft: ChevronLeftIcon,
   delete: DeleteIcon,
   down: ExpandMoreIcon,
   expandMore: ExpandMoreIcon,
