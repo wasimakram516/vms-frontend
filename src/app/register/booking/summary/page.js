@@ -18,7 +18,8 @@ import { QRCodeCanvas } from "qrcode.react";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import registrationTranslations from "@/locales/registration";
 import { translateBatch } from "@/services/translationService";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
 
@@ -141,7 +142,7 @@ export default function SummaryPage() {
   const router = useRouter();
   const { resetVisitorFlow } = useVisitor();
   const { mode } = useColorMode();
-  const { t, lang, isRtl } = useLanguage();
+  const { t, language: lang, isArabic: isRtl } = useI18nLayout(registrationTranslations);
   const isDark = mode === "dark";
   const SUMMARY_COLORS = getSummaryColors(isDark);
 
@@ -328,7 +329,7 @@ export default function SummaryPage() {
 
   const sameDay = fromDate && toDate && fmtDate(fromDate) === fmtDate(toDate);
 
-  const DAY_NAMES_FULL = [t("daySun"), t("dayMon"), t("dayTue"), t("dayWed"), t("dayThu"), t("dayFri"), t("daySat")];
+  const DAY_NAMES_FULL = [t.daySun, t.dayMon, t.dayTue, t.dayWed, t.dayThu, t.dayFri, t.daySat];
   const recurringType = registration?.recurringType ?? registration?.recurring_type ?? null;
   const recurringDays = registration?.recurringDays ?? registration?.recurring_days ?? null;
   const recurringTimeFrom = registration?.recurringTimeFrom ?? registration?.recurring_time_from ?? null;
@@ -345,15 +346,15 @@ export default function SummaryPage() {
 
   const summaryRows = [
     {
-      label: sameDay ? t("summaryVisitDate") : t("summaryFrom"),
+      label: sameDay ? t.summaryVisitDate : t.summaryFrom,
       value: sameDay
         ? `${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)} – ${fmtTime(toDate)}`
         : `${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)}`,
     },
-    ...(!sameDay ? [{ label: t("summaryTo"), value: `${fmtDate(toDate)}  ·  ${fmtTime(toDate)}` }] : []),
-    ...(recurringScheduleLabel ? [{ label: t("recurringDays"), value: recurringScheduleLabel }] : []),
-    ...(deptName ? [{ label: t("summaryDepartment"), value: translatedDynamic.dept || deptName }] : []),
-    ...(purposeText ? [{ label: t("summaryPurpose"), value: translatedDynamic.purpose || purposeText }] : []),
+    ...(!sameDay ? [{ label: t.summaryTo, value: `${fmtDate(toDate)}  ·  ${fmtTime(toDate)}` }] : []),
+    ...(recurringScheduleLabel ? [{ label: t.recurringDays, value: recurringScheduleLabel }] : []),
+    ...(deptName ? [{ label: t.summaryDepartment, value: translatedDynamic.dept || deptName }] : []),
+    ...(purposeText ? [{ label: t.summaryPurpose, value: translatedDynamic.purpose || purposeText }] : []),
   ];
 
   const summaryCardBorder = isDark ? alpha(SUMMARY_COLORS.white, 0.22) : alpha(SUMMARY_COLORS.primary, 0.14);
@@ -386,17 +387,17 @@ export default function SummaryPage() {
   );
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading={t("summaryMobileSubheading")}>
+    <VisitorLayout justifyContent="center" mobileSubheading={t.summaryMobileSubheading}>
       <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }} style={{ width: "100%", direction: isRtl ? "rtl" : "ltr" }}>
         <Stack spacing={2.2}>
 
           <Stack alignItems="center" spacing={0.75}>
             <ICONS.checkCircle sx={{ fontSize: 48, color: "success.main" }} />
             <Typography variant="h6" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", display: { xs: "none", md: "block" } }}>
-              {t("summaryTitle")}
+              {t.summaryTitle}
             </Typography>
             <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 360 }}>
-              {t("summaryDesc")}
+              {t.summaryDesc}
             </Typography>
             <Box
               sx={{
@@ -410,7 +411,7 @@ export default function SummaryPage() {
             >
               <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "warning.main" }} />
               <Typography variant="caption" fontWeight={800} sx={{ color: isDark ? "#fef3c7" : "#7c2d12", textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.72rem" }}>
-                {t("summaryStatus")}
+                {t.summaryStatus}
               </Typography>
             </Box>
           </Stack>
@@ -509,7 +510,7 @@ export default function SummaryPage() {
                   {qrToken && (
                     <Box sx={{ px: 1.75, py: 0.85, borderRadius: 999, display: "flex", justifyContent: "center" }}>
                       <Typography variant="caption" fontWeight={700} sx={{ color: isDark ? SUMMARY_COLORS.white : SUMMARY_COLORS.primaryDark, ...(!isRtl && { letterSpacing: 0.8 }), wordBreak: "break-all" }}>
-                        {t("summaryToken")} {qrToken}
+                        {t.summaryToken} {qrToken}
                       </Typography>
                     </Box>
                   )}
@@ -517,7 +518,7 @@ export default function SummaryPage() {
 
                 <Divider sx={{ my: 1.5 }} />
                 <Typography variant="caption" display="block" textAlign="center" sx={{ color: SUMMARY_COLORS.inkSoft }}>
-                  {t("summaryPoweredBy")} {translatedDynamic.brand || hostBrandName}
+                  {t.summaryPoweredBy} {translatedDynamic.brand || hostBrandName}
                 </Typography>
               </Box>
             </Paper>
@@ -530,7 +531,7 @@ export default function SummaryPage() {
               onClick={handleHome}
               sx={{ py: 1.5, borderRadius: 30, fontWeight: 700, width: "100%", ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
             >
-              {t("summaryBackHome")}
+              {t.summaryBackHome}
             </Button>
             <Button
               variant="outlined"
@@ -538,7 +539,7 @@ export default function SummaryPage() {
               onClick={handleDownload}
               sx={{ py: 1.5, borderRadius: 30, fontWeight: 700, width: "100%", ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
             >
-              {t("summarySave")}
+              {t.summarySave}
             </Button>
           </Stack>
 

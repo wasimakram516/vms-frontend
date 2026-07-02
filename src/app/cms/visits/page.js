@@ -45,7 +45,8 @@ import { useColorMode } from "@/contexts/ThemeContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import registrationTranslations from "@/locales/registration";
 import { pdf } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import { exportAllBadges } from "@/utils/exportBadges";
@@ -618,15 +619,15 @@ const buildEditForm = (reg, fields = []) => {
 };
 
 export default function CmsVisitsPage() {
-  const { t, lang } = useLanguage();
+  const { t, language: lang } = useI18nLayout(registrationTranslations);
   const DAY_LABELS = [
-    t("daySun"),
-    t("dayMon"),
-    t("dayTue"),
-    t("dayWed"),
-    t("dayThu"),
-    t("dayFri"),
-    t("daySat"),
+    t.daySun,
+    t.dayMon,
+    t.dayTue,
+    t.dayWed,
+    t.dayThu,
+    t.dayFri,
+    t.daySat,
   ];
   const theme = useTheme();
   const { mode } = useColorMode();
@@ -3868,7 +3869,7 @@ export default function CmsVisitsPage() {
                                       fontSize: "0.65rem",
                                     }}
                                   >
-                                    {t("bookingDayType")}
+                                    {t.bookingDayType}
                                   </Typography>
                                   <Tabs
                                     value={dayTypeTab}
@@ -3890,11 +3891,11 @@ export default function CmsVisitsPage() {
                                   >
                                     <Tab
                                       value="working"
-                                      label={t("bookingWorkingDays")}
+                                      label={t.bookingWorkingDays}
                                     />
                                     <Tab
                                       value="weekend"
-                                      label={t("bookingWeekendDays")}
+                                      label={t.bookingWeekendDays}
                                     />
                                   </Tabs>
                                 </Box>
@@ -3971,7 +3972,7 @@ export default function CmsVisitsPage() {
                                               fontSize: "0.68rem",
                                             }}
                                           >
-                                            {t("bookingWorkingDays")}
+                                            {t.bookingWorkingDays}
                                           </Typography>
                                           <Stack
                                             direction="row"
@@ -3992,7 +3993,7 @@ export default function CmsVisitsPage() {
                                               fontSize: "0.68rem",
                                             }}
                                           >
-                                            {t("bookingWeekendDays")}
+                                            {t.bookingWeekendDays}
                                           </Typography>
                                           <Stack
                                             direction="row"
@@ -4101,11 +4102,11 @@ export default function CmsVisitsPage() {
                                           fontSize: "0.65rem",
                                         }}
                                       >
-                                        {t("bookingDaysInRange").replace(
+                                        {t.bookingDaysInRange.replace(
                                           "{{type}}",
                                           dayTypeTab === "working"
-                                            ? t("bookingWorkingDays")
-                                            : t("bookingWeekendDays"),
+                                            ? t.bookingWorkingDays
+                                            : t.bookingWeekendDays,
                                         )}
                                       </Typography>
                                       <Stack
@@ -4165,7 +4166,7 @@ export default function CmsVisitsPage() {
                                       sx={{ fontSize: 12 }}
                                     >
                                       {hostConfig
-                                        ? t("bookingFullDayWorkingHoursInfo")
+                                        ? t.bookingFullDayWorkingHoursInfo
                                             .replace(
                                               "{{start}}",
                                               `${String(hostConfig.start).padStart(2, "0")}:${String(hostConfig.startMinute ?? 0).padStart(2, "0")}`,
@@ -4174,7 +4175,7 @@ export default function CmsVisitsPage() {
                                               "{{end}}",
                                               `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`,
                                             )
-                                        : t("bookingFullDayWorkingHoursInfo")
+                                        : t.bookingFullDayWorkingHoursInfo
                                             .replace("{{start}}", "08:00")
                                             .replace("{{end}}", "17:00")}
                                     </Typography>
@@ -4193,7 +4194,7 @@ export default function CmsVisitsPage() {
                                         const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
                                         return (
                                           <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
-                                            {t("bookingWorkingHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
+                                            {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                           </Typography>
                                         );
                                       })()}
@@ -4235,7 +4236,7 @@ export default function CmsVisitsPage() {
                                             <Stack direction="row" spacing={1} alignItems="center">
                                               <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
                                               <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
-                                                {t("bookingSelectedTimeOutside").replace("{{start}}", s).replace("{{end}}", e)}
+                                                {t.bookingSelectedTimeOutside.replace("{{start}}", s).replace("{{end}}", e)}
                                               </Typography>
                                             </Stack>
                                           </Box>
@@ -6148,7 +6149,7 @@ export default function CmsVisitsPage() {
                                 fontSize: "0.65rem",
                               }}
                             >
-                              {t("bookingDayType")}
+                              {t.bookingDayType}
                             </Typography>
                             <Tabs
                               value={dayTypeTab}
@@ -6170,11 +6171,11 @@ export default function CmsVisitsPage() {
                             >
                               <Tab
                                 value="working"
-                                label={t("bookingWorkingDays")}
+                                label={t.bookingWorkingDays}
                               />
                               <Tab
                                 value="weekend"
-                                label={t("bookingWeekendDays")}
+                                label={t.bookingWeekendDays}
                               />
                             </Tabs>
                           </Box>
@@ -6246,7 +6247,7 @@ export default function CmsVisitsPage() {
                                         fontSize: "0.68rem",
                                       }}
                                     >
-                                      {t("bookingWorkingDays")}
+                                      {t.bookingWorkingDays}
                                     </Typography>
                                     <Stack
                                       direction="row"
@@ -6267,7 +6268,7 @@ export default function CmsVisitsPage() {
                                         fontSize: "0.68rem",
                                       }}
                                     >
-                                      {t("bookingWeekendDays")}
+                                      {t.bookingWeekendDays}
                                     </Typography>
                                     <Stack
                                       direction="row"
@@ -6371,11 +6372,11 @@ export default function CmsVisitsPage() {
                                     fontSize: "0.65rem",
                                   }}
                                 >
-                                  {t("bookingDaysInRange").replace(
+                                  {t.bookingDaysInRange.replace(
                                     "{{type}}",
                                     dayTypeTab === "working"
-                                      ? t("bookingWorkingDays")
-                                      : t("bookingWeekendDays"),
+                                      ? t.bookingWorkingDays
+                                      : t.bookingWeekendDays,
                                   )}
                                 </Typography>
                                 <Stack
@@ -6431,7 +6432,7 @@ export default function CmsVisitsPage() {
                                 sx={{ fontSize: 12 }}
                               >
                                 {hostConfig
-                                  ? t("bookingFullDayWorkingHoursInfo")
+                                  ? t.bookingFullDayWorkingHoursInfo
                                       .replace(
                                         "{{start}}",
                                         `${String(hostConfig.start).padStart(2, "0")}:${String(hostConfig.startMinute ?? 0).padStart(2, "0")}`,
@@ -6440,7 +6441,7 @@ export default function CmsVisitsPage() {
                                         "{{end}}",
                                         `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`,
                                       )
-                                  : t("bookingFullDayWorkingHoursInfo")
+                                  : t.bookingFullDayWorkingHoursInfo
                                       .replace("{{start}}", "08:00")
                                       .replace("{{end}}", "17:00")}
                               </Typography>
@@ -6459,7 +6460,7 @@ export default function CmsVisitsPage() {
                                 const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
                                 return (
                                   <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
-                                    {t("bookingWorkingHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
+                                    {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                   </Typography>
                                 );
                               })()}
@@ -6501,7 +6502,7 @@ export default function CmsVisitsPage() {
                                     <Stack direction="row" spacing={1} alignItems="center">
                                       <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
                                       <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
-                                        {t("bookingSelectedTimeOutside").replace("{{start}}", s).replace("{{end}}", e)}
+                                        {t.bookingSelectedTimeOutside.replace("{{start}}", s).replace("{{end}}", e)}
                                       </Typography>
                                     </Stack>
                                   </Box>
@@ -7435,7 +7436,7 @@ export default function CmsVisitsPage() {
                                     fontSize: "0.65rem",
                                   }}
                                 >
-                                  {t("bookingDayType")}
+                                  {t.bookingDayType}
                                 </Typography>
                                 <Tabs
                                   value={dayTypeTab}
@@ -7457,11 +7458,11 @@ export default function CmsVisitsPage() {
                                 >
                                   <Tab
                                     value="working"
-                                    label={t("bookingWorkingDays")}
+                                    label={t.bookingWorkingDays}
                                   />
                                   <Tab
                                     value="weekend"
-                                    label={t("bookingWeekendDays")}
+                                    label={t.bookingWeekendDays}
                                   />
                                 </Tabs>
                               </Box>
@@ -7533,7 +7534,7 @@ export default function CmsVisitsPage() {
                                             fontSize: "0.68rem",
                                           }}
                                         >
-                                          {t("bookingWorkingDays")}
+                                          {t.bookingWorkingDays}
                                         </Typography>
                                         <Stack
                                           direction="row"
@@ -7554,7 +7555,7 @@ export default function CmsVisitsPage() {
                                             fontSize: "0.68rem",
                                           }}
                                         >
-                                          {t("bookingWeekendDays")}
+                                          {t.bookingWeekendDays}
                                         </Typography>
                                         <Stack
                                           direction="row"
@@ -7660,11 +7661,11 @@ export default function CmsVisitsPage() {
                                         fontSize: "0.65rem",
                                       }}
                                     >
-                                      {t("bookingDaysInRange").replace(
+                                      {t.bookingDaysInRange.replace(
                                         "{{type}}",
                                         dayTypeTab === "working"
-                                          ? t("bookingWorkingDays")
-                                          : t("bookingWeekendDays"),
+                                          ? t.bookingWorkingDays
+                                          : t.bookingWeekendDays,
                                       )}
                                     </Typography>
                                     <Stack
@@ -7722,7 +7723,7 @@ export default function CmsVisitsPage() {
                                     sx={{ fontSize: 12 }}
                                   >
                                     {hostConfig
-                                      ? t("bookingFullDayWorkingHoursInfo")
+                                      ? t.bookingFullDayWorkingHoursInfo
                                           .replace(
                                             "{{start}}",
                                             `${String(hostConfig.start).padStart(2, "0")}:${String(hostConfig.startMinute ?? 0).padStart(2, "0")}`,
@@ -7731,7 +7732,7 @@ export default function CmsVisitsPage() {
                                             "{{end}}",
                                             `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`,
                                           )
-                                      : t("bookingFullDayWorkingHoursInfo")
+                                      : t.bookingFullDayWorkingHoursInfo
                                           .replace("{{start}}", "08:00")
                                           .replace("{{end}}", "17:00")}
                                   </Typography>
@@ -7750,7 +7751,7 @@ export default function CmsVisitsPage() {
                                     const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
                                     return (
                                       <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
-                                        {t("bookingWorkingHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
+                                        {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                       </Typography>
                                     );
                                   })()}
@@ -7788,7 +7789,7 @@ export default function CmsVisitsPage() {
                                         <Stack direction="row" spacing={1} alignItems="center">
                                           <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
                                           <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
-                                            {t("bookingSelectedTimeOutside").replace("{{start}}", s).replace("{{end}}", e)}
+                                            {t.bookingSelectedTimeOutside.replace("{{start}}", s).replace("{{end}}", e)}
                                           </Typography>
                                         </Stack>
                                       </Box>

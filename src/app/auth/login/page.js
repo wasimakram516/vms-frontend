@@ -17,7 +17,8 @@ import VisitorLayout from "@/components/layout/VisitorLayout";
 import { login } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import authTranslations from "@/locales/auth";
 import { validateRequired } from "@/utils/validationUtils";
 import { getStaffDestination } from "@/utils/navigationUtils";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
@@ -25,7 +26,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { user, setUser, logout, loading: authLoading } = useAuth();
   const { mode } = useColorMode();
-  const { t, isRtl } = useLanguage();
+  const { t, isArabic: isRtl } = useI18nLayout(authTranslations);
   const isDark = mode === "dark";
 
   useEffect(() => {
@@ -98,8 +99,8 @@ export default function LoginPage() {
 
   return (
     <VisitorLayout
-      title={t("loginPanelTitle")}
-      subtitle={t("loginPanelSubtitle")}
+      title={t.loginPanelTitle}
+      subtitle={t.loginPanelSubtitle}
       justifyContent="center"
     >
       <Box sx={{ position: "relative", mb: 4 }}>
@@ -129,10 +130,10 @@ export default function LoginPage() {
               textAlign: "center"
             }}
           >
-            {t("loginTitle")}
+            {t.loginTitle}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-            {t("loginSubtitle")}
+            {t.loginSubtitle}
           </Typography>
         </Box>
       </Box>
@@ -140,7 +141,7 @@ export default function LoginPage() {
 
         <TextField
           fullWidth
-          label={t("loginEmail")}
+          label={t.loginEmail}
           name="email"
           type="email"
           value={form.email}
@@ -159,7 +160,7 @@ export default function LoginPage() {
 
         <TextField
           fullWidth
-          label={t("loginPassword")}
+          label={t.loginPassword}
           name="password"
           type={showPassword ? "text" : "password"}
           value={form.password}
@@ -202,7 +203,7 @@ export default function LoginPage() {
             ...getStartIconSpacing(isRtl ? "rtl" : "ltr"),
           }}
         >
-          {loading ? t("loginSigning") : t("loginButton")}
+          {loading ? t.loginSigning : t.loginButton}
         </Button>
       </Box>
     </VisitorLayout>

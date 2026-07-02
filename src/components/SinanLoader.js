@@ -3,7 +3,8 @@
 import { Box, Skeleton, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AppCard from "@/components/cards/AppCard";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import commonTranslations from "@/locales/common";
 
 export default function SinanLoader({
   title,
@@ -17,9 +18,9 @@ export default function SinanLoader({
   sx = {},
   cardSx = {},
 }) {
-  const { t } = useLanguage();
-  const resolvedTitle = title ?? t("loaderTitle");
-  const resolvedDescription = description ?? t("loaderDescription");
+  const { t } = useI18nLayout(commonTranslations);
+  const resolvedTitle = title ?? t.loaderTitle;
+  const resolvedDescription = description ?? t.loaderDescription;
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const logoSrc = isDark ? "/logo-mark-light.png" : "/logo-mark-dark.png";

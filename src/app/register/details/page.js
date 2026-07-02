@@ -41,7 +41,8 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import NdaTemplateContent from "@/components/NdaTemplateContent";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE, COUNTRY_CODES } from "@/utils/countryCodes";
 import { validateField } from "@/utils/validationUtils";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import registrationTranslations from "@/locales/registration";
 import { filterPhoneInput, filterNumberInput, onKeyPressNumeric, onKeyPressPhone } from "@/utils/phoneUtils";
 import { translateBatch } from "@/services/translationService";
 import { ndaDocToHtml } from "@/utils/ndaDocUtils";
@@ -50,7 +51,7 @@ import getStartIconSpacing from "@/utils/getStartIconSpacing";
 
 export default function DetailsPage() {
   const router = useRouter();
-  const { t, isRtl, lang } = useLanguage();
+  const { t, isArabic: isRtl, language: lang } = useI18nLayout(registrationTranslations);
   const { visitorData, setVisitorData, flowState, setFlowState } = useVisitor();
 
   useEffect(() => {
@@ -357,7 +358,7 @@ export default function DetailsPage() {
     });
 
     if (!visitorData.departmentId) {
-      newErrors.departmentId = t("departmentRequired");
+      newErrors.departmentId = t.departmentRequired;
     }
 
     setErrors(newErrors);
@@ -412,19 +413,19 @@ export default function DetailsPage() {
 
   return (
     <VisitorLayout
-      title={t("detailsLayoutTitle")}
-      subtitle={t("detailsLayoutSubtitle")}
-      mobileSubheading={t("detailsMobileSubheading")}
+      title={t.detailsLayoutTitle}
+      subtitle={t.detailsLayoutSubtitle}
+      mobileSubheading={t.detailsMobileSubheading}
       maxWidth={650}
     >
       <form autoComplete="off">
         <Stack spacing={3}>
           <Box sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}>
             <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-              {t("detailsHeading")}
+              {t.detailsHeading}
             </Typography>
             <Typography variant="body2" color="text.secondary" mt={1}>
-              {t("detailsSubheading")}
+              {t.detailsSubheading}
             </Typography>
           </Box>
 
@@ -433,8 +434,8 @@ export default function DetailsPage() {
           <Stack spacing={3}>
             {fields.length === 0 ? (
               <NoDataAvailable
-                title={t("detailsUnavailableTitle")}
-                description={t("detailsUnavailableDesc")}
+                title={t.detailsUnavailableTitle}
+                description={t.detailsUnavailableDesc}
                 compact
                 minHeight={220}
               />
@@ -712,10 +713,10 @@ export default function DetailsPage() {
             required
             error={Boolean(errors.departmentId)}
           >
-            <InputLabel>{t("department")}</InputLabel>
+            <InputLabel>{t.department}</InputLabel>
             <Select
               value={visitorData.departmentId || ""}
-              label={t("department")}
+              label={t.department}
               onChange={(e) => {
                 setVisitorData((prev) => ({ ...prev, departmentId: e.target.value }));
                 if (errors.departmentId) {
@@ -749,12 +750,12 @@ export default function DetailsPage() {
               }
               label={
                 <Typography component="span" variant="body2" fontWeight={600}>
-                  {t("ndaAgreeLabel")}
+                  {t.ndaAgreeLabel}
                 </Typography>
               }
             />
             <Typography variant="caption" color="text.secondary" sx={{ pl: 4 }}>
-              {t("ndaHint")}
+              {t.ndaHint}
             </Typography>
           </Stack>
 
@@ -766,7 +767,7 @@ export default function DetailsPage() {
               onClick={() => router.push("/")}
               sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
             >
-              {t("cancel")}
+              {t.cancel}
             </Button>
             <Button
               variant="contained"
@@ -776,7 +777,7 @@ export default function DetailsPage() {
               onClick={() => handleNext()}
               sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
             >
-              {t("scheduleButton")}
+              {t.scheduleButton}
             </Button>
           </Stack>
         </Stack>
@@ -786,7 +787,7 @@ export default function DetailsPage() {
       <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" fontWeight={800} component="span" sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            {(isRtl && translatedNda?.name) ? translatedNda.name : (ndaTemplate?.name || t("ndaTitle"))}
+            {(isRtl && translatedNda?.name) ? translatedNda.name : (ndaTemplate?.name || t.ndaTitle)}
           </Typography>
           <IconButton onClick={() => setNdaOpen(false)}>
             <ICONS.close />
@@ -797,7 +798,7 @@ export default function DetailsPage() {
             <Stack spacing={2} alignItems="center" sx={{ py: 4 }}>
               <CircularProgress size={28} />
               <Typography variant="body2" color="text.secondary">
-                {t("ndaLoading")}
+                {t.ndaLoading}
               </Typography>
             </Stack>
           ) : (
@@ -810,7 +811,7 @@ export default function DetailsPage() {
             onClick={() => setNdaOpen(false)}
             sx={{ borderRadius: 30 }}
           >
-            {t("close")}
+            {t.close}
           </Button>
           <Button
             variant="contained"
@@ -819,7 +820,7 @@ export default function DetailsPage() {
             onClick={() => { setNdaAccepted(true); setNdaOpen(false); }}
             sx={{ borderRadius: 30, ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
           >
-            {t("agree")}
+            {t.agree}
           </Button>
         </DialogActions>
       </Dialog>

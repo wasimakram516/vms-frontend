@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Box, Typography, Stack, Paper } from "@mui/material";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import registrationTranslations from "@/locales/registration";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import VisitorLayout from "@/components/layout/VisitorLayout";
@@ -14,7 +15,7 @@ export default function HomePage() {
   const router = useRouter();
   const { resetVisitorFlow } = useVisitor();
   const { mode } = useColorMode();
-  const { t, isRtl } = useLanguage();
+  const { t, isArabic: isRtl } = useI18nLayout(registrationTranslations);
   const isDark = mode === "dark";
   const dir = isRtl ? "rtl" : "ltr";
   const [isNavigating, setIsNavigating] = useState(false);
@@ -58,7 +59,7 @@ export default function HomePage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading={t("homeTitle")}>
+    <VisitorLayout justifyContent="center" mobileSubheading={t.homeTitle}>
       <Stack spacing={4}>
         <Box
           textAlign="center"
@@ -68,10 +69,10 @@ export default function HomePage() {
             variant="h4"
             fontWeight={800}
           >
-            {t("homeTitle")}
+            {t.homeTitle}
           </Typography>
           <Typography color="text.secondary" mt={1}>
-            {t("homeSubtitle")}
+            {t.homeSubtitle}
           </Typography>
         </Box>
 
@@ -127,10 +128,10 @@ export default function HomePage() {
                     fontSize: { xs: "1.05rem", md: "inherit" }
                   }}
                 >
-                  {t("homeNewVisitor")}
+                  {t.homeNewVisitor}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {t("homeNewVisitorDesc")}
+                  {t.homeNewVisitorDesc}
                 </Typography>
               </Box>
             </Stack>
@@ -187,10 +188,10 @@ export default function HomePage() {
                     fontSize: { xs: "1.05rem", md: "inherit" }
                   }}
                 >
-                  {t("homeReturningVisitor")}
+                  {t.homeReturningVisitor}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {t("homeReturningVisitorDesc")}
+                  {t.homeReturningVisitorDesc}
                 </Typography>
               </Box>
             </Stack>

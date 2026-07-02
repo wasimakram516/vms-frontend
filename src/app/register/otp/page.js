@@ -13,7 +13,8 @@ import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { sendOtp, verifyOtp, checkNdaValidity } from "@/services/registrationService";
 import { applyReturningVerification } from "@/utils/returningFlow";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import registrationTranslations from "@/locales/registration";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
@@ -23,7 +24,7 @@ const OTP_LENGTH = 4;
 export default function RegisterOtpPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
-  const { t, isRtl } = useLanguage();
+  const { t, isArabic: isRtl } = useI18nLayout(registrationTranslations);
   const dir = isRtl ? "rtl" : "ltr";
   const [otp, setOtp] = useState(() => Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
@@ -133,16 +134,16 @@ export default function RegisterOtpPage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading={t("otpHeading")}>
+    <VisitorLayout justifyContent="center" mobileSubheading={t.otpHeading}>
       <Stack spacing={3}>
         <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
           <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            {t("otpHeading")}
+            {t.otpHeading}
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>
-            {t("otpSubtitle")}{" "}
+            {t.otpSubtitle}{" "}
             <Typography component="span" fontWeight={700} color="text.primary">
-              {visitorData.identity || t("otpYourDevice")}
+              {visitorData.identity || t.otpYourDevice}
             </Typography>
           </Typography>
         </Box>
@@ -197,11 +198,11 @@ export default function RegisterOtpPage() {
           startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <ICONS.checkCircle />}
           sx={{ py: 1.8, borderRadius: 30, fontWeight: 700, ...getStartIconSpacing(dir) }}
         >
-          {loading ? t("otpVerifying") : t("otpVerify")}
+          {loading ? t.otpVerifying : t.otpVerify}
         </Button>
 
         <Typography variant="caption" color="text.secondary" align="center">
-          {t("otpNoCode")}{" "}
+          {t.otpNoCode}{" "}
           <Typography
             component="span"
             variant="caption"
@@ -214,10 +215,10 @@ export default function RegisterOtpPage() {
             }}
           >
             {resending
-              ? t("otpResending")
+              ? t.otpResending
               : resendTimer > 0
-                ? t("otpResendIn").replace("{{s}}", resendTimer)
-                : t("otpResend")}
+                ? t.otpResendIn.replace("{{s}}", resendTimer)
+                : t.otpResend}
           </Typography>
         </Typography>
 
@@ -229,7 +230,7 @@ export default function RegisterOtpPage() {
           onClick={() => router.back()}
           sx={{ color: "text.disabled", textTransform: "none", ...getStartIconSpacing(dir) }}
         >
-          {t("back")}
+          {t.back}
         </Button>
       </Stack>
     </VisitorLayout>

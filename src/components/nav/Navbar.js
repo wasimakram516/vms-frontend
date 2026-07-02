@@ -17,7 +17,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import commonTranslations from "@/locales/common";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 
@@ -28,13 +29,14 @@ import { getStaffDestination } from "@/utils/navigationUtils";
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { mode, toggleColorMode } = useColorMode();
-  const { t, isRtl } = useLanguage();
+  const { t } = useI18nLayout(commonTranslations);
   const pathname = usePathname();
   const router = useRouter();
   const brandLogo = mode === "dark" ? "/logo-mark-light.png" : "/logo-mark-dark.png";
   const isStaffArea = pathname?.startsWith("/staff");
   const isCmsArea = pathname?.startsWith("/cms");
   const isVisitorArea = !isStaffArea && !isCmsArea;
+  const isGateStaffArea = pathname?.startsWith("/staff/gate");
   const kitchenAdmin = user?.adminType === "kitchen";
 
   const brandHref = isStaffArea ? "/staff" : kitchenAdmin ? "/cms/kitchen" : "/";
@@ -107,7 +109,7 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "block", sm: "none" } }}
               >
-                {isVisitorArea ? t("navbarBrand") : "Sentry Visitor Portal"}
+                {isVisitorArea || isGateStaffArea ? t.navbarBrand : "Sentry Visitor Portal"}
               </Typography>
 
               <Typography
@@ -117,15 +119,15 @@ export default function Navbar() {
                 noWrap
                 sx={{ display: { xs: "none", sm: "block" } }}
               >
-                {isVisitorArea ? t("navbarBrand") : "Sentry Visitor Portal"}
+                {isVisitorArea || isGateStaffArea ? t.navbarBrand : "Sentry Visitor Portal"}
               </Typography>
             </Stack>
           </Link>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-            {isVisitorArea && <LanguageSwitcher />}
+            {(isVisitorArea || isGateStaffArea) && <LanguageSwitcher />}
 
-            <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
+            <Tooltip title={t[mode === "light" ? "navSwitchToDark" : "navSwitchToLight"]}>
               <IconButton
                 onClick={toggleColorMode} 
                 sx={{ 
@@ -141,7 +143,7 @@ export default function Navbar() {
 
             {user ? (
               <>
-                <Tooltip title="View profile">
+                <Tooltip title={t.navViewProfile}>
                   <IconButton onClick={handleOpen} sx={avatarButtonStyle}>
                     <Avatar
                       sx={{
@@ -181,7 +183,7 @@ export default function Navbar() {
                 >
                   <MenuItem>
                     <Typography variant="body2" color="text.secondary">
-                      logged in as  
+                      {t.navLoggedInAs}
                       <strong>
                         &nbsp;
                         {user.role?.charAt(0).toUpperCase() +
@@ -209,7 +211,7 @@ export default function Navbar() {
                       }}
                     >
                       <ICONS.home fontSize="small" sx={{ mr: 1 }} />
-                      Go to Dashboard
+                      {t.navGoToDashboard}
                     </MenuItem>
                   )}
 
@@ -218,7 +220,7 @@ export default function Navbar() {
                     sx={{ color: "error.main" }}
                   >
                     <ICONS.logout fontSize="small" sx={{ mr: 1 }} />
-                    Logout
+                    {t.navLogout}
                   </MenuItem>
                 </Menu>
               </>
@@ -232,9 +234,9 @@ export default function Navbar() {
         open={!!user && confirmLogout}
         onClose={() => setConfirmLogout(false)}
         onConfirm={handleConfirmLogout}
-        title="Confirm Logout"
-        message="Are you sure you want to log out of your account?"
-        confirmButtonText="Logout"
+        title={t.navConfirmLogoutTitle}
+        message={t.navConfirmLogoutMessage}
+        confirmButtonText={t.navLogout}
         confirmButtonIcon={<ICONS.logout fontSize="small" />}
       />
     </Box>

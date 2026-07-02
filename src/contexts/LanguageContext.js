@@ -1,10 +1,6 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from "react";
-import en from "@/locales/en";
-import ar from "@/locales/ar";
-
-const dicts = { en, ar };
 
 const LanguageContext = createContext();
 
@@ -30,16 +26,8 @@ export const LanguageProvider = ({ children }) => {
     localStorage.setItem("sinan-lang", newLang);
   }, []);
 
-  const t = useCallback(
-    (key) => {
-      const dict = dicts[lang] || dicts.en;
-      return dict[key] ?? dicts.en[key] ?? key;
-    },
-    [lang]
-  );
-
   return (
-    <LanguageContext.Provider value={{ lang, setLang, isRtl, t }}>
+    <LanguageContext.Provider value={{ lang, setLang, isRtl }}>
       {children}
     </LanguageContext.Provider>
   );
