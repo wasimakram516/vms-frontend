@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
-import { getHost } from "@/services/hostService";
+import { getHost, getHostForKitchen } from "@/services/hostService";
 import { useAuth } from "@/contexts/AuthContext";
 import useSocket from "@/utils/useSocket";
 
@@ -36,7 +36,8 @@ export const SettingsProvider = ({ children }) => {
 
     try {
       setLoading(true);
-      const data = await getHost();
+      const isKitchenAdmin = user.role === "admin" && user.adminType === "kitchen";
+      const data = isKitchenAdmin ? await getHostForKitchen() : await getHost();
       setHostSettings(data);
     } catch (error) {
       console.error("Failed to fetch host settings:", error);

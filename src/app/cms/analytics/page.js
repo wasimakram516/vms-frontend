@@ -13,7 +13,8 @@ import {
 import { useMessage } from "@/contexts/MessageContext";
 import { motion } from "framer-motion";
 import { io } from "socket.io-client";
-import RoleGuard from "@/components/auth/RoleGuard";
+import { useAuth } from "@/contexts/AuthContext";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import AppCard from "@/components/cards/AppCard";
 import DateTimeFieldFlatpickr from "@/components/forms/DateTimeFieldFlatpickr";
 import ICONS from "@/utils/iconUtil";
@@ -97,10 +98,11 @@ function RangeLabel({ from, to }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AnalyticsPage() {
+  const { user } = useAuth();
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <PermissionRouteGuard resource="analytics" hardcodeAllowed={user?.role === "superadmin"}>
       <AnalyticsContent />
-    </RoleGuard>
+    </PermissionRouteGuard>
   );
 }
 

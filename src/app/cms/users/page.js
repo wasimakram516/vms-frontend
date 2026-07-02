@@ -27,10 +27,15 @@ import {
   FormControlLabel,
   Radio,
   FormLabel,
+  Tabs,
+  Tab,
+  Checkbox,
+  Alert,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSocket } from "@/contexts/SocketContext";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import {
@@ -39,9 +44,13 @@ import {
   deleteUser,
   createStaffUser,
   createAdminUser,
+  createSuperAdminUser,
   assignUserDepartments,
 } from "@/services/userService";
 import { getDepartments } from "@/services/departmentService";
+import { getRolePagePermissions, getUserPageOverrides, setUserPageOverrides } from "@/services/permissionService";
+import PAGES, { getPagesForRole } from "@/constants/pageCatalog";
+import { PAGE_ICONS } from "@/constants/pageIcons";
 import AppCard from "@/components/cards/AppCard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
@@ -50,26 +59,46 @@ import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import { validateField, validatePhone } from "@/utils/validationUtils";
 import RecordMetadata from "@/components/RecordMetadata";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
+import { canAccessResource } from "@/utils/permissions";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay } from "@/utils/countryCodes";
 import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
 
-const CREATABLE_ROLES = ["admin", "staff"];
+const CREATABLE_ROLES = ["superadmin", "admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
 const ADMIN_TYPES = ["departmental", "kitchen"];
 
+// Guard: only strip bare dial digits when the code is ≥2 chars to avoid false-stripping single-digit codes (+1, +7).
+const stripDialPrefix = (phone, isoCode) => {
+  if (!phone) return "";
+  const country = getCountryCodeByIsoCode(isoCode);
+  if (!country) return phone;
+  const dialWithPlus = country.code; // e.g. "+968"
+  const dialDigits = dialWithPlus.replace(/^\+/, ""); // e.g. "968"
+  if (phone.startsWith(dialWithPlus)) return phone.slice(dialWithPlus.length);
+  if (dialDigits.length >= 2 && phone.startsWith(dialDigits)) return phone.slice(dialDigits.length);
+  return phone;
+};
+
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
+  const { socket } = useSocket();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const isSuperAdmin = currentUser?.role === "superadmin";
-
+  const canCreate = canAccessResource(currentUser, "users", { hardcodeAllowed: isSuperAdmin, action: "create" });
+  const canUpdate = canAccessResource(currentUser, "users", { hardcodeAllowed: isSuperAdmin, action: "update" });
+  const canDelete = canAccessResource(currentUser, "users", { hardcodeAllowed: isSuperAdmin, action: "delete" });
+  const canReadOverrides = canAccessResource(currentUser, "access-control", { hardcodeAllowed: currentUser?.role === "superadmin" || currentUser?.role === "dev", action: "read" });
+  const canManageOverrides = canAccessResource(currentUser, "access-control", { hardcodeAllowed: currentUser?.role === "superadmin" || currentUser?.role === "dev", action: "update" });
   const [users, setUsers] = useState([]);
   const [allDepartments, setAllDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState(null);
+  const isEditingSelf = isEditMode && selectedUserId === currentUser?.id;
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -98,6 +127,41 @@ export default function UsersPage() {
   const [errors, setErrors] = useState({});
   const [isoCodes, setIsoCodes] = useState({ phone: DEFAULT_ISO_CODE });
 
+  // Permission override tab state
+  const [modalTab, setModalTab] = useState(0);
+  const [overrides, setOverrides] = useState({});       // create form: { [pageId]: { [action]: "allow"|"deny"|"" } }
+  const [editOverrides, setEditOverrides] = useState({}); // edit form
+  const [rolePermissions, setRolePermissions] = useState({}); // create form base grants: { [pageId]: string[] }
+  const [editRolePermissions, setEditRolePermissions] = useState({}); // edit form base grants
+
+  function getFormRoleKey(role, staff_type, adminType) {
+    if (role === "admin") return `admin:${adminType || "departmental"}`;
+    if (role === "staff") return `staff:${staff_type || "gate"}`;
+    return null;
+  }
+
+  function handleToggleOverride(pageId, action, isInherited, isEditing) {
+    const setter = isEditing ? setEditOverrides : setOverrides;
+    setter((prev) => {
+      const current = prev[pageId]?.[action] || "";
+      const next = isInherited
+        ? (current === "deny" ? "" : "deny")
+        : (current === "allow" ? "" : "allow");
+      return { ...prev, [pageId]: { ...(prev[pageId] || {}), [action]: next } };
+    });
+  }
+
+  function buildOverridesPayload(state) {
+    return Object.entries(state)
+      .map(([pageId, actions]) => ({
+        pageId,
+        overrides: Object.entries(actions)
+          .filter(([, effect]) => effect === "allow" || effect === "deny")
+          .map(([action, effect]) => ({ action, effect })),
+      }))
+      .filter((item) => item.overrides.length > 0);
+  }
+
   useEffect(() => {
     fetchUsers();
     getDepartments().then((res) => {
@@ -105,11 +169,69 @@ export default function UsersPage() {
     });
   }, []);
 
+  // Load base role page permissions whenever the create form's role/type changes
+  useEffect(() => {
+    if (isEditMode) return;
+    const roleKey = getFormRoleKey(form.role, form.staff_type, form.adminType);
+    if (!roleKey) { setRolePermissions({}); return; }
+    getRolePagePermissions(roleKey).then((data) => {
+      const map = {};
+      if (Array.isArray(data)) {
+        for (const entry of data) {
+          map[entry.pageId] = Array.isArray(entry.actions) ? entry.actions : [];
+        }
+      }
+      setRolePermissions(map);
+    });
+  }, [form.role, form.staff_type, form.adminType, isEditMode]);
+
+  // Live-sync permission data via socket events
+  useEffect(() => {
+    if (!socket) return;
+
+    // Role's base grants changed — refresh if the open dialog is editing a user with that role-key
+    const onRoleUpdated = ({ roleKey }) => {
+      if (!isEditMode || !selectedUserId) return;
+      const openRoleKey = getFormRoleKey(form.role, form.staff_type, form.adminType);
+      if (openRoleKey !== roleKey) return;
+      getRolePagePermissions(roleKey).then((data) => {
+        const map = {};
+        if (Array.isArray(data)) {
+          for (const entry of data) map[entry.pageId] = Array.isArray(entry.actions) ? entry.actions : [];
+        }
+        setEditRolePermissions(map);
+      });
+    };
+
+    // A specific user's overrides changed — refresh if that user's dialog is open
+    const onUserUpdated = ({ userId }) => {
+      if (!isEditMode || selectedUserId !== userId) return;
+      getUserPageOverrides(userId).then((data) => {
+        if (!Array.isArray(data)) return;
+        const loaded = {};
+        data.forEach((item) => {
+          loaded[item.pageId] = (item.overrides || []).reduce((acc, ov) => {
+            acc[ov.action] = ov.effect;
+            return acc;
+          }, {});
+        });
+        setEditOverrides(loaded);
+      });
+    };
+
+    socket.on("page-permissions:role-updated", onRoleUpdated);
+    socket.on("page-permissions:user-updated", onUserUpdated);
+
+    return () => {
+      socket.off("page-permissions:role-updated", onRoleUpdated);
+      socket.off("page-permissions:user-updated", onUserUpdated);
+    };
+  }, [socket, isEditMode, selectedUserId, form.role, form.staff_type, form.adminType]);
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
       const data = await getAllUsers();
-      console.log("Fetched users:", data);
       setUsers(data || []);
     } finally {
       setLoading(false);
@@ -122,6 +244,9 @@ export default function UsersPage() {
     setIsoCodes({ phone: DEFAULT_ISO_CODE });
     setIsEditMode(false);
     setSelectedUserId(null);
+    setOverrides({});
+    setRolePermissions({});
+    setModalTab(0);
     setModalOpen(true);
   };
 
@@ -137,8 +262,9 @@ export default function UsersPage() {
     });
     
     if (u.role === "visitor") {
-      setForm((p) => ({ ...p, phone: u.phone || "" }));
-      setIsoCodes({ phone: u.iso_code || DEFAULT_ISO_CODE });
+      const isoCode = u.iso_code || DEFAULT_ISO_CODE;
+      setForm((p) => ({ ...p, phone: stripDialPrefix(u.phone || "", isoCode) }));
+      setIsoCodes({ phone: isoCode });
     } else {
       const { isoCode, phone: digits } = getCountryAndPhoneByFullPhone(u.phone);
       setForm((p) => ({ ...p, phone: digits }));
@@ -147,7 +273,38 @@ export default function UsersPage() {
     setErrors({});
     setIsEditMode(true);
     setSelectedUserId(u.id);
+    setEditOverrides({});
+    setEditRolePermissions({});
+    setModalTab(0);
     setModalOpen(true);
+
+    // Load role base permissions
+    const roleKey = getFormRoleKey(u.role, u.staff_type || "", u.adminType || "departmental");
+    if (roleKey) {
+      getRolePagePermissions(roleKey).then((data) => {
+        const map = {};
+        if (Array.isArray(data)) {
+          for (const entry of data) {
+            map[entry.pageId] = Array.isArray(entry.actions) ? entry.actions : [];
+          }
+        }
+        setEditRolePermissions(map);
+      });
+    }
+
+    // Load existing user page overrides
+    getUserPageOverrides(u.id).then((data) => {
+      if (Array.isArray(data)) {
+        const loaded = {};
+        data.forEach((item) => {
+          loaded[item.pageId] = (item.overrides || []).reduce((acc, ov) => {
+            acc[ov.action] = ov.effect;
+            return acc;
+          }, {});
+        });
+        setEditOverrides(loaded);
+      }
+    });
   };
 
   const validateForm = () => {
@@ -183,15 +340,16 @@ export default function UsersPage() {
         ...form,
         phoneIsoCode: isoCodes.phone,
       };
-
       let res;
       if (isEditMode) {
         res = await updateUser(selectedUserId, payload);
       } else {
         res =
-          form.role === "admin"
-            ? await createAdminUser(payload)
-            : await createStaffUser(payload);
+          form.role === "superadmin"
+            ? await createSuperAdminUser(payload)
+            : form.role === "admin"
+              ? await createAdminUser(payload)
+              : await createStaffUser(payload);
       }
 
       if (!res?.error) {
@@ -199,6 +357,15 @@ export default function UsersPage() {
         if (form.role === "admin" && savedId) {
           await assignUserDepartments(savedId, form.department_ids);
         }
+        // Save page overrides only when user has update access on access-control
+        if (savedId && canManageOverrides) {
+          const overridesToSave = isEditMode ? editOverrides : overrides;
+          const overridesPayload = buildOverridesPayload(overridesToSave);
+          if (isEditMode || overridesPayload.length > 0) {
+            await setUserPageOverrides(savedId, overridesPayload);
+          }
+        }
+        setModalTab(0);
         setModalOpen(false);
         fetchUsers();
       }
@@ -359,6 +526,7 @@ export default function UsersPage() {
   }
 
   return (
+    <PermissionRouteGuard resource="users" hardcodeAllowed={isSuperAdmin}>
     <Box>
       <Box
         sx={{
@@ -392,7 +560,7 @@ export default function UsersPage() {
             width: { xs: "100%", sm: "auto" },
           }}
         >
-          {isSuperAdmin && (
+          {canCreate && (
             <Button
               variant="contained"
               startIcon={<ICONS.add />}
@@ -839,8 +1007,9 @@ export default function UsersPage() {
                           sx={{ px: 0, py: 0 }}
                         />
                       </Box>
-                      {isSuperAdmin && (
+                      {(canUpdate || canDelete) && (
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          {canUpdate && (
                           <Tooltip title="Edit User">
                             <IconButton
                               color="primary"
@@ -855,7 +1024,8 @@ export default function UsersPage() {
                               <ICONS.edit fontSize="small" />
                             </IconButton>
                           </Tooltip>
-                          {u.id !== currentUser.id && (
+                          )}
+                          {canUpdate && u.id !== currentUser.id && (
                             <Tooltip title={String(u.status || "active").toLowerCase() === "active" ? "Deactivate User" : "Activate User"}>
                               <IconButton
                                 color={String(u.status || "active").toLowerCase() === "active" ? "warning" : "success"}
@@ -871,7 +1041,7 @@ export default function UsersPage() {
                               </IconButton>
                             </Tooltip>
                           )}
-                          {u.id !== currentUser.id && (
+                          {canDelete && u.id !== currentUser.id && (
                             <Tooltip title="Delete User">
                               <IconButton
                                 color="error"
@@ -913,17 +1083,38 @@ export default function UsersPage() {
 
       <Dialog
         open={modalOpen}
-        onClose={() => !submitting && setModalOpen(false)}
+        onClose={() => { if (!submitting) { setModalOpen(false); setModalTab(0); } }}
         fullWidth
-        maxWidth="sm"
+        maxWidth="md"
         PaperProps={{ sx: { variant: "frosted", borderRadius: 4 } }}
       >
         <DialogHeader
           title={isEditMode ? "Edit User" : "Create New User"}
-          onClose={!submitting ? () => setModalOpen(false) : undefined}
+          onClose={!submitting ? () => { setModalOpen(false); setModalTab(0); } : undefined}
         />
-        <DialogContent dividers>
-          <Stack spacing={2} sx={{ mt: 1 }}>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {/* Sticky tabs — hidden for superadmin/visitor (no overrides apply), or when user lacks override permission or is editing self */}
+          {form.role !== "superadmin" && form.role !== "visitor" && (canReadOverrides || canManageOverrides) && !isEditingSelf && (
+            <Box sx={{ position: "sticky", top: 0, zIndex: 10, bgcolor: "background.paper", px: 2, pt: 2, pb: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+              <Tabs
+                value={modalTab}
+                onChange={(_, v) => setModalTab(v)}
+                variant="fullWidth"
+                sx={{
+                  borderRadius: 2,
+                  bgcolor: "action.hover",
+                  minHeight: 40,
+                  "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 700, fontSize: "0.875rem" },
+                }}
+              >
+                <Tab label="Details" />
+                <Tab label="Permissions Override" />
+              </Tabs>
+            </Box>
+          )}
+
+          {/* Tab 0: Details */}
+          <Box sx={{ display: (form.role === "superadmin" || form.role === "visitor" || modalTab === 0) ? "flex" : "none", flexDirection: "column", gap: 2, p: 2.5 }}>
             <TextField
               label="Full Name"
               fullWidth
@@ -1054,11 +1245,126 @@ export default function UsersPage() {
                 </Select>
               </FormControl>
             )}
-          </Stack>
+          </Box>
+
+          {/* Tab 1: Page Overrides — shown when user has read or manage permission, not editing self, and role supports it */}
+          <Box sx={{ display: form.role !== "superadmin" && form.role !== "visitor" && (canReadOverrides || canManageOverrides) && modalTab === 1 ? "flex" : "none", flexDirection: "column", gap: 1.5, p: 2.5 }}>
+            {isEditingSelf ? (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                You cannot modify your own page overrides.
+              </Alert>
+            ) : form.role === "superadmin" ? (
+              <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                SuperAdmins bypass all permission checks — overrides have no effect for this role.
+              </Alert>
+            ) : (() => {
+              const overrideRolePages = getPagesForRole(getFormRoleKey(form.role, form.staff_type, form.adminType));
+              return overrideRolePages.length === 0 ? (
+                <Alert severity="info" sx={{ borderRadius: 2 }}>
+                  No pages are configured for this role.
+                </Alert>
+              ) : (
+                <>
+                  <Alert severity="info" sx={{ borderRadius: 2, fontSize: "0.82rem" }}>
+                    Checked actions are granted. Overrides layer on top of the role&apos;s base set — <strong>deny</strong> removes an inherited action, <strong>allow</strong> adds one the role doesn&apos;t have.
+                  </Alert>
+                  {overrideRolePages.map((page) => {
+                  const baseGrants = isEditMode ? (editRolePermissions[page.pageId] || []) : (rolePermissions[page.pageId] || []);
+                  const currentOverrides = isEditMode ? editOverrides : overrides;
+                  const PageIcon = PAGE_ICONS[page.pageId];
+                  return (
+                    <Box
+                      key={page.pageId}
+                      sx={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        gap: 1,
+                        rowGap: 0.75,
+                        mb: 1,
+                        px: { xs: 1.5, sm: 2 },
+                        py: { xs: 1.25, sm: 1 },
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 2,
+                        bgcolor: "background.paper",
+                      }}
+                    >
+                      <Chip
+                        label={page.label}
+                        size="small"
+                        icon={PageIcon ? <PageIcon sx={{ fontSize: "1rem !important" }} /> : undefined}
+                        sx={{
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          fontSize: "0.7rem",
+                          borderRadius: 999,
+                          minWidth: { sm: 150 },
+                          justifyContent: "flex-start",
+                        }}
+                      />
+                      <Stack
+                        direction="row"
+                        flexWrap="wrap"
+                        alignItems="center"
+                        sx={{
+                          flexBasis: { xs: "100%", sm: "auto" },
+                          flexGrow: { sm: 1 },
+                          columnGap: 1,
+                          rowGap: 0.5,
+                        }}
+                      >
+                        {page.actions.map((action) => {
+                          const isInherited = baseGrants.includes(action);
+                          const currentOverride = currentOverrides[page.pageId]?.[action] || "";
+                          const isChecked = isInherited ? currentOverride !== "deny" : currentOverride === "allow";
+                          const isOverridden = currentOverride !== "";
+                          return (
+                            <FormControlLabel
+                              key={action}
+                              control={
+                                <Checkbox
+                                  checked={isChecked}
+                                  size="small"
+                                  disabled={!canManageOverrides}
+                                  onChange={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
+                                />
+                              }
+                              label={
+                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                  <Typography sx={{ fontSize: "0.85rem", textTransform: "capitalize" }}>
+                                    {action.replace(/-/g, " ")}
+                                  </Typography>
+                                  {isOverridden ? (
+                                    <Chip
+                                      label={currentOverride}
+                                      size="small"
+                                      color={currentOverride === "allow" ? "success" : "error"}
+                                      sx={{ height: 16, fontSize: "0.6rem", "& .MuiChip-label": { px: 0.6 } }}
+                                    />
+                                  ) : isInherited ? (
+                                    <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary" }}>
+                                      inherited
+                                    </Typography>
+                                  ) : null}
+                                </Stack>
+                              }
+                              sx={{ mr: 1 }}
+                            />
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </>
+            );
+          })()}
+          </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button
-            onClick={() => setModalOpen(false)}
+            onClick={() => { setModalOpen(false); setModalTab(0); }}
             disabled={submitting}
             startIcon={<ICONS.cancel />}
             sx={{ borderRadius: 30 }}
@@ -1113,5 +1419,6 @@ export default function UsersPage() {
         confirmButtonIcon={String(userStatusTarget?.status || "active").toLowerCase() === "active" ? <ICONS.close fontSize="small" /> : <ICONS.check fontSize="small" />}
       />
     </Box>
+    </PermissionRouteGuard>
   );
 }

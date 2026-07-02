@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import {
@@ -19,6 +18,9 @@ import { QRCodeCanvas } from "qrcode.react";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { translateBatch } from "@/services/translationService";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
 
 const getSummaryColors = (isDark) => ({
   primary: isDark ? "#1a1a1a" : "#222222",
@@ -127,16 +129,28 @@ function extractVisitorIdentity(registration, visitorData) {
   return { value, label: "ID", type, countryName: "", isoCode: "", flagUrl: "" };
 }
 
+function getArCountryName(isoCode) {
+  if (!isoCode) return "";
+  try {
+    const name = new Intl.DisplayNames(["ar"], { type: "region" }).of(isoCode.toUpperCase());
+    return (!name || name.toUpperCase() === isoCode.toUpperCase()) ? "" : name;
+  } catch { return ""; }
+}
+
 export default function SummaryPage() {
   const router = useRouter();
   const { resetVisitorFlow } = useVisitor();
   const { mode } = useColorMode();
+  const { t, lang, isRtl } = useLanguage();
   const isDark = mode === "dark";
   const SUMMARY_COLORS = getSummaryColors(isDark);
 
   const [registration, setRegistration] = useState(null);
   const [visitorData, setVisitorData] = useState(null);
   const summaryRef = useRef(null);
+  const [qrImageFailed, setQrImageFailed] = useState(false);
+  const [qrImageUrl, setQrImageUrl] = useState(null);
+  const [translatedDynamic, setTranslatedDynamic] = useState({});
 
   useEffect(() => {
     try {
@@ -150,21 +164,54 @@ export default function SummaryPage() {
     }
   }, [router]);
 
+  useEffect(() => {
+    if (lang !== "ar" || !registration) { setTranslatedDynamic({}); return; }
+    const name = registration?.user?.fullName || visitorData?.fullName || "";
+    const dept = registration?.department?.name || "";
+    const purpose = registration?.purposeOfVisit || "";
+    const brand = registration?.hostName || registration?.host?.name || registration?.hostDetails?.name || "";
+    const texts = [name, dept, purpose, brand].filter(Boolean);
+    if (!texts.length) return;
+    translateBatch(texts, "ar").then((results) => {
+      const map = {};
+      let idx = 0;
+      if (name) map.name = results[idx++] || name;
+      if (dept) map.dept = results[idx++] || dept;
+      if (purpose) map.purpose = results[idx++] || purpose;
+      if (brand) map.brand = results[idx] || brand;
+      setTranslatedDynamic(map);
+    });
+  }, [lang, registration, visitorData]);
+
   const handleDownload = async () => {
     if (!summaryRef.current) return;
     const CARD_WIDTH = 430;
     const el = summaryRef.current;
 
-    // Force the live element to exactly CARD_WIDTH before capture so html2canvas
-    // measures the correct layout regardless of mobile viewport width.
-    const prevWidth = el.style.width;
-    const prevMaxWidth = el.style.maxWidth;
-    const prevMinWidth = el.style.minWidth;
-    el.style.width = `${CARD_WIDTH}px`;
-    el.style.maxWidth = `${CARD_WIDTH}px`;
-    el.style.minWidth = `${CARD_WIDTH}px`;
+    // Capture canvas pixel data BEFORE cloning — cloneNode() creates blank canvases
+    const canvasDataUrls = Array.from(el.querySelectorAll("canvas")).map((c) => {
+      try { return c.toDataURL(); } catch { return null; }
+    });
 
-    const canvas = await html2canvas(el, {
+    // Clone off-screen so the visible card never resizes
+    const clone = el.cloneNode(true);
+    clone.style.position = "fixed";
+    clone.style.top = "-9999px";
+    clone.style.left = "-9999px";
+    clone.style.width = `${CARD_WIDTH}px`;
+    clone.style.maxWidth = `${CARD_WIDTH}px`;
+    clone.style.minWidth = `${CARD_WIDTH}px`;
+    document.body.appendChild(clone);
+
+    // Ensure custom fonts (DINNextLTArabic, Comfortaa) are fully loaded before capture
+    await document.fonts.ready;
+    await Promise.allSettled([
+      document.fonts.load("700 16px DINNextLTArabic"),
+      document.fonts.load("400 16px DINNextLTArabic"),
+      document.fonts.load("700 16px Comfortaa"),
+    ]);
+
+    const canvas = await html2canvas(clone, {
       backgroundColor: null,
       useCORS: true,
       scale: 2,
@@ -174,7 +221,19 @@ export default function SummaryPage() {
         clonedEl.style.width = `${CARD_WIDTH}px`;
         clonedEl.style.maxWidth = `${CARD_WIDTH}px`;
         clonedEl.style.minWidth = `${CARD_WIDTH}px`;
-        // Replace SVG icons with unicode chars (html2canvas SVG rendering is unreliable)
+
+        // Replace each blank cloned canvas with an <img> using the captured data URL
+        clonedEl.querySelectorAll("canvas").forEach((c, i) => {
+          const dataUrl = canvasDataUrls[i];
+          if (!dataUrl) return;
+          const img = _doc.createElement("img");
+          img.src = dataUrl;
+          img.width = c.width;
+          img.height = c.height;
+          img.style.cssText = c.style.cssText;
+          c.replaceWith(img);
+        });
+
         clonedEl.querySelectorAll("[data-contact-icon]").forEach((node) => {
           const type = node.getAttribute("data-contact-icon");
           const span = _doc.createElement("span");
@@ -186,10 +245,7 @@ export default function SummaryPage() {
       },
     });
 
-    // Restore original styles
-    el.style.width = prevWidth;
-    el.style.maxWidth = prevMaxWidth;
-    el.style.minWidth = prevMinWidth;
+    document.body.removeChild(clone);
     const fileSafe = (v) => String(v || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const identity = extractVisitorIdentity(registration, visitorData);
     const name = fileSafe(registration?.user?.fullName || visitorData?.fullName || "visitor");
@@ -206,40 +262,98 @@ export default function SummaryPage() {
     router.push("/");
   };
 
-  if (!registration || !visitorData) return null;
-
-  const visitorName = registration.user?.fullName || visitorData.fullName || "Visitor";
-  const visitorEmail = registration.user?.email || visitorData.email;
-  const rawPhone = registration.user?.phone || visitorData.phone;
-  const isoCode = (visitorData.phoneIsoCode || visitorData.iso_code || "").toLowerCase();
+  const visitorName = translatedDynamic.name || registration?.user?.fullName || visitorData?.fullName || "Visitor";
+  const visitorEmail = registration?.user?.email || visitorData?.email;
+  const rawPhone = registration?.user?.phone || visitorData?.phone;
+  const isoCode = (visitorData?.phoneIsoCode || visitorData?.iso_code || "").toLowerCase();
   const dialCode = COUNTRY_CODES.find((c) => c.isoCode === isoCode)?.code ?? "";
   const visitorPhone = rawPhone ? `${dialCode} ${rawPhone}`.trim() : null;
 
-  const deptName = registration.department?.name;
-  const purposeText = registration.purposeOfVisit;
-  const fromDate = registration.requestedFrom ? new Date(registration.requestedFrom) : null;
-  const toDate = registration.requestedTo ? new Date(registration.requestedTo) : null;
-  const qrToken = registration.qr_token || registration.qrToken || registration.id;
+  const deptName = registration?.department?.name;
+  const purposeText = registration?.purposeOfVisit;
+  const fromDate = registration?.requestedFrom ? new Date(registration.requestedFrom) : null;
+  const toDate = registration?.requestedTo ? new Date(registration.requestedTo) : null;
+  const qrToken = registration?.qr_token || registration?.qrToken || registration?.id;
   const hostBrandName = registration?.hostName || registration?.host?.name || registration?.hostDetails?.name;
   const visitorIdentity = extractVisitorIdentity(registration, visitorData);
+  if (lang === "ar" && visitorIdentity?.value) {
+    if (visitorIdentity.type === "passport") {
+      const arName = getArCountryName(visitorIdentity.isoCode) || visitorIdentity.countryName;
+      visitorIdentity.label = arName ? `جواز سفر (${arName})` : "جواز سفر";
+    } else if (visitorIdentity.type === "oman") {
+      visitorIdentity.label = "الهوية العُمانية";
+    } else {
+      visitorIdentity.label = "هوية";
+    }
+  }
+  const qrImageSrc = `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1').replace(/\/$/, '')}/qr?token=${encodeURIComponent(qrToken || '')}&v=${encodeURIComponent(registration?.updatedAt || registration?.createdAt || registration?.id || '1')}`;
 
+  useEffect(() => {
+    let objectUrl = null;
+    let cancelled = false;
+
+    setQrImageFailed(false);
+    setQrImageUrl(null);
+
+    if (!qrToken) return undefined;
+
+    const loadQr = async () => {
+      try {
+        const response = await fetch(qrImageSrc, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`QR image request failed: ${response.status}`);
+        const blob = await response.blob();
+        if (!blob.size) throw new Error('QR image response was empty');
+        objectUrl = URL.createObjectURL(blob);
+        if (!cancelled) setQrImageUrl(objectUrl);
+      } catch {
+        if (!cancelled) setQrImageFailed(true);
+      }
+    };
+
+    loadQr();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [qrImageSrc, qrToken]);
+
+  if (!registration || !visitorData) return null;
+
+  const locale = lang === "ar" ? "ar-u-nu-latn" : "en-GB";
   const fmtDate = (d) =>
-    d ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(d) : "—";
+    d ? new Intl.DateTimeFormat(locale, { weekday: "short", day: "2-digit", month: "short", year: "numeric" }).format(d) : "—";
   const fmtTime = (d) =>
-    d ? new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).format(d) : "—";
+    d ? new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", hour12: true }).format(d) : "—";
 
   const sameDay = fromDate && toDate && fmtDate(fromDate) === fmtDate(toDate);
 
+  const DAY_NAMES_FULL = [t("daySun"), t("dayMon"), t("dayTue"), t("dayWed"), t("dayThu"), t("dayFri"), t("daySat")];
+  const recurringType = registration?.recurringType ?? registration?.recurring_type ?? null;
+  const recurringDays = registration?.recurringDays ?? registration?.recurring_days ?? null;
+  const recurringTimeFrom = registration?.recurringTimeFrom ?? registration?.recurring_time_from ?? null;
+  const recurringTimeTo   = registration?.recurringTimeTo   ?? registration?.recurring_time_to   ?? null;
+
+  const recurringScheduleLabel = (() => {
+    if (!recurringType) return null;
+    const days = Array.isArray(recurringDays) && recurringDays.length
+      ? recurringDays.map((d) => DAY_NAMES_FULL[d]).join(", ")
+      : null;
+    const time = recurringTimeFrom && recurringTimeTo ? `${recurringTimeFrom} – ${recurringTimeTo}` : null;
+    return [days, time].filter(Boolean).join("  ·  ");
+  })();
+
   const summaryRows = [
     {
-      label: sameDay ? "Visit Date" : "From",
+      label: sameDay ? t("summaryVisitDate") : t("summaryFrom"),
       value: sameDay
         ? `${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)} – ${fmtTime(toDate)}`
         : `${fmtDate(fromDate)}  ·  ${fmtTime(fromDate)}`,
     },
-    ...(!sameDay ? [{ label: "To", value: `${fmtDate(toDate)}  ·  ${fmtTime(toDate)}` }] : []),
-    ...(deptName ? [{ label: "Department", value: deptName }] : []),
-    ...(purposeText ? [{ label: "Purpose of Visit", value: purposeText }] : []),
+    ...(!sameDay ? [{ label: t("summaryTo"), value: `${fmtDate(toDate)}  ·  ${fmtTime(toDate)}` }] : []),
+    ...(recurringScheduleLabel ? [{ label: t("recurringDays"), value: recurringScheduleLabel }] : []),
+    ...(deptName ? [{ label: t("summaryDepartment"), value: translatedDynamic.dept || deptName }] : []),
+    ...(purposeText ? [{ label: t("summaryPurpose"), value: translatedDynamic.purpose || purposeText }] : []),
   ];
 
   const summaryCardBorder = isDark ? alpha(SUMMARY_COLORS.white, 0.22) : alpha(SUMMARY_COLORS.primary, 0.14);
@@ -262,7 +376,7 @@ export default function SummaryPage() {
           : "transparent",
       }}
     >
-      <Typography variant="caption" sx={{ color: SUMMARY_COLORS.inkSoft, textTransform: "uppercase", letterSpacing: 1.1 }}>
+      <Typography variant="caption" sx={{ color: SUMMARY_COLORS.inkSoft, ...(!isRtl && { textTransform: "uppercase", letterSpacing: 1.1 }) }}>
         {label}
       </Typography>
       <Typography variant="body1" fontWeight={700} sx={{ color: SUMMARY_COLORS.ink, lineHeight: 1.45, mt: 0.45, wordBreak: "break-word" }}>
@@ -272,19 +386,18 @@ export default function SummaryPage() {
   );
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading="Booking Summary">
-      <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }} style={{ width: "100%" }}>
+    <VisitorLayout justifyContent="center" mobileSubheading={t("summaryMobileSubheading")}>
+      <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.35 }} style={{ width: "100%", direction: isRtl ? "rtl" : "ltr" }}>
         <Stack spacing={2.2}>
 
           <Stack alignItems="center" spacing={0.75}>
             <ICONS.checkCircle sx={{ fontSize: 48, color: "success.main" }} />
             <Typography variant="h6" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", display: { xs: "none", md: "block" } }}>
-              Booking Summary
+              {t("summaryTitle")}
             </Typography>
             <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 360 }}>
-              Application submitted successfully. Save your summary card below.
+              {t("summaryDesc")}
             </Typography>
-            {/* Status chip */}
             <Box
               sx={{
                 mt: 0.5,
@@ -297,7 +410,7 @@ export default function SummaryPage() {
             >
               <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "warning.main" }} />
               <Typography variant="caption" fontWeight={800} sx={{ color: isDark ? "#fef3c7" : "#7c2d12", textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.72rem" }}>
-                Status: Pending Review
+                {t("summaryStatus")}
               </Typography>
             </Box>
           </Stack>
@@ -315,7 +428,6 @@ export default function SummaryPage() {
                 boxShadow: `0 28px 70px ${alpha(SUMMARY_COLORS.primaryDeep, 0.24)}`,
               }}
             >
-              {/* Header */}
               <Box
                 sx={{
                   position: "relative",
@@ -333,7 +445,7 @@ export default function SummaryPage() {
                     {visitorName}
                   </Typography>
                   {visitorIdentity?.value && (
-                    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.25, flexWrap: "wrap" }}>
+                    <Stack useFlexGap direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.25, flexWrap: "wrap" }}>
                       {visitorIdentity?.flagUrl && (
                         <Box component="img" src={visitorIdentity.flagUrl} alt={visitorIdentity.countryName} sx={{ width: 18, height: 12, objectFit: "cover", borderRadius: 0.4, border: `1px solid ${alpha(SUMMARY_COLORS.primaryDark, 0.16)}` }} />
                       )}
@@ -343,11 +455,11 @@ export default function SummaryPage() {
                     </Stack>
                   )}
                   {(visitorEmail || visitorPhone) && (
-                    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.85, flexWrap: "wrap", rowGap: 0.5 }}>
+                    <Stack useFlexGap direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.85, flexWrap: "wrap", rowGap: 0.5 }}>
                       {visitorEmail && (
                         <>
                           <ICONS.email data-contact-icon="email" sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
-                          <Typography variant="caption" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
+                          <Typography variant="caption" dir="ltr" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
                             {visitorEmail}
                           </Typography>
                         </>
@@ -358,7 +470,7 @@ export default function SummaryPage() {
                       {visitorPhone && (
                         <>
                           <ICONS.phone data-contact-icon="phone" sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
-                          <Typography variant="caption" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
+                          <Typography variant="caption" dir="ltr" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
                             {visitorPhone}
                           </Typography>
                         </>
@@ -368,7 +480,6 @@ export default function SummaryPage() {
                 </Box>
               </Box>
 
-              {/* Body */}
               <Box sx={{ px: { xs: 2.5, sm: 3 }, py: 3 }}>
                 <Box sx={{ mb: 2.25, borderRadius: 4, overflow: "hidden", bgcolor: SUMMARY_COLORS.panel, border: `1px solid ${summarySectionBorder}` }}>
                   {summaryRows.map((row, index) => (
@@ -379,13 +490,26 @@ export default function SummaryPage() {
                 <Box sx={{ p: 2, borderRadius: "26px", background: SUMMARY_COLORS.panel, border: `1px solid ${summarySectionBorder}`, boxShadow: `0 14px 30px ${alpha(SUMMARY_COLORS.primaryDeep, 0.08)}` }}>
                   <Box sx={{ display: "flex", justifyContent: "center", mb: qrToken ? 1.5 : 0 }}>
                     <Box sx={{ p: 1.5, borderRadius: 3, bgcolor: SUMMARY_COLORS.white, border: "1px solid #e4eef1" }}>
-                      <QRCodeCanvas value={qrToken || "N/A"} size={170} bgColor={SUMMARY_COLORS.white} fgColor={SUMMARY_COLORS.primaryDark} includeMargin={false} />
+                      {/* Server-generated QR with logo (falls back to plain QR on failure) */}
+                      {qrImageFailed ? (
+                        <QRCodeCanvas value={qrToken || 'N/A'} size={170} bgColor={SUMMARY_COLORS.white} fgColor={SUMMARY_COLORS.primaryDark} includeMargin={false} />
+                      ) : qrImageUrl ? (
+                        <img
+                          src={qrImageUrl}
+                          alt="QR Code"
+                          width={170}
+                          height={170}
+                          style={{ display: 'block', objectFit: 'contain', background: SUMMARY_COLORS.white }}
+                        />
+                      ) : (
+                        <QRCodeCanvas value={qrToken || 'N/A'} size={170} bgColor={SUMMARY_COLORS.white} fgColor={SUMMARY_COLORS.primaryDark} includeMargin={false} />
+                      )}
                     </Box>
                   </Box>
                   {qrToken && (
                     <Box sx={{ px: 1.75, py: 0.85, borderRadius: 999, display: "flex", justifyContent: "center" }}>
-                      <Typography variant="caption" fontWeight={700} sx={{ color: isDark ? SUMMARY_COLORS.white : SUMMARY_COLORS.primaryDark, letterSpacing: 0.8, wordBreak: "break-all" }}>
-                        Token: {qrToken}
+                      <Typography variant="caption" fontWeight={700} sx={{ color: isDark ? SUMMARY_COLORS.white : SUMMARY_COLORS.primaryDark, ...(!isRtl && { letterSpacing: 0.8 }), wordBreak: "break-all" }}>
+                        {t("summaryToken")} {qrToken}
                       </Typography>
                     </Box>
                   )}
@@ -393,29 +517,28 @@ export default function SummaryPage() {
 
                 <Divider sx={{ my: 1.5 }} />
                 <Typography variant="caption" display="block" textAlign="center" sx={{ color: SUMMARY_COLORS.inkSoft }}>
-                  Powered by {hostBrandName}
+                  {t("summaryPoweredBy")} {translatedDynamic.brand || hostBrandName}
                 </Typography>
               </Box>
             </Paper>
           </Box>
 
-          {/* Buttons — Home is CTA, Download is secondary */}
           <Stack spacing={1.25}>
             <Button
               variant="contained"
               startIcon={<ICONS.home />}
               onClick={handleHome}
-              sx={{ py: 1.5, borderRadius: 30, fontWeight: 700, width: "100%" }}
+              sx={{ py: 1.5, borderRadius: 30, fontWeight: 700, width: "100%", ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
             >
-              Back to Home
+              {t("summaryBackHome")}
             </Button>
             <Button
               variant="outlined"
               startIcon={<ICONS.download />}
               onClick={handleDownload}
-              sx={{ py: 1.5, borderRadius: 30, fontWeight: 700, width: "100%" }}
+              sx={{ py: 1.5, borderRadius: 30, fontWeight: 700, width: "100%", ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
             >
-              Save Summary
+              {t("summarySave")}
             </Button>
           </Stack>
 

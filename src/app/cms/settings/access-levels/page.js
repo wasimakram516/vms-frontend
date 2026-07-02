@@ -27,6 +27,9 @@ import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessResource } from "@/utils/permissions";
 import RecordMetadata from "@/components/RecordMetadata";
 import {
   getAccessLevels,
@@ -36,7 +39,11 @@ import {
 } from "@/services/accessLevelService";
 
 function AccessLevelsContent() {
+  const { user } = useAuth();
   const { readOnly } = usePermission();
+  const canCreate = canAccessResource(user, "access-levels", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "create" });
+  const canUpdate = canAccessResource(user, "access-levels", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "update" });
+  const canDelete = canAccessResource(user, "access-levels", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "delete" });
   const [accessLevels, setAccessLevels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -146,7 +153,7 @@ function AccessLevelsContent() {
               : "Manage access levels that admins assign to approved visitor registrations."}
           </Typography>
         </Box>
-        {!readOnly && (
+        {canCreate && (
           <Button
             variant="contained"
             startIcon={<ICONS.add />}
@@ -261,13 +268,15 @@ function AccessLevelsContent() {
                     sx={{ px: 0, py: 0 }}
                   />
                 </Box>
-                {!readOnly && (
-                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                    {canUpdate && (
                     <Tooltip title="Edit">
                       <IconButton size="small" onClick={() => openEdit(al)} sx={{ color: "primary.main" }}>
                         <ICONS.edit fontSize="small" />
                       </IconButton>
                     </Tooltip>
+                    )}
+                    {canDelete && (
                     <Tooltip title="Delete">
                       <IconButton
                         size="small"
@@ -277,8 +286,8 @@ function AccessLevelsContent() {
                         <ICONS.delete fontSize="small" />
                       </IconButton>
                     </Tooltip>
+                    )}
                   </Stack>
-                )}
               </Box>
             </AppCard>
           ))}
@@ -289,7 +298,7 @@ function AccessLevelsContent() {
       <Dialog
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
       >
@@ -386,9 +395,13 @@ function AccessLevelsContent() {
 }
 
 export default function AccessLevelsPage() {
+  const { user } = useAuth();
+  const hardcodeAllowed = user?.role === "superadmin" || user?.role === "admin";
   return (
-    <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
-      <AccessLevelsContent />
-    </PermissionGuard>
+    <PermissionRouteGuard resource="access-levels" hardcodeAllowed={hardcodeAllowed}>
+      <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
+        <AccessLevelsContent />
+      </PermissionGuard>
+    </PermissionRouteGuard>
   );
 }

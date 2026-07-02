@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Box, Typography, Stack, Paper } from "@mui/material";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import VisitorLayout from "@/components/layout/VisitorLayout";
@@ -13,7 +14,9 @@ export default function HomePage() {
   const router = useRouter();
   const { resetVisitorFlow } = useVisitor();
   const { mode } = useColorMode();
+  const { t, isRtl } = useLanguage();
   const isDark = mode === "dark";
+  const dir = isRtl ? "rtl" : "ltr";
   const [isNavigating, setIsNavigating] = useState(false);
 
   const navigateWithLoader = (path) => {
@@ -55,43 +58,79 @@ export default function HomePage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading="Visitor Portal">
+    <VisitorLayout justifyContent="center" mobileSubheading={t("homeTitle")}>
       <Stack spacing={4}>
-        <Box 
+        <Box
           textAlign="center"
           sx={{ display: { xs: "none", md: "block" } }}
         >
           <Typography
             variant="h4"
             fontWeight={800}
-            sx={{ fontFamily: "'Comfortaa', cursive" }}
           >
-            Visitor Portal
+            {t("homeTitle")}
           </Typography>
           <Typography color="text.secondary" mt={1}>
-            Choose how you would like to proceed
+            {t("homeSubtitle")}
           </Typography>
         </Box>
 
-        <Stack spacing={3}>
+        <Stack spacing={{ xs: 2, md: 3 }}>
           <Paper
             elevation={0}
             onClick={() => {
               resetVisitorFlow();
               navigateWithLoader("/register/details");
             }}
-            sx={cardStyle}
+            sx={{
+              ...cardStyle,
+              padding: { xs: 0, md: cardStyle.p },
+              py: { xs: 1.5, md: cardStyle.p },
+              background: { xs: "transparent", md: cardStyle.background },
+              border: "none",
+              boxShadow: { xs: "none", md: cardStyle.boxShadow },
+              borderRadius: { xs: 0, md: cardStyle.borderRadius },
+              backdropFilter: { xs: "none", md: cardStyle.backdropFilter },
+              "&:hover": {
+                ...cardStyle["&:hover"],
+                transform: { xs: "none", md: "-translateY(2px)" },
+              }
+            }}
           >
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={iconBoxStyle}>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              useFlexGap
+              spacing={{ xs: 1.5, md: 2 }}
+              alignItems="center"
+            >
+              <Box sx={{
+                ...iconBoxStyle,
+                width: { xs: 78, md: "auto" },
+                height: { xs: 78, md: "auto" },
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: { xs: "50%", md: iconBoxStyle.borderRadius },
+                border: { xs: `2px solid ${isDark ? "rgba(255,255,255,0.72)" : "rgba(0,0,0,0.1)"}`, md: "none" },
+                bgcolor: { xs: "transparent", md: iconBoxStyle.bgcolor },
+                color: "text.primary",
+                "& svg": { fontSize: { xs: 40, md: "2.1875rem" } }
+              }}>
                 <ICONS.register fontSize="large" />
               </Box>
-              <Box>
-                <Typography variant="h6" fontWeight={800}>
-                  New Visitor
+              <Box textAlign={{ xs: isRtl ? "end" : "center", md: "start" }}>
+                <Typography
+                  variant="h6"
+                  fontWeight={800}
+                  sx={{
+                    color: "text.primary",
+                    fontSize: { xs: "1.05rem", md: "inherit" }
+                  }}
+                >
+                  {t("homeNewVisitor")}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  First time visiting? Register now.
+                  {t("homeNewVisitorDesc")}
                 </Typography>
               </Box>
             </Stack>
@@ -103,18 +142,55 @@ export default function HomePage() {
               resetVisitorFlow();
               navigateWithLoader("/register/returning");
             }}
-            sx={cardStyle}
+            sx={{
+              ...cardStyle,
+              padding: { xs: 0, md: cardStyle.p },
+              py: { xs: 1.5, md: cardStyle.p },
+              background: { xs: "transparent", md: cardStyle.background },
+              border: "none",
+              boxShadow: { xs: "none", md: cardStyle.boxShadow },
+              borderRadius: { xs: 0, md: cardStyle.borderRadius },
+              backdropFilter: { xs: "none", md: cardStyle.backdropFilter },
+              "&:hover": {
+                ...cardStyle["&:hover"],
+                transform: { xs: "none", md: "-translateY(2px)" },
+              }
+            }}
           >
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={iconBoxStyle}>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              useFlexGap
+              spacing={{ xs: 1.5, md: 2 }}
+              alignItems="center"
+            >
+              <Box sx={{
+                ...iconBoxStyle,
+                width: { xs: 78, md: "auto" },
+                height: { xs: 78, md: "auto" },
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: { xs: "50%", md: iconBoxStyle.borderRadius },
+                border: { xs: `2px solid ${isDark ? "rgba(255,255,255,0.72)" : "rgba(0,0,0,0.1)"}`, md: "none" },
+                bgcolor: { xs: "transparent", md: iconBoxStyle.bgcolor },
+                color: "text.primary",
+                "& svg": { fontSize: { xs: 40, md: "2.1875rem" } }
+              }}>
                 <ICONS.replay fontSize="large" />
               </Box>
-              <Box>
-                <Typography variant="h6" fontWeight={800}>
-                  Returning Visitor
+              <Box textAlign={{ xs: isRtl ? "end" : "center", md: "start" }}>
+                <Typography
+                  variant="h6"
+                  fontWeight={800}
+                  sx={{
+                    color: "text.primary",
+                    fontSize: { xs: "1.05rem", md: "inherit" }
+                  }}
+                >
+                  {t("homeReturningVisitor")}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Already have an account? Login quickly.
+                  {t("homeReturningVisitorDesc")}
                 </Typography>
               </Box>
             </Stack>

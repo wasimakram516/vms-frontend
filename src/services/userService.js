@@ -12,6 +12,7 @@ const buildFullPhone = (phone, isoCode) => {
 const mapUserToFrontend = (user) => ({
   id: user.id,
   full_name: user.fullName,
+  fullName: user.fullName,
   email: user.email,
   role: user.role,
   phone: user.phone,
@@ -22,8 +23,13 @@ const mapUserToFrontend = (user) => ({
   departments: Array.isArray(user.departments) ? user.departments : [],
   created_at: user.createdAt,
   updated_at: user.updatedAt,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
   created_by: user.createdBy?.fullName || user.createdById || null,
   updated_by: user.updatedBy?.fullName || user.updatedById || null,
+  createdBy: user.createdBy || null,
+  updatedBy: user.updatedBy || null,
+  companyName: user.companyName || user.company_name || null,
 });
 
 export const getAllUsers = withApiHandler(async (role) => {
@@ -31,6 +37,49 @@ export const getAllUsers = withApiHandler(async (role) => {
   const users = res.data?.data || res.data || [];
   return Array.isArray(users) ? users.map(mapUserToFrontend) : [];
 });
+
+export const getVisitorUsers = withApiHandler(async () => {
+  const res = await api.get("/users/for-visitors");
+  const users = res.data?.data || res.data || [];
+  return Array.isArray(users) ? users.map(mapUserToFrontend) : [];
+});
+
+export const getVisitorUserById = withApiHandler(async (id) => {
+  const res = await api.get(`/users/for-visitors/${id}`);
+  const userData = res.data?.data || res.data;
+  return userData ? mapUserToFrontend(userData) : null;
+});
+
+export const updateVisitorUser = withApiHandler(
+  async (id, data) => {
+    const payload = {
+      fullName: data.full_name,
+      email: data.email,
+      phone: buildFullPhone(data.phone, data.phoneIsoCode),
+      phoneIsoCode: data.phoneIsoCode,
+      status: data.status,
+    };
+    const res = await api.patch(`/users/for-visitors/${id}`, payload);
+    const userData = res.data?.data || res.data;
+    return userData ? mapUserToFrontend(userData) : null;
+  },
+  { showSuccess: true }
+);
+
+export const createSuperAdminUser = withApiHandler(
+  async (data) => {
+    const res = await api.post("/users/superadmin", {
+      fullName: data.full_name,
+      email: data.email,
+      phone: buildFullPhone(data.phone, data.phoneIsoCode),
+      phoneIsoCode: data.phoneIsoCode,
+      password: data.password || undefined,
+    });
+    const userData = res.data?.data || res.data;
+    return userData ? mapUserToFrontend(userData) : null;
+  },
+  { showSuccess: true }
+);
 
 export const createAdminUser = withApiHandler(
   async (data) => {

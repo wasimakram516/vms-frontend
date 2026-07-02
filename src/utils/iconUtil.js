@@ -36,6 +36,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   Remove as RemoveIcon,
   ChevronRight as ChevronRightIcon,
+  ChevronLeft as ChevronLeftIcon,
 } from "@mui/icons-material";
 
 // Social Media
@@ -170,6 +171,7 @@ import {
   Inbox as InboxIcon,
   Restaurant as RestaurantIcon,
   RoomService as RoomServiceIcon,
+  WifiOff as WifiOffIcon,
 } from "@mui/icons-material";
 
 const ICONS = {
@@ -183,6 +185,7 @@ const ICONS = {
   close: CloseIcon,
   create: AddIcon,
   chevronRight: ChevronRightIcon,
+  chevronLeft: ChevronLeftIcon,
   delete: DeleteIcon,
   down: ExpandMoreIcon,
   expandMore: ExpandMoreIcon,
@@ -331,6 +334,7 @@ const ICONS = {
   send: SendIcon,
   thumb: ThumbUpIcon,
   thumbOff: ThumbUpOffAltIcon,
+  wifiOff: WifiOffIcon,
 };
 
 export default ICONS;

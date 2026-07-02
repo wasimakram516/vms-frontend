@@ -37,7 +37,8 @@ import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
 import RoleGuard from "@/components/auth/RoleGuard";
-import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
+import PermissionGuard from "@/components/auth/PermissionGuard";
+import { canAccessResource } from "@/utils/permissions";
 import RecordMetadata from "@/components/RecordMetadata";
 import {
   getNdaTemplates,
@@ -86,7 +87,9 @@ function FieldLabel({ children }) {
 
 export default function NdaTemplatesPage() {
   const { user } = useAuth();
-  const readOnly = user?.role !== "dev";
+  const canCreate = canAccessResource(user, "nda-forms", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "create" });
+  const canUpdate = canAccessResource(user, "nda-forms", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "update" });
+  const canDelete = canAccessResource(user, "nda-forms", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "delete" });
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -254,7 +257,7 @@ export default function NdaTemplatesPage() {
               Manage Non-Disclosure Agreement templates. Only one template can be active at a time.
             </Typography>
           </Box>
-          {!readOnly && (
+          {canCreate && (
             <Box>
               <Button variant="contained" startIcon={<ICONS.add />} onClick={openCreate}>
                 Create Template
@@ -381,8 +384,10 @@ export default function NdaTemplatesPage() {
                       sx={{ px: 0, py: 0 }}
                     />
                   </Box>
-                  {!readOnly && (
+                  {(canUpdate || canDelete) && (
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      {canUpdate && (
+                      <>
                       {tpl.isActive ? (
                         <Tooltip title="Deactivate">
                           <IconButton
@@ -414,6 +419,9 @@ export default function NdaTemplatesPage() {
                       >
                         <ICONS.edit fontSize="small" />
                       </IconButton>
+                      </>
+                      )}
+                      {canDelete && (
                       <Tooltip title={tpl.isActive ? "Deactivate before deleting" : "Delete template"}>
                         <span>
                           <IconButton
@@ -427,6 +435,7 @@ export default function NdaTemplatesPage() {
                           </IconButton>
                         </span>
                       </Tooltip>
+                      )}
                     </Stack>
                   )}
                 </Box>

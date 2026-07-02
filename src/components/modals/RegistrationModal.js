@@ -368,7 +368,7 @@ export default function RegistrationModal({
   const saveButtonText = mode === "create" ? "Create" : "Save";
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogHeader title={displayTitle} onClose={onClose} />
       <DialogContent dividers>
         <Stack spacing={2} mt={1}>

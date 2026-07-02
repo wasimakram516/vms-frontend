@@ -12,6 +12,7 @@ import React, {
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import { getTheme } from "@/styles/theme";
 import ThemeSwitchOverlay from "@/components/ThemeSwitchOverlay";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const ColorModeContext = createContext({ toggleColorMode: () => {} });
 const THEME_STORAGE_KEY = "sinan-sentry-theme";
@@ -21,6 +22,7 @@ export const useColorMode = () => useContext(ColorModeContext);
 
 export const ThemeContextProvider = ({ children }) => {
   const [mode, setMode] = useState("dark");
+  const { isRtl } = useLanguage();
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [pendingMode, setPendingMode] = useState(null);
 
@@ -69,7 +71,7 @@ export const ThemeContextProvider = ({ children }) => {
     pendingModeRef.current = null;
   }, []);
 
-  const theme = useMemo(() => getTheme(mode), [mode]);
+  const theme = useMemo(() => getTheme(mode, isRtl ? "rtl" : "ltr"), [mode, isRtl]);
 
   return (
     <ColorModeContext.Provider value={colorMode}>

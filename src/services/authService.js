@@ -1,4 +1,4 @@
-import api from "./api";
+﻿import api from "./api";
 import axios from "axios";
 import withApiHandler from "@/utils/withApiHandler";
 import {
@@ -19,6 +19,10 @@ const mapUserToFrontend = (user) => {
     staff_type: user.staffType || user.staff_type || null,
     adminType: user.adminType || null,
     name: user.fullName || user.full_name || user.name || "User",
+    isSuper: user.isSuper ?? false,
+    isDev: user.isDev ?? false,
+
+    permissions: user.permissions ?? [],
   };
 };
 
@@ -81,4 +85,25 @@ export const refreshToken = withApiHandler(async () => {
   if (token) setStoredAuthData(token, getStoredUser());
   return token;
 }, { silent: true });
+
+// Re-fetch /auth/me to get fresh permissions.
+// Call this on app mount and after any permission assignment.
+export const refreshUser = async () => {
+  try {
+    const token = getStoredToken();
+    if (!token) return null;
+    const userRes = await axios.get(`${API_BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    let user = userRes.data?.data || userRes.data;
+    user = mapUserToFrontend(user);
+    if (user) {
+      setStoredAuthData(token, user);
+      return user;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
 

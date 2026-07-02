@@ -33,7 +33,6 @@ import { getDepartments } from "@/services/departmentService";
 import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
-import PurposeOfVisitInput from "@/components/PurposeOfVisitInput";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import CountryPicker from "@/components/CountryPicker";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -41,21 +40,34 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import NdaTemplateContent from "@/components/NdaTemplateContent";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE, COUNTRY_CODES } from "@/utils/countryCodes";
-import { validateField, validateRequired } from "@/utils/validationUtils";
+import { validateField } from "@/utils/validationUtils";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { filterPhoneInput, filterNumberInput, onKeyPressNumeric, onKeyPressPhone } from "@/utils/phoneUtils";
+import { translateBatch } from "@/services/translationService";
+import { ndaDocToHtml } from "@/utils/ndaDocUtils";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
 
 
 export default function DetailsPage() {
   const router = useRouter();
+  const { t, isRtl, lang } = useLanguage();
   const { visitorData, setVisitorData, flowState, setFlowState } = useVisitor();
+
+  useEffect(() => {
+    document.documentElement.dir = isRtl ? "rtl" : "ltr";
+  }, [isRtl]);
   const [fields, setFields] = useState([]);
+  const [translatedLabels, setTranslatedLabels] = useState({});
+  const [translatedOptions, setTranslatedOptions] = useState({});
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState({});
   const [ndaOpen, setNdaOpen] = useState(false);
   const [ndaAccepted, setNdaAccepted] = useState(flowState.ndaAccepted || false);
   const [ndaTemplate, setNdaTemplate] = useState(null);
   const [ndaLoading, setNdaLoading] = useState(true);
+  const [translatedNda, setTranslatedNda] = useState(null);
   const [departments, setDepartments] = useState([]);
+  const [translatedDeptNames, setTranslatedDeptNames] = useState({});
 
   useEffect(() => {
     const fetchFields = async () => {
@@ -107,20 +119,85 @@ export default function DetailsPage() {
 
   useEffect(() => {
     getDepartments(true).then((res) => {
-      if (Array.isArray(res)) setDepartments(res);
+      if (!Array.isArray(res)) return;
+      setDepartments(res);
+      // Pre-fetch Arabic names so the toggle is instant
+      const names = res.map((d) => d.name || "");
+      translateBatch(names, "ar").then((results) => {
+        const map = {};
+        res.forEach((d, i) => { map[d.id] = results[i] || d.name; });
+        setTranslatedDeptNames(map);
+      });
     });
   }, []);
 
   useEffect(() => {
     const fetchNdaTemplate = async () => {
       setNdaLoading(true);
-      const template = await getPublicActiveNdaTemplate();
-      setNdaTemplate(template?.error ? null : template || null);
-      setNdaLoading(false);
+      try {
+        const template = await getPublicActiveNdaTemplate();
+        const resolved = template?.error ? null : template || null;
+        setNdaTemplate(resolved);
+
+        if (resolved) {
+          const preambleHtml = Array.isArray(resolved.preamble)
+            ? ndaDocToHtml(resolved.preamble)
+            : (resolved.preamble || "");
+          const bodyHtml = Array.isArray(resolved.body)
+            ? ndaDocToHtml(resolved.body)
+            : (resolved.body || "");
+
+          const [arName, arPreamble, arBody] = await translateBatch(
+            [resolved.name || "", preambleHtml, bodyHtml],
+            "ar",
+            "html"
+          );
+          setTranslatedNda({ ...resolved, name: arName, preamble: arPreamble, body: arBody });
+        }
+      } finally {
+        setNdaLoading(false);
+      }
     };
 
     fetchNdaTemplate();
   }, []);
+
+  // Pre-fetch Arabic translations as soon as fields load so the toggle is instant
+  useEffect(() => {
+    if (fields.length === 0) return;
+    const labelsToTranslate = fields.map((f) => f.label || "");
+    translateBatch(labelsToTranslate, "ar").then((results) => {
+      const map = {};
+      fields.forEach((f, i) => {
+        map[f.field_key || f.fieldKey] = results[i] || f.label;
+      });
+      setTranslatedLabels(map);
+    });
+
+    // Translate select/radio/checkbox options
+    const optionFields = fields.filter((f) => {
+      const t = (f.input_type || f.inputType || "").toLowerCase();
+      return ["select", "radio", "checkbox"].includes(t);
+    });
+    if (!optionFields.length) return;
+    const allOpts = [];
+    optionFields.forEach((f) => (f.options_json || f.optionsJson || []).forEach((o) => allOpts.push(o)));
+    const uniqueOpts = [...new Set(allOpts)];
+    translateBatch(uniqueOpts, "ar").then((results) => {
+      const globalMap = Object.fromEntries(uniqueOpts.map((o, i) => [o, results[i] || o]));
+      const byField = {};
+      optionFields.forEach((f) => {
+        const key = f.field_key || f.fieldKey;
+        byField[key] = Object.fromEntries((f.options_json || f.optionsJson || []).map((o) => [o, globalMap[o] || o]));
+      });
+      setTranslatedOptions(byField);
+    });
+  }, [fields]);
+
+  const getFieldLabel = (f) => {
+    const key = f.field_key || f.fieldKey;
+    return (isRtl && translatedLabels[key]) ? translatedLabels[key] : (f.label || "");
+  };
 
   const getPhoneDisplayValue = (phone, isoCode) => {
     if (!phone) return "";
@@ -280,12 +357,7 @@ export default function DetailsPage() {
     });
 
     if (!visitorData.departmentId) {
-      newErrors.departmentId = "Department is required";
-    }
-
-    const purposeError = validateRequired(visitorData.purposeOfVisit, "Purpose of Visit");
-    if (purposeError) {
-      newErrors.purposeOfVisit = purposeError;
+      newErrors.departmentId = t("departmentRequired");
     }
 
     setErrors(newErrors);
@@ -339,20 +411,20 @@ export default function DetailsPage() {
   }
 
   return (
-    <VisitorLayout 
-      title="Visitor Registration" 
-      subtitle="Please provide your information to ensure a smooth check-in process at Sinan."
-      mobileSubheading="Tell us about yourself"
+    <VisitorLayout
+      title={t("detailsLayoutTitle")}
+      subtitle={t("detailsLayoutSubtitle")}
+      mobileSubheading={t("detailsMobileSubheading")}
       maxWidth={650}
     >
       <form autoComplete="off">
         <Stack spacing={3}>
           <Box sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}>
             <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-              Tell us about yourself
+              {t("detailsHeading")}
             </Typography>
             <Typography variant="body2" color="text.secondary" mt={1}>
-              Fill in the details below to complete your registration.
+              {t("detailsSubheading")}
             </Typography>
           </Box>
 
@@ -361,8 +433,8 @@ export default function DetailsPage() {
           <Stack spacing={3}>
             {fields.length === 0 ? (
               <NoDataAvailable
-                title="Registration unavailable"
-                description="Registration is currently unavailable. Please contact the administrator."
+                title={t("detailsUnavailableTitle")}
+                description={t("detailsUnavailableDesc")}
                 compact
                 minHeight={220}
               />
@@ -384,16 +456,16 @@ export default function DetailsPage() {
                 if (inputType === "select") {
                   return (
                     <FormControl key={f.id || fieldKey} fullWidth error={Boolean(error)} required={isRequired}>
-                      <InputLabel>{f.label}</InputLabel>
+                      <InputLabel>{getFieldLabel(f)}</InputLabel>
                       <Select
                         value={val}
-                        label={f.label}
+                        label={getFieldLabel(f)}
                         onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
                         sx={{ borderRadius: 30 }}
                       >
                         {options.map((opt) => (
                           <MenuItem key={opt} value={opt}>
-                            {opt}
+                            {(isRtl && translatedOptions[fieldKey]?.[opt]) || opt}
                           </MenuItem>
                         ))}
                       </Select>
@@ -405,14 +477,14 @@ export default function DetailsPage() {
                 if (inputType === "radio") {
                   return (
                     <FormControl key={f.id || fieldKey} error={Boolean(error)} required={isRequired}>
-                      <FormLabel>{f.label}</FormLabel>
+                      <FormLabel>{getFieldLabel(f)}</FormLabel>
                       <RadioGroup
                         row
                         value={val}
                         onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
                       >
                         {options.map((opt) => (
-                          <FormControlLabel key={opt} value={opt} control={<Radio />} label={opt} />
+                          <FormControlLabel key={opt} value={opt} control={<Radio />} label={(isRtl && translatedOptions[fieldKey]?.[opt]) || opt} />
                         ))}
                       </RadioGroup>
                       {error && <FormHelperText>{error}</FormHelperText>}
@@ -431,7 +503,7 @@ export default function DetailsPage() {
                   };
                   return (
                     <FormControl key={f.id || fieldKey} error={Boolean(error)} required={isRequired}>
-                      <FormLabel>{f.label}</FormLabel>
+                      <FormLabel>{getFieldLabel(f)}</FormLabel>
                       <FormGroup row>
                         {options.map((opt) => (
                           <FormControlLabel
@@ -442,7 +514,7 @@ export default function DetailsPage() {
                                 onChange={(e) => handleCheckChange(opt, e.target.checked)}
                               />
                             }
-                            label={opt}
+                            label={(isRtl && translatedOptions[fieldKey]?.[opt]) || opt}
                           />
                         ))}
                       </FormGroup>
@@ -473,7 +545,7 @@ export default function DetailsPage() {
                     <TextField
                       key={f.id || fieldKey}
                       fullWidth
-                      label={f.label}
+                      label={getFieldLabel(f)}
                       type="tel"
                       value={getPhoneDisplayValue(val, isoCode)}
                       onChange={(e) => handleFieldChange(fieldKey, filterPhoneInput(e.target.value))}
@@ -482,13 +554,15 @@ export default function DetailsPage() {
                       error={Boolean(error)}
                       helperText={error}
                       size="medium"
-                      placeholder={f.label}
+                      placeholder={getFieldLabel(f)}
                       autoComplete="off"
                       InputProps={{
                         startAdornment: (
                           <CountryCodeSelector
                             value={isoCode}
                             onChange={(iso) => handleCountryCodeChange(fieldKey, iso)}
+                            lang={lang}
+                            dir={isRtl ? "rtl" : "ltr"}
                           />
                         ),
                       }}
@@ -505,12 +579,13 @@ export default function DetailsPage() {
                   return (
                     <CountryPicker
                       key={f.id || fieldKey}
-                      label={f.label}
+                      label={getFieldLabel(f)}
                       value={val || ""}
                       onChange={(iso) => handleFieldChange(fieldKey, iso)}
                       required={isRequired}
                       error={Boolean(error)}
                       helperText={error}
+                      lang={isRtl ? "ar" : "en"}
                     />
                   );
                 }
@@ -519,15 +594,40 @@ export default function DetailsPage() {
                   return (
                     <Box key={f.id || fieldKey}>
                       <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: error ? "error.main" : "text.secondary" }}>
-                        {f.label} {isRequired && "*"}
+                        {getFieldLabel(f)} {isRequired && "*"}
                       </Typography>
                       <RichTextEditor
                         value={val}
                         onChange={(html) => handleFieldChange(fieldKey, html)}
-                        placeholder={f.label}
+                        placeholder={getFieldLabel(f)}
                       />
                       {error && <FormHelperText error>{error}</FormHelperText>}
                     </Box>
+                  );
+                }
+
+                // Passport country / nationality / country-of-issue → CountryPicker with translated names
+                const isPassportCountryField =
+                  fieldKeyLower.includes("passport_country") ||
+                  fieldKeyLower.includes("passportcountry") ||
+                  fieldKeyLower.includes("country_of_issue") ||
+                  fieldKeyLower.includes("countryofissue") ||
+                  fieldKeyLower.includes("nationality") ||
+                  (fieldLabel.includes("country") && fieldLabel.includes("passport")) ||
+                  (fieldLabel.includes("nationality"));
+
+                if (isPassportCountryField) {
+                  return (
+                    <CountryPicker
+                      key={f.id || fieldKey}
+                      label={getFieldLabel(f)}
+                      value={val || ""}
+                      onChange={(iso) => handleFieldChange(fieldKey, iso)}
+                      required={isRequired}
+                      error={Boolean(error)}
+                      helperText={error}
+                      lang={isRtl ? "ar" : "en"}
+                    />
                   );
                 }
 
@@ -535,7 +635,7 @@ export default function DetailsPage() {
                   return (
                     <Box key={f.id || fieldKey}>
                       <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: error ? "error.main" : "text.secondary" }}>
-                        {f.label} {isRequired && "*"}
+                        {getFieldLabel(f)} {isRequired && "*"}
                       </Typography>
                       <TextField
                         fullWidth
@@ -559,7 +659,7 @@ export default function DetailsPage() {
                   <TextField
                     key={f.id || fieldKey}
                     fullWidth
-                    label={f.label}
+                    label={getFieldLabel(f)}
                     type={textType}
                     value={val}
                     onChange={(e) => {
@@ -581,7 +681,7 @@ export default function DetailsPage() {
                     error={Boolean(error)}
                     helperText={error}
                     size="medium"
-                    placeholder={f.label}
+                    placeholder={getFieldLabel(f)}
                     autoComplete="off"
                     inputProps={textType === "date" ? { max: "9999-12-31" } : {}}
                     InputLabelProps={["date", "time", "datetime-local"].includes(textType) ? { shrink: true } : {}}
@@ -612,10 +712,10 @@ export default function DetailsPage() {
             required
             error={Boolean(errors.departmentId)}
           >
-            <InputLabel>Department</InputLabel>
+            <InputLabel>{t("department")}</InputLabel>
             <Select
               value={visitorData.departmentId || ""}
-              label="Department"
+              label={t("department")}
               onChange={(e) => {
                 setVisitorData((prev) => ({ ...prev, departmentId: e.target.value }));
                 if (errors.departmentId) {
@@ -626,26 +726,12 @@ export default function DetailsPage() {
             >
               {departments.map((dept) => (
                 <MenuItem key={dept.id} value={dept.id}>
-                  {dept.name}
+                  {(isRtl && translatedDeptNames[dept.id]) ? translatedDeptNames[dept.id] : dept.name}
                 </MenuItem>
               ))}
             </Select>
             {errors.departmentId && <FormHelperText>{errors.departmentId}</FormHelperText>}
           </FormControl>
-
-          <PurposeOfVisitInput
-            value={visitorData.purposeOfVisit || ""}
-            onChange={(val) => {
-              setVisitorData((prev) => ({ ...prev, purposeOfVisit: val }));
-              if (errors.purposeOfVisit) {
-                setErrors((p) => { const n = { ...p }; delete n.purposeOfVisit; return n; });
-              }
-            }}
-            required
-            error={Boolean(errors.purposeOfVisit)}
-            helperText={errors.purposeOfVisit}
-            rounded
-          />
 
           <Divider />
 
@@ -663,24 +749,24 @@ export default function DetailsPage() {
               }
               label={
                 <Typography component="span" variant="body2" fontWeight={600}>
-                  I have read and agree to the Non-Disclosure Agreement
+                  {t("ndaAgreeLabel")}
                 </Typography>
               }
             />
             <Typography variant="caption" color="text.secondary" sx={{ pl: 4 }}>
-              Please review our NDA before scheduling your visit. The Schedule button will be enabled once you agree.
+              {t("ndaHint")}
             </Typography>
           </Stack>
 
-          <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
+          <Stack direction="row" sx={{ pt: 1, gap: 2 }}>
             <Button
               variant="outlined"
               fullWidth
               startIcon={<ICONS.cancel />}
               onClick={() => router.push("/")}
-              sx={{ py: 1.5, borderRadius: 30 }}
+              sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               variant="contained"
@@ -688,9 +774,9 @@ export default function DetailsPage() {
               disabled={!ndaAccepted || fields.length === 0}
               startIcon={<ICONS.event />}
               onClick={() => handleNext()}
-              sx={{ py: 1.5, borderRadius: 30 }}
+              sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
             >
-              Schedule
+              {t("scheduleButton")}
             </Button>
           </Stack>
         </Stack>
@@ -700,7 +786,7 @@ export default function DetailsPage() {
       <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" fontWeight={800} component="span" sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            {ndaTemplate?.name || "Non-Disclosure Agreement"}
+            {(isRtl && translatedNda?.name) ? translatedNda.name : (ndaTemplate?.name || t("ndaTitle"))}
           </Typography>
           <IconButton onClick={() => setNdaOpen(false)}>
             <ICONS.close />
@@ -711,11 +797,11 @@ export default function DetailsPage() {
             <Stack spacing={2} alignItems="center" sx={{ py: 4 }}>
               <CircularProgress size={28} />
               <Typography variant="body2" color="text.secondary">
-                Loading NDA...
+                {t("ndaLoading")}
               </Typography>
             </Stack>
           ) : (
-            <NdaTemplateContent template={ndaTemplate} />
+            <NdaTemplateContent template={(isRtl && translatedNda) ? translatedNda : ndaTemplate} />
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>
@@ -724,16 +810,16 @@ export default function DetailsPage() {
             onClick={() => setNdaOpen(false)}
             sx={{ borderRadius: 30 }}
           >
-            Close
+            {t("close")}
           </Button>
           <Button
             variant="contained"
             color="success"
             startIcon={<ICONS.check />}
             onClick={() => { setNdaAccepted(true); setNdaOpen(false); }}
-            sx={{ borderRadius: 30 }}
+            sx={{ borderRadius: 30, ...getStartIconSpacing(isRtl ? "rtl" : "ltr") }}
           >
-            I Agree
+            {t("agree")}
           </Button>
         </DialogActions>
       </Dialog>

@@ -3,10 +3,11 @@
 import { Box, Skeleton, Stack, Typography } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import AppCard from "@/components/cards/AppCard";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function SinanLoader({
-  title = "Loading Sinan Sentry",
-  description = "Preparing your experience...",
+  title,
+  description,
   fullScreen = false,
   minHeight = 360,
   topOffset = 0,
@@ -16,6 +17,9 @@ export default function SinanLoader({
   sx = {},
   cardSx = {},
 }) {
+  const { t } = useLanguage();
+  const resolvedTitle = title ?? t("loaderTitle");
+  const resolvedDescription = description ?? t("loaderDescription");
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const logoSrc = isDark ? "/logo-mark-light.png" : "/logo-mark-dark.png";
@@ -257,11 +261,10 @@ export default function SinanLoader({
                 fontWeight={800}
                 textAlign="center"
                 sx={{
-                  fontFamily: "'Comfortaa', cursive",
                   fontSize: { xs: "1.05rem", sm: "1.2rem" },
                 }}
               >
-                {title}
+                {resolvedTitle}
               </Typography>
               <Typography
                 variant="body2"
@@ -272,7 +275,7 @@ export default function SinanLoader({
                   lineHeight: 1.65,
                 }}
               >
-                {description}
+                {resolvedDescription}
               </Typography>
             </Stack>
           </Stack>

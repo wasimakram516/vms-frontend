@@ -30,7 +30,7 @@ const FilterModal = ({ open, onClose, title, children }) => {
       onClose={onClose}
       keepMounted
       fullWidth
-      maxWidth="xs"
+      maxWidth="md"
       TransitionComponent={Transition}
       PaperProps={{
         sx: {

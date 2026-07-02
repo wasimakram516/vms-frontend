@@ -1,13 +1,18 @@
 import { createTheme } from "@mui/material/styles";
 
-export const getTheme = (mode) => {
+export const getTheme = (mode, direction = "ltr") => {
+  const isRtl = direction === "rtl";
   const isDark = mode === "dark";
   const darkBackground = "#121922";
   const darkSurface = "rgba(23, 30, 39, 0.82)";
   const darkSurfaceStrong = "rgba(28, 36, 47, 0.9)";
   const darkBorder = "rgba(255, 255, 255, 0.1)";
+  const fontFamily = isRtl
+    ? '"DINNextLTArabic", "Segoe UI", Arial, sans-serif'
+    : '"Comfortaa", "Segoe UI", Arial, sans-serif';
 
   return createTheme({
+    direction,
     palette: {
       mode,
       primary: {
@@ -30,7 +35,7 @@ export const getTheme = (mode) => {
     },
 
     typography: {
-      fontFamily: "'Comfortaa', cursive, sans-serif",
+      fontFamily,
       h1: { fontWeight: 700 },
       h2: { fontWeight: 700 },
       h3: { fontWeight: 700 },
@@ -48,6 +53,10 @@ export const getTheme = (mode) => {
           body: {
             transition: "background-color 0.3s ease, color 0.3s ease",
             backgroundColor: isDark ? darkBackground : "#f8f9fa",
+            fontFamily,
+          },
+          html: {
+            fontFamily,
           },
         },
       },
@@ -118,17 +127,20 @@ export const getTheme = (mode) => {
           root: {
             borderRadius: "30px",
             backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)",
-            overflow: "hidden",
             transition: "all 0.2s ease",
             "&&.MuiOutlinedInput-multiline": {
               borderRadius: "16px",
             },
             "& .MuiOutlinedInput-notchedOutline": {
+              left: 0,
               borderColor: isDark ? darkBorder : "rgba(0,0,0,0.1)",
+              borderWidth: "0.5px",
               borderRadius: "inherit",
+              "[dir='rtl'] &": { textAlign: "right" },
             },
             "&:hover .MuiOutlinedInput-notchedOutline": {
               borderColor: isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)",
+              borderWidth: "1px",
             },
             "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
               borderColor: isDark ? "#ffffff" : "#000000",
@@ -150,6 +162,17 @@ export const getTheme = (mode) => {
             "&.Mui-focused": {
               color: isDark ? "#ffffff" : "#000000",
             },
+            "&[dir='rtl'], [dir='rtl'] &": {
+              right: 30,
+              left: "auto",
+              textAlign: "right",
+              transformOrigin: "top right",
+            },
+            "&[dir='ltr'], [dir='ltr'] &": {
+              right: "auto",
+              textAlign: "left",
+              transformOrigin: "top left",
+            },
           },
         },
       },
@@ -162,6 +185,10 @@ export const getTheme = (mode) => {
             "&:-webkit-autofill": {
               WebkitBoxShadow: isDark ? `0 0 0 1000px ${darkBackground} inset !important` : "0 0 0 1000px #ffffff inset !important",
               WebkitTextFillColor: isDark ? "#ffffff !important" : "#000000 !important",
+            },
+            "[dir='rtl'] &": {
+              direction: "rtl",
+              textAlign: "right",
             },
           },
         },
@@ -191,6 +218,11 @@ export const getTheme = (mode) => {
           },
           icon: {
             right: 16,
+            left: "auto",
+            "[dir='rtl'] &": {
+              right: "auto",
+              left: 16,
+            },
           },
         },
       },
@@ -206,4 +238,4 @@ export const getTheme = (mode) => {
   });
 };
 
-export default getTheme("dark");
+export default getTheme("dark", "ltr");

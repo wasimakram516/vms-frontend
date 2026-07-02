@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -19,6 +19,11 @@ import {
   IconButton,
   CircularProgress,
   Tooltip,
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
@@ -33,32 +38,90 @@ import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessResource } from "@/utils/permissions";
 import { useSocket } from "@/contexts/SocketContext";
-import { verifyRegistrationByToken, updateStatus, getRegistrationActivityLogs, mapRegistration, verifyRegistrationById, createVipRevisit } from "@/services/registrationService";
+import {
+  verifyRegistrationByToken,
+  updateStatus,
+  getRegistrationActivityLogs,
+  mapRegistration,
+  verifyRegistrationById,
+  createVipRevisit,
+  getCurrentlyInside,
+} from "@/services/registrationService";
+import { getWorkingHours } from "@/services/hostService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
 import VipFastTrackModal from "./VipFastTrackModal";
+import GateTodayView from "@/components/staff/GateTodayView";
 
 const STATUS_CONFIG = {
-  pending:       { label: "Pending",         color: "warning", icon: <ICONS.time fontSize="small" /> },
-  admin_approved:{ label: "Dept. Approved",  color: "info",    icon: <ICONS.checkCircleOutline fontSize="small" /> },
-  approved:      { label: "Approved",        color: "success", icon: <ICONS.checkCircle fontSize="small" /> },
-  rejected:      { label: "Rejected",        color: "error",   icon: <ICONS.close fontSize="small" /> },
-  checked_in:    { label: "Checked In",      color: "info",    icon: <ICONS.login fontSize="small" /> },
-  checked_out:   { label: "Checked Out",     color: "default", icon: <ICONS.logout fontSize="small" /> },
-  visit_ended:   { label: "Visit Ended",     color: "default", icon: <ICONS.stop fontSize="small" /> },
-  cancelled:     { label: "Cancelled",       color: "default", icon: <ICONS.cancel fontSize="small" /> },
-  expired:       { label: "Expired",         color: "default", icon: <ICONS.history fontSize="small" /> },
+  pending: {
+    label: "Pending",
+    color: "warning",
+    icon: <ICONS.time fontSize="small" />,
+  },
+  admin_approved: {
+    label: "Dept. Approved",
+    color: "info",
+    icon: <ICONS.checkCircleOutline fontSize="small" />,
+  },
+  approved: {
+    label: "Approved",
+    color: "success",
+    icon: <ICONS.checkCircle fontSize="small" />,
+  },
+  rejected: {
+    label: "Rejected",
+    color: "error",
+    icon: <ICONS.close fontSize="small" />,
+  },
+  checked_in: {
+    label: "Checked In",
+    color: "info",
+    icon: <ICONS.login fontSize="small" />,
+  },
+  checked_out: {
+    label: "Checked Out",
+    color: "default",
+    icon: <ICONS.logout fontSize="small" />,
+  },
+  visit_ended: {
+    label: "Visit Ended",
+    color: "default",
+    icon: <ICONS.stop fontSize="small" />,
+  },
+  cancelled: {
+    label: "Cancelled",
+    color: "default",
+    icon: <ICONS.cancel fontSize="small" />,
+  },
+  expired: {
+    label: "Expired",
+    color: "default",
+    icon: <ICONS.history fontSize="small" />,
+  },
 };
 
 export default function StaffVerifyPage() {
   const theme = useTheme();
+  const { user } = useAuth();
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
+  const canCheckin = canAccessResource(user, "verify", { action: "checkin" });
+  const canCheckout = canAccessResource(user, "verify", { action: "checkout" });
+  const canVipBypass = canAccessResource(user, "verify", { action: "vip-bypass" });
+  const canTodayVisitors = canAccessResource(user, "verify", { action: "todays-visitors" });
+  const canRead = canAccessResource(user, "verify", { action: "read" });
   const isDark = mode === "dark";
   const [showScanner, setShowScanner] = useState(false);
-  const [manualMode, setManualMode] = useState(false);
   const [vipModalOpen, setVipModalOpen] = useState(false);
-  const [token, setToken] = useState("");
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator !== "undefined" ? navigator.onLine : true,
+  );
+  const [scannerFailed, setScannerFailed] = useState(false);
+  const [workingHours, setWorkingHours] = useState(null);
+  const [outsideHoursWarning, setOutsideHoursWarning] = useState(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -68,10 +131,73 @@ export default function StaffVerifyPage() {
   const [idSearch, setIdSearch] = useState("");
   const [isSearchingById, setIsSearchingById] = useState(false);
   const scanningRef = useRef(false);
+  const idSearchRef = useRef(null);
   const [badgeTemplate, setBadgeTemplate] = useState(null);
+
+  // Today's View
+  const [todayView, setTodayView] = useState(false);
+
+  // Assembly mode
+  const [idVerified, setIdVerified] = useState(false);
+  const [showIdVerifyDialog, setShowIdVerifyDialog] = useState(false);
+
+  const [assemblyMode, setAssemblyMode] = useState(false);
+  const [assemblyVisitors, setAssemblyVisitors] = useState([]);
+  const [assemblyLoading, setAssemblyLoading] = useState(false);
+  const [accountedIds, setAccountedIds] = useState(new Set());
+
+  const enterAssemblyMode = async () => {
+    setAssemblyMode(true);
+    setAssemblyLoading(true);
+    setAccountedIds(new Set());
+    try {
+      const visitors = await getCurrentlyInside();
+      setAssemblyVisitors(Array.isArray(visitors) ? visitors : []);
+    } finally {
+      setAssemblyLoading(false);
+    }
+  };
+
+  const exitAssemblyMode = () => {
+    setAssemblyMode(false);
+    setAssemblyVisitors([]);
+    setAccountedIds(new Set());
+  };
+
+  const toggleAccounted = (id) => {
+    setAccountedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     fetchDefaultBadgeTemplate();
+    getWorkingHours().then((wh) => {
+      if (wh) setWorkingHours(wh);
+    });
+  }, []);
+
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        getWorkingHours().then((wh) => {
+          if (wh) setWorkingHours(wh);
+        });
+      }
+    };
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const fetchDefaultBadgeTemplate = async () => {
@@ -86,19 +212,22 @@ export default function StaffVerifyPage() {
     setLoading(true);
     setError(null);
     setResult(null);
-    
+
     try {
       const res = await verifyRegistrationByToken(input);
-      
+
       if (res?.error) {
         setError(res.message);
       } else if (res) {
         const mapped = mapRegistration(res);
         setResult(mapped);
         // Fetch activity logs for timestamps (check-in, check-out, visit-ended)
-        if (res.id && ["checked_in", "checked_out", "visit_ended"].includes(res.status)) {
+        if (
+          res.id &&
+          ["checked_in", "checked_out", "visit_ended"].includes(res.status)
+        ) {
           const logs = await getRegistrationActivityLogs(res.id);
-          setActivityLogs(logs || []);
+          setActivityLogs(Array.isArray(logs) ? logs : []);
         } else {
           setActivityLogs([]);
         }
@@ -146,21 +275,29 @@ export default function StaffVerifyPage() {
     const mapped = mapRegistration(visitor);
     setResult(mapped);
     setSearchResults([]);
-    if (visitor.id && ["checked_in", "checked_out", "visit_ended"].includes(visitor.status)) {
+    if (
+      visitor.id &&
+      ["checked_in", "checked_out", "visit_ended"].includes(visitor.status)
+    ) {
       const logs = await getRegistrationActivityLogs(visitor.id);
-      setActivityLogs(logs || []);
+      setActivityLogs(Array.isArray(logs) ? logs : []);
     } else {
       setActivityLogs([]);
     }
   };
 
-  const handleScanSuccess = useCallback(async (scanned) => {
-    if (scanningRef.current) return;
-    scanningRef.current = true;
-    setShowScanner(false);
-    await doVerify(scanned);
-    setTimeout(() => { scanningRef.current = false; }, 600);
-  }, [doVerify]);
+  const handleScanSuccess = useCallback(
+    async (scanned) => {
+      if (scanningRef.current) return;
+      scanningRef.current = true;
+      setShowScanner(false);
+      await doVerify(scanned);
+      setTimeout(() => {
+        scanningRef.current = false;
+      }, 600);
+    },
+    [doVerify],
+  );
 
   const selfInitiatedRef = useRef(null);
 
@@ -169,15 +306,24 @@ export default function StaffVerifyPage() {
     setActionLoading(true);
     selfInitiatedRef.current = { id: result.id, status: "checked_in" };
     try {
-      const updated = await updateStatus(result.id, { status: "checked_in", clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      const updated = await updateStatus(result.id, {
+        status: "checked_in",
+        clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
       if (!updated?.error) {
-        setResult(prev => ({ ...prev, status: updated?.status || "checked_in" }));
+        setResult((prev) => ({
+          ...prev,
+          status: updated?.status || "checked_in",
+        }));
         const logs = await getRegistrationActivityLogs(result.id);
-        setActivityLogs(logs || []);
+        setActivityLogs(Array.isArray(logs) ? logs : []);
+        flagIfOutsideHours("check_in");
       }
     } finally {
       setActionLoading(false);
-      setTimeout(() => { selfInitiatedRef.current = null; }, 5000);
+      setTimeout(() => {
+        selfInitiatedRef.current = null;
+      }, 5000);
     }
   };
 
@@ -190,7 +336,7 @@ export default function StaffVerifyPage() {
         const mapped = mapRegistration(newReg);
         setResult(mapped);
         const logs = await getRegistrationActivityLogs(newReg.id);
-        if (logs && !logs.error) setActivityLogs(logs);
+        if (Array.isArray(logs)) setActivityLogs(logs);
         showMessage("VIP visitor checked in successfully", "success");
       }
     } finally {
@@ -203,15 +349,29 @@ export default function StaffVerifyPage() {
     setActionLoading(true);
     selfInitiatedRef.current = { id: result.id, status: "checked_out" };
     try {
-      const updated = await updateStatus(result.id, { status: "checked_out" });
+      const updated = await updateStatus(result.id, {
+        status: "checked_out",
+        clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
       if (!updated?.error) {
-        setResult(prev => ({ ...prev, status: updated?.status || "checked_out" }));
+        // Update self-initiated ref with actual backend status (may be visit_ended if auto-ended)
+        if (updated?.status) {
+          selfInitiatedRef.current = { id: result.id, status: updated.status };
+        }
+        setResult((prev) => ({
+          ...prev,
+          status: updated?.status || "checked_out",
+        }));
         const logs = await getRegistrationActivityLogs(result.id);
-        setActivityLogs(logs || []);
+        setActivityLogs(Array.isArray(logs) ? logs : []);
+        flagIfOutsideHours("check_out");
+        setIdVerified(false);
       }
     } finally {
       setActionLoading(false);
-      setTimeout(() => { selfInitiatedRef.current = null; }, 5000);
+      setTimeout(() => {
+        selfInitiatedRef.current = null;
+      }, 5000);
     }
   };
 
@@ -222,11 +382,14 @@ export default function StaffVerifyPage() {
     }
 
     try {
-      const qrCodeDataUrl = await QRCode.toDataURL(registration.qr_token || "N/A", {
-        width: 300,
-        margin: 1,
-        color: { dark: "#000000", light: "#ffffff" },
-      });
+      const qrCodeDataUrl = await QRCode.toDataURL(
+        registration.qr_token || "N/A",
+        {
+          width: 300,
+          margin: 1,
+          color: { dark: "#000000", light: "#ffffff" },
+        },
+      );
 
       const badgeData = {
         fullName:
@@ -243,13 +406,27 @@ export default function StaffVerifyPage() {
           registration.user?.companyName ||
           registration.user?.company_name ||
           "",
-        email: registration.email || registration.visitor?.email || registration.user?.email || "",
-        phone: registration.phone || registration.visitor?.phone || registration.user?.phone || "",
+        email:
+          registration.email ||
+          registration.visitor?.email ||
+          registration.user?.email ||
+          "",
+        phone:
+          registration.phone ||
+          registration.visitor?.phone ||
+          registration.user?.phone ||
+          "",
         purposeOfVisit: registration.purpose_of_visit || "",
         hostName: registration.host_name || "",
-        requestedDate: registration.requested_from ? formatDate(registration.requested_from) : "",
-        requestedTimeFrom: registration.requested_from ? formatTime(registration.requested_from) : "",
-        requestedTimeTo: registration.requested_to ? formatTime(registration.requested_to) : "",
+        requestedDate: registration.requested_from
+          ? formatDate(registration.requested_from)
+          : "",
+        requestedTimeFrom: registration.requested_from
+          ? formatTime(registration.requested_from)
+          : "",
+        requestedTimeTo: registration.requested_to
+          ? formatTime(registration.requested_to)
+          : "",
         badgeIdentifier: registration.badge_identifier || "",
         token: registration.qr_token || "N/A",
         showQrOnBadge: true,
@@ -265,7 +442,7 @@ export default function StaffVerifyPage() {
       );
       const blob = await pdf(doc).toBlob();
       const blobUrl = URL.createObjectURL(blob);
-      
+
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
       if (isMobile) {
@@ -285,7 +462,7 @@ export default function StaffVerifyPage() {
       const printWindow = window.open(
         "",
         "_blank",
-        `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,status=no`
+        `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,status=no`,
       );
 
       if (!printWindow) {
@@ -327,12 +504,22 @@ export default function StaffVerifyPage() {
     }
   };
 
+  const flagIfOutsideHours = (type) => {
+    if (!workingHours?.enabled) return;
+    const localHour = new Date().getHours();
+    if (localHour < workingHours.start || localHour >= workingHours.end) {
+      setOutsideHoursWarning(type);
+    }
+  };
+
   const reset = () => {
-    setToken("");
     setResult(null);
     setError(null);
     setShowScanner(false);
-    setManualMode(false);
+    setScannerFailed(false);
+    setOutsideHoursWarning(null);
+    setIdVerified(false);
+    setShowIdVerifyDialog(false);
   };
 
   const { on } = useSocket();
@@ -345,11 +532,119 @@ export default function StaffVerifyPage() {
   }, [result?.id, result?.status]);
 
   useEffect(() => {
+    setIdVerified(false);
+  }, [result?.id]);
+
+  // Derive resolvedId at component level so auto check-in effects can use it
+  const resolvedId = useMemo(() => {
+    if (!result) return null;
+    const fvs = Array.isArray(result.fieldValues)
+      ? result.fieldValues
+      : Array.isArray(result.visitor?.fieldValues)
+        ? result.visitor.fieldValues
+        : [];
+    const nk = (v) =>
+      String(v ?? "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    const rv = (v) => {
+      if (v == null || v === "") return null;
+      if (typeof v === "object") return v.name || v.label || v.value || null;
+      return String(v);
+    };
+    const find = (aliases) => {
+      const norm = aliases.map(nk);
+      const m = fvs.find(
+        (fv) =>
+          norm.includes(
+            nk(fv?.customField?.fieldKey || fv?.customField?.name),
+          ) || norm.includes(nk(fv?.customField?.label)),
+      );
+      return rv(m?.value);
+    };
+    const idType = find([
+      "idtype",
+      "identificationtype",
+      "documenttype",
+      "doctype",
+    ]);
+    const omanId = find([
+      "omanid",
+      "nationalid",
+      "civilid",
+      "idcardnumber",
+      "idnumber",
+      "idno",
+    ]);
+    const passport = find(["passport", "passportnumber", "passportno"]);
+    const nkIdType = nk(idType || "");
+    if (nkIdType.includes("passport") && (passport || omanId))
+      return { type: "Passport", value: passport || omanId };
+    if (omanId)
+      return {
+        type: nkIdType.includes("passport") ? "Passport" : "ID",
+        value: omanId,
+      };
+    if (passport) return { type: "Passport", value: passport };
+    return null;
+  }, [result]);
+
+  // Auto check-in: visitor scanned — open ID verification prompt if needed
+  useEffect(() => {
+    if (!result || result.status !== "approved") return;
+    if (!canCheckin) return;
+    if (result.is_vip_fast_track || result.isVipFastTrack) return;
+    if (!result.approved_from) {
+      if (resolvedId && !idVerified) {
+        setShowIdVerifyDialog(true);
+      } else {
+        handleCheckInAction();
+      }
+      return;
+    }
+    const bufferMs = (workingHours?.checkInBufferMinutes ?? 60) * 60 * 1000;
+    const now = Date.now();
+    const approvedFromMs = new Date(result.approved_from).getTime();
+    if (now >= approvedFromMs - bufferMs && now <= approvedFromMs + bufferMs) {
+      if (resolvedId && !idVerified) {
+        setShowIdVerifyDialog(true);
+      } else {
+        handleCheckInAction();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result?.id]);
+
+  // Auto check-in: fires the moment ID is ticked green
+  useEffect(() => {
+    if (!idVerified || !result || result.status !== "approved") return;
+    if (!canCheckin) return;
+    if (result.is_vip_fast_track || result.isVipFastTrack) return;
+    if (!result.approved_from) {
+      handleCheckInAction();
+      return;
+    }
+    const bufferMs = (workingHours?.checkInBufferMinutes ?? 60) * 60 * 1000;
+    const now = Date.now();
+    const approvedFromMs = new Date(result.approved_from).getTime();
+    if (now >= approvedFromMs - bufferMs && now <= approvedFromMs + bufferMs) {
+      handleCheckInAction();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idVerified]);
+
+  useEffect(() => {
     const unsub = on("registration:updated", (updatedReg) => {
       // Ignore events that don't belong to the registration currently on screen.
-      if (!currentRegistrationIdRef.current || currentRegistrationIdRef.current !== updatedReg.id) return;
+      if (
+        !currentRegistrationIdRef.current ||
+        currentRegistrationIdRef.current !== updatedReg.id
+      )
+        return;
 
-      const isAccessible = ["approved", "checked_in", "checked_out"].includes(updatedReg.status);
+      const isAccessible = ["approved", "checked_in", "checked_out"].includes(
+        updatedReg.status,
+      );
       const mappedReg = {
         ...mapRegistration(updatedReg),
         notApproved: !isAccessible,
@@ -357,40 +652,348 @@ export default function StaffVerifyPage() {
       setResult(mappedReg);
 
       // Fetch activity logs for timestamps (check-in, check-out, visit-ended)
-      if (["checked_in", "checked_out", "visit_ended"].includes(updatedReg.status)) {
-        getRegistrationActivityLogs(updatedReg.id).then(logs => setActivityLogs(logs || []));
+      if (
+        ["checked_in", "checked_out", "visit_ended"].includes(updatedReg.status)
+      ) {
+        getRegistrationActivityLogs(updatedReg.id).then((logs) => {
+        if (Array.isArray(logs)) setActivityLogs(logs);
+        });
       }
 
       const isSelfEcho =
         selfInitiatedRef.current?.id === updatedReg.id &&
         selfInitiatedRef.current?.status === updatedReg.status;
 
-      const statusActuallyChanged = updatedReg.status !== currentRegistrationStatusRef.current;
+      const statusActuallyChanged =
+        updatedReg.status !== currentRegistrationStatusRef.current;
 
       if (isSelfEcho) {
         selfInitiatedRef.current = null;
       } else if (statusActuallyChanged) {
-        showMessage("This visitor's status has been updated by another operator.", "info");
+        showMessage(
+          "This visitor's status has been updated by another operator.",
+          "info",
+        );
       }
     });
-    return () => unsub?.();
+
+    const unsubOverstay = on("overstay:alert", (data) => {
+      if (!data?.registrationId) return;
+      if (currentRegistrationIdRef.current !== data.registrationId) return;
+      // Update overstay flag on current result and refresh activity logs
+      setResult((prev) => (prev ? { ...prev, overstay: true } : prev));
+      getRegistrationActivityLogs(data.registrationId).then((logs) => {
+        if (Array.isArray(logs)) setActivityLogs(logs);
+      });
+    });
+
+    return () => {
+      unsub?.();
+      unsubOverstay?.();
+    };
   }, [on, showMessage]);
 
-  const sc = result ? (STATUS_CONFIG[result.status] || { label: result.status, color: "default" }) : null;
+  const sc = result
+    ? STATUS_CONFIG[result.status] || { label: result.status, color: "default" }
+    : null;
+
+  if (todayView) {
+    return (
+      <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
+        <GateTodayView onBack={() => setTodayView(false)} canCheckout={canCheckout} />
+      </RoleGuard>
+    );
+  }
+
+  if (assemblyMode) {
+    const total = assemblyVisitors.length;
+    const accounted = accountedIds.size;
+    const progress = total > 0 ? Math.round((accounted / total) * 100) : 0;
+    const allAccounted = total > 0 && accounted === total;
+
+    return (
+      <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
+        <Box
+          sx={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1300,
+            bgcolor: "background.default",
+            overflow: "auto",
+            py: 3,
+            px: 3,
+          }}
+        >
+          {/* Header */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              mb: 3,
+              borderRadius: 3,
+              bgcolor: "error.main",
+              color: "#fff",
+              textAlign: "center",
+            }}
+          >
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="center"
+              spacing={1}
+              mb={0.5}
+            >
+              <ICONS.warning sx={{ fontSize: 22 }} />
+              <Typography
+                variant="h6"
+                fontWeight={800}
+                sx={{ letterSpacing: 1 }}
+              >
+                ASSEMBLY MODE
+              </Typography>
+            </Stack>
+            <Typography variant="caption" sx={{ opacity: 0.85 }}>
+              Evacuation Roll-Call — mark each visitor as accounted for
+            </Typography>
+          </Paper>
+
+          {/* Counter */}
+          <Paper
+            elevation={0}
+            variant="frosted"
+            sx={{ p: 2.5, mb: 3, borderRadius: 3 }}
+          >
+            <Stack
+              direction="row"
+              justifyContent="space-between"
+              alignItems="center"
+              mb={1.5}
+            >
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                fontWeight={600}
+              >
+                Accounted For
+              </Typography>
+              <Chip
+                label={`${accounted} / ${total}`}
+                color={
+                  allAccounted
+                    ? "success"
+                    : accounted > 0
+                      ? "warning"
+                      : "default"
+                }
+                sx={{ fontWeight: 800, fontSize: "0.95rem", px: 1 }}
+              />
+            </Stack>
+            <LinearProgress
+              variant="determinate"
+              value={progress}
+              color={allAccounted ? "success" : "warning"}
+              sx={{ borderRadius: 2, height: 8 }}
+            />
+            {allAccounted && (
+              <Typography
+                variant="caption"
+                color="success.main"
+                fontWeight={700}
+                sx={{ mt: 1, display: "block" }}
+              >
+                All visitors accounted for
+              </Typography>
+            )}
+          </Paper>
+
+          {/* Visitor list */}
+          {assemblyLoading ? (
+            <Box sx={{ textAlign: "center", py: 6 }}>
+              <CircularProgress color="error" />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Loading checked-in visitors…
+              </Typography>
+            </Box>
+          ) : total === 0 ? (
+            <Paper
+              elevation={0}
+              variant="frosted"
+              sx={{ p: 4, borderRadius: 3, textAlign: "center" }}
+            >
+              <ICONS.checkCircle
+                sx={{ fontSize: 48, color: "success.main", mb: 1 }}
+              />
+              <Typography fontWeight={700} color="success.main">
+                No visitors currently inside
+              </Typography>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
+                The facility is clear.
+              </Typography>
+            </Paper>
+          ) : (
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+                gap: 1.5,
+                mb: 3,
+              }}
+            >
+              {assemblyVisitors.map((v) => {
+                const isAccounted = accountedIds.has(v.id);
+                const name = v.full_name || v.visitor?.fullName || "Visitor";
+                const company =
+                  v.organisation ||
+                  v.visitor?.organisation ||
+                  v.visitor?.companyName ||
+                  null;
+                const dept =
+                  v.department?.name || v.visitor?.department || null;
+                const accessZones = v.access_levels?.length
+                  ? v.access_levels
+                      .map((al) => al.name)
+                      .filter(Boolean)
+                      .join(", ")
+                  : v.access_level?.name || v.visitor?.accessLevel || null;
+                const subtitle =
+                  [company, dept, accessZones].filter(Boolean).join(" · ") ||
+                  "No details";
+
+                return (
+                  <Paper
+                    key={v.id}
+                    elevation={0}
+                    variant="frosted"
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: isAccounted
+                        ? "success.main"
+                        : isDark
+                          ? "rgba(255,255,255,0.07)"
+                          : "rgba(0,0,0,0.07)",
+                      bgcolor: isAccounted
+                        ? isDark
+                          ? "rgba(46,125,50,0.15)"
+                          : "rgba(46,125,50,0.06)"
+                        : "background.paper",
+                      transition: "all 0.2s",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1,
+                    }}
+                  >
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography fontWeight={700} fontSize="0.875rem" noWrap>
+                        {name}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", lineHeight: 1.4 }}
+                      >
+                        {subtitle}
+                      </Typography>
+                    </Box>
+                    <Button
+                      fullWidth
+                      variant={isAccounted ? "contained" : "outlined"}
+                      color={isAccounted ? "success" : "inherit"}
+                      size="small"
+                      startIcon={
+                        isAccounted ? (
+                          <ICONS.checkCircle />
+                        ) : (
+                          <ICONS.checkCircleOutline />
+                        )
+                      }
+                      onClick={() => toggleAccounted(v.id)}
+                      sx={{ borderRadius: 2, fontSize: "0.78rem", mt: "auto" }}
+                    >
+                      {isAccounted ? "Accounted" : "Mark Safe"}
+                    </Button>
+                  </Paper>
+                );
+              })}
+            </Box>
+          )}
+
+          {/* Exit button */}
+          <Button
+            fullWidth
+            variant="outlined"
+            color="error"
+            startIcon={<ICONS.close />}
+            onClick={exitAssemblyMode}
+            sx={{ borderRadius: 3, py: 1.5, mt: 2 }}
+          >
+            Exit Assembly Mode
+          </Button>
+        </Box>
+      </RoleGuard>
+    );
+  }
 
   return (
     <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
       <Container maxWidth="sm">
         <Box sx={{ py: 4 }}>
-          <Typography variant="h4" fontWeight={800} gutterBottom textAlign="center" color="primary.main" sx={{ fontFamily: "'Comfortaa', cursive" }}>
+          {!canRead ? (
+            <Box sx={{ textAlign: "center", py: 8 }}>
+              <Typography variant="h5" fontWeight={700} color="text.secondary">
+                Access Denied
+              </Typography>
+              <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
+                You do not have permission to access this page.
+              </Typography>
+            </Box>
+          ) : (
+            <>
+          <Typography
+            variant="h4"
+            fontWeight={800}
+            gutterBottom
+            textAlign="center"
+            color="primary.main"
+            sx={{ fontFamily: "'Comfortaa', cursive" }}
+          >
             Gate Check-in
           </Typography>
           <Typography color="text.secondary" textAlign="center" sx={{ mb: 4 }}>
             Scan visitor QR or enter token manually to grant access.
           </Typography>
 
+          {/* Offline banner */}
+          {!isOnline && (
+            <Alert
+              severity="error"
+              icon={<ICONS.wifiOff />}
+              sx={{ mb: 3, borderRadius: 2, fontWeight: 600 }}
+            >
+              No internet connection — QR verification unavailable. Use ID
+              search or contact administration.
+            </Alert>
+          )}
+
           {/* Search by ID functionality */}
           <Box component="form" onSubmit={handleIdSearch} sx={{ mb: 4 }}>
+            {scannerFailed && (
+              <Alert
+                severity="warning"
+                onClose={() => setScannerFailed(false)}
+                sx={{ mb: 1.5, borderRadius: 2 }}
+              >
+                Scanner unavailable — use ID number search below.
+              </Alert>
+            )}
             <Stack direction="row" spacing={1}>
               <TextField
                 fullWidth
@@ -399,12 +1002,15 @@ export default function StaffVerifyPage() {
                 value={idSearch}
                 onChange={(e) => setIdSearch(e.target.value)}
                 inputProps={{ inputMode: "text" }}
+                inputRef={idSearchRef}
                 disabled={loading}
                 sx={{
-                  '& .MuiOutlinedInput-root': {
+                  "& .MuiOutlinedInput-root": {
                     borderRadius: 3,
-                    bgcolor: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
-                  }
+                    bgcolor: isDark
+                      ? "rgba(255,255,255,0.03)"
+                      : "rgba(0,0,0,0.02)",
+                  },
                 }}
               />
               <Button
@@ -413,528 +1019,1374 @@ export default function StaffVerifyPage() {
                 disabled={loading || !idSearch.trim()}
                 sx={{ borderRadius: 3, px: 3, minWidth: 100 }}
               >
-                {isSearchingById && loading ? <CircularProgress size={20} color="inherit" /> : "Search"}
+                {isSearchingById && loading ? (
+                  <CircularProgress size={20} color="inherit" />
+                ) : (
+                  "Search"
+                )}
               </Button>
             </Stack>
           </Box>
 
-          <Box sx={{ minHeight: "calc(90vh - 350px)", display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center" }}>
-            {!showScanner && !loading && !result && !error && searchResults.length > 0 && (
-              <Box sx={{ width: "100%", mt: 2 }}>
-                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                  Multiple Matches Found
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                   Multiple visitors share this ID number. Please select the correct person:
-                </Typography>
-                <Stack spacing={2}>
-                  {searchResults.map((visitor) => (
-                    <Paper
-                      key={visitor.id}
-                      elevation={0}
-                      variant="frosted"
-                      sx={{
-                        p: 2,
-                        borderRadius: 3,
-                        cursor: "pointer",
-                        transition: "all 0.2s",
-                        border: "1px solid",
-                        borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
-                        '&:hover': {
-                          bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
-                          transform: "translateY(-2px)",
-                          borderColor: theme.palette.primary.main,
-                        }
-                      }}
-                      onClick={() => handleSelectVisitor(visitor)}
-                    >
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Box>
-                          <Typography sx={{ fontWeight: 600 }}>
-                            {visitor.full_name && visitor.full_name !== "N/A" ? visitor.full_name : (visitor.visitor?.fullName || "Visitor")}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {(visitor.organisation && visitor.organisation !== "N/A" ? visitor.organisation : (visitor.visitor?.organisation !== "N/A" ? visitor.visitor?.organisation : "No Organization"))} 
-                            {" • "}
-                            {(visitor.department?.name || visitor.visitor?.department || "No Department")}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ textAlign: "right" }}>
-                           <Chip
-                              label={STATUS_CONFIG[visitor.status]?.label || visitor.status}
-                              color={STATUS_CONFIG[visitor.status]?.color || "default"}
+          <Box
+            sx={{
+              minHeight: "calc(90vh - 350px)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "flex-start",
+              alignItems: "center",
+            }}
+          >
+            {!showScanner &&
+              !loading &&
+              !result &&
+              !error &&
+              searchResults.length > 0 && (
+                <Box sx={{ width: "100%", mt: 2 }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                    Multiple Matches Found
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 3 }}
+                  >
+                    Multiple visitors share this ID number. Please select the
+                    correct person:
+                  </Typography>
+                  <Stack spacing={2}>
+                    {searchResults.map((visitor) => (
+                      <Paper
+                        key={visitor.id}
+                        elevation={0}
+                        variant="frosted"
+                        sx={{
+                          p: 2,
+                          borderRadius: 3,
+                          cursor: "pointer",
+                          transition: "all 0.2s",
+                          border: "1px solid",
+                          borderColor: isDark
+                            ? "rgba(255,255,255,0.05)"
+                            : "rgba(0,0,0,0.05)",
+                          "&:hover": {
+                            bgcolor: isDark
+                              ? "rgba(255,255,255,0.05)"
+                              : "rgba(0,0,0,0.03)",
+                            transform: "translateY(-2px)",
+                            borderColor: theme.palette.primary.main,
+                          },
+                        }}
+                        onClick={() => handleSelectVisitor(visitor)}
+                      >
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                        >
+                          <Box>
+                            <Typography sx={{ fontWeight: 600 }}>
+                              {visitor.full_name && visitor.full_name !== "N/A"
+                                ? visitor.full_name
+                                : visitor.visitor?.fullName || "Visitor"}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {visitor.organisation &&
+                              visitor.organisation !== "N/A"
+                                ? visitor.organisation
+                                : visitor.visitor?.organisation !== "N/A"
+                                  ? visitor.visitor?.organisation
+                                  : "No Organization"}
+                              {" • "}
+                              {visitor.department?.name ||
+                                visitor.visitor?.department ||
+                                "No Department"}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ textAlign: "right" }}>
+                            <Chip
+                              label={
+                                STATUS_CONFIG[visitor.status]?.label ||
+                                visitor.status
+                              }
+                              color={
+                                STATUS_CONFIG[visitor.status]?.color ||
+                                "default"
+                              }
                               icon={STATUS_CONFIG[visitor.status]?.icon}
                               size="small"
                               sx={{ borderRadius: 1 }}
-                           />
-                        </Box>
-                      </Stack>
-                    </Paper>
-                  ))}
-                </Stack>
-                <Button 
-                   fullWidth 
-                   variant="outlined" 
-                   sx={{ mt: 4, borderRadius: 3 }}
-                   onClick={() => setSearchResults([])}
-                >
-                  Clear Results
-                </Button>
-              </Box>
-            )}
-
-            {!showScanner && !loading && !result && !error && searchResults.length === 0 && (
-              <Paper elevation={0} variant="frosted" sx={{ p: 4, borderRadius: 4, textAlign: "center", width: "100%" }}>
-            <Box
-              sx={{
-                width: 72, height: 72, borderRadius: 3,
-                bgcolor: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)",
-                boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.06)" : "none",
-                color: "text.primary",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                mx: "auto", mb: 3
-              }}
-            >
-              <ICONS.qrCodeScanner sx={{ fontSize: 40 }} />
-            </Box>
-            
-            <Stack spacing={2}>
-              <Button
-                variant="contained"
-                size="large"
-                fullWidth
-                startIcon={<ICONS.qrCodeScanner />}
-                onClick={() => setShowScanner(true)}
-                sx={{ py: 1.8, borderRadius: 3, fontSize: "1.1rem" }}
-              >
-                QR Check-in
-              </Button>
-              <Button
-                variant="outlined"
-                fullWidth
-                startIcon={<ICONS.key />}
-                onClick={() => setVipModalOpen(true)}
-                sx={{ py: 1.5, borderRadius: 3 }}
-              >
-                VIP Fast Track
-              </Button>
-            </Stack>
-          </Paper>
-        )}
-
-        {showScanner && (
-          <QrScanner
-            onScanSuccess={handleScanSuccess}
-            onCancel={() => setShowScanner(false)}
-            onError={(err) => { showMessage(err, "error"); setShowScanner(false); }}
-          />
-        )}
-
-        <VipFastTrackModal
-          open={vipModalOpen}
-          onClose={() => setVipModalOpen(false)}
-          onCheckedIn={() => setVipModalOpen(false)}
-        />
-
-        {loading && (
-          <LoadingState
-            cardMaxWidth={380}
-          />
-        )}
-
-        {result && (
-          <Paper elevation={0} sx={{ p: 3, borderRadius: 4, border: `1px solid ${sc.color === "success" ? (isDark ? "rgba(46,125,50,0.5)" : "rgba(46,125,50,0.3)") : "divider"}`, bgcolor: "background.paper" }}>
-            <Stack direction="row" alignItems="center" spacing={2} mb={3}>
-              <Box sx={{ bgcolor: `${sc.color}.main`, color: sc.color === "default" ? (isDark ? "#fff" : "rgba(0,0,0,0.7)") : "#fff", p: 1, borderRadius: 2, display: "flex" }}>
-                {sc.color === "success" ? <ICONS.checkCircle /> : sc.color === "error" ? <ICONS.errorOutline /> : ["visit_ended", "cancelled", "expired"].includes(result.status) ? <ICONS.logout /> : <ICONS.time />}
-              </Box>
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="h6" fontWeight={700}>
-                  {result.status === "visit_ended" ? "Visit Concluded" : result.status === "rejected" ? "Visit Rejected" : result.status === "cancelled" ? "Visit Cancelled" : result.status === "expired" ? "Visit Expired" : "Verification Success"}
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                  <Chip label={sc.label} color={sc.color} size="small" icon={sc.icon} sx={{ fontWeight: 600 }} />
-                  {(result.is_vip_fast_track || result.isVipFastTrack) && (
-                    <Chip icon={<ICONS.star style={{ fontSize: 14 }} />} label="VIP Fast Track" color="warning" size="small" sx={{ fontWeight: 800 }} />
-                  )}
-                  {result.overstay && (
-                    <Chip label="Overstay Detected" color="error" size="small" sx={{ fontWeight: 800 }} />
-                  )}
-                  {(result.is_vip || result.isVip) && (
-                    <Chip icon={<ICONS.star style={{ fontSize: 14 }} />} label="VIP" size="small" sx={{ fontWeight: 800, bgcolor: "success.main", color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
-                  )}
-                  {(result.allow_parking || result.allowParking) && (
-                    <Chip icon={<ICONS.parking style={{ fontSize: 14 }} />} label="Parking Allowed" size="small" sx={{ fontWeight: 800, bgcolor: isDark ? "#CE93D8" : "#6A0DAD", color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
-                  )}
-                </Stack>
-              </Box>
-              {["admin_approved", "approved", "checked_in", "checked_out"].includes(result.status) && (
-                <Tooltip title="Print Badge">
-                  <IconButton
-                    onClick={() => handlePrintBadge(result)}
-                    sx={{ color: "success.main" }}
+                            />
+                            {visitor.overstay && (
+                              <Chip
+                                label="Overstay"
+                                color="error"
+                                size="small"
+                                sx={{
+                                  borderRadius: 1,
+                                  ml: 0.5,
+                                  fontWeight: 800,
+                                }}
+                              />
+                            )}
+                          </Box>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    sx={{ mt: 4, borderRadius: 3 }}
+                    onClick={() => setSearchResults([])}
                   >
-                    <ICONS.print />
-                  </IconButton>
-                </Tooltip>
+                    Clear Results
+                  </Button>
+                </Box>
               )}
-            </Stack>
 
-            <Divider sx={{ mb: 2 }} />
+            {!showScanner &&
+              !loading &&
+              !result &&
+              !error &&
+              searchResults.length === 0 && (
+                <Paper
+                  elevation={0}
+                  variant="frosted"
+                  sx={{
+                    p: 4,
+                    borderRadius: 4,
+                    textAlign: "center",
+                    width: "100%",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 3,
+                      bgcolor: isDark
+                        ? "rgba(255,255,255,0.07)"
+                        : "rgba(0,0,0,0.05)",
+                      boxShadow: isDark
+                        ? "inset 0 1px 0 rgba(255,255,255,0.06)"
+                        : "none",
+                      color: "text.primary",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      mx: "auto",
+                      mb: 3,
+                    }}
+                  >
+                    <ICONS.qrCodeScanner sx={{ fontSize: 40 }} />
+                  </Box>
 
-            {["pending", "admin_approved"].includes(result.status) && (
-              <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
-                Not yet approved
-              </Alert>
-            )}
-            {result.status === "visit_ended" && !(result.is_vip_fast_track || result.isVipFastTrack) && (
-              <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-                This visit has already been concluded. No further actions available.
-              </Alert>
-            )}
-            {result.status === "rejected" && (
-              <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-                {(result.rejectionReason || result.rejection_reason)
-                  ? `This registration was rejected for the following reason: ${result.rejectionReason || result.rejection_reason}`
-                  : "This registration was rejected."}
-              </Alert>
-            )}
-            {result.status === "cancelled" && (
-              <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
-                This visit has been cancelled. No further actions available.
-              </Alert>
-            )}
-            {result.status === "expired" && (
-              <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
-                This registration has expired. No further actions available.
-              </Alert>
-            )}
-
-            {/* Field Display Logic */}
-            <List dense disablePadding>
-              {(() => {
-                const status = result.status;
-                const isPending = ["pending", "admin_approved"].includes(status);
-                const isApproved = status === "approved";
-                const isCheckedIn = status === "checked_in";
-                const isCheckedOut = status === "checked_out";
-                const isEnded = status === "visit_ended";
-                const isRejected = status === "rejected";
-                const isCancelled = status === "cancelled";
-                const isExpired = status === "expired";
-                const fieldValues = Array.isArray(result.fieldValues)
-                  ? result.fieldValues
-                  : Array.isArray(result.visitor?.fieldValues)
-                    ? result.visitor.fieldValues
-                    : [];
-
-                const normalizeKey = (value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                const renderFieldValue = (value) => {
-                  if (value == null || value === "") return null;
-                  if (typeof value === "object") {
-                    return value.name || value.label || value.value || JSON.stringify(value);
-                  }
-                  return String(value);
-                };
-                const findCustomFieldValue = (aliases) => {
-                  const normalizedAliases = aliases.map(normalizeKey);
-                  const match = fieldValues.find((fv) => {
-                    const key = normalizeKey(fv?.customField?.fieldKey || fv?.customField?.name);
-                    const label = normalizeKey(fv?.customField?.label);
-                    return normalizedAliases.includes(key) || normalizedAliases.includes(label);
-                  });
-                  return renderFieldValue(match?.value);
-                };
-
-                // Final field extraction with fallback to visitor summary
-                const visitorName = findCustomFieldValue(["fullname", "name", "visitorname"]) || result.visitor?.fullName || result.full_name || result.user?.fullName || "N/A";
-                const company = findCustomFieldValue(["company", "organisation", "organization", "employer", "firm"]) || result.visitor?.companyName || result.visitor?.organisation || result.organisation || result.companyName || result.user?.companyName || null;
-                const purpose = findCustomFieldValue(["purposeofvisit", "purpose", "visitpurpose"]) || result.visitor?.purposeOfVisit || result.purpose_of_visit || null;
-                const department = findCustomFieldValue(["department", "dept", "division", "unit", "section", "team", "businessunit"]) || result.visitor?.department?.name || result.visitor?.department || result.department?.name || result.department || null;
-                const accessLevel = findCustomFieldValue(["accesslevel", "access level", "access", "clearance", "securitylevel", "badgelevel", "accesstype", "zone"]) || result.visitor?.accessLevel?.name || result.visitor?.accessLevel || result.accessLevel?.name || result.accessLevel || null;
-                const idTypeFromField = findCustomFieldValue(["idtype", "identificationtype", "documenttype", "doctype", "id document type"]);
-                const omanIdValue = findCustomFieldValue(["omanid", "omanidnumber", "omannationalid", "nationalid", "civilid", "idcardnumber"]);
-                const passportValue = findCustomFieldValue(["passport", "passportnumber", "passportno", "passportid"]);
-                const genericIdValue = findCustomFieldValue(["idnumber", "idno", "identificationnumber", "documentnumber"]);
-
-                const resolvedId = (() => {
-                  const normalizedType = normalizeKey(idTypeFromField);
-
-                  if (normalizedType.includes("oman") && (omanIdValue || genericIdValue)) {
-                    return { type: "Oman ID", value: omanIdValue || genericIdValue };
-                  }
-                  if (normalizedType.includes("passport") && (passportValue || genericIdValue)) {
-                    return { type: "Passport", value: passportValue || genericIdValue };
-                  }
-                  if (omanIdValue) {
-                    return { type: "Oman ID", value: omanIdValue };
-                  }
-                  if (passportValue) {
-                    return { type: "Passport", value: passportValue };
-                  }
-                  if (idTypeFromField && genericIdValue) {
-                    return { type: idTypeFromField, value: genericIdValue };
-                  }
-                  if (genericIdValue) {
-                    return { type: "ID", value: genericIdValue };
-                  }
-                  return null;
-                })();
-
-                // Get latest check-in time from logs
-                const checkInLogs = (activityLogs || []).filter((log) => log?.activityType === "checked_in");
-                const latestCheckInLog = checkInLogs.reduce((latest, current) => {
-                  if (!latest) return current;
-
-                  const latestTime = new Date(latest?.metadata?.checkedInAt || latest?.createdAt || 0).getTime();
-                  const currentTime = new Date(current?.metadata?.checkedInAt || current?.createdAt || 0).getTime();
-
-                  return currentTime > latestTime ? current : latest;
-                }, null);
-                const checkInTime = latestCheckInLog?.metadata?.checkedInAt || latestCheckInLog?.createdAt;
-                const expectedCheckout = (() => {
-                  if (!result.approved_to) return null;
-                  const approvedTo = new Date(result.approved_to);
-                  const now = new Date();
-                  const expected = new Date(now);
-                  expected.setHours(
-                    approvedTo.getHours(),
-                    approvedTo.getMinutes(),
-                    approvedTo.getSeconds(),
-                    approvedTo.getMilliseconds()
-                  );
-                  return `${formatDate(expected)} ${formatTime(expected)}`;
-                })();
-
-                const checkOutLogs = (activityLogs || []).filter((log) => log?.activityType === "checked_out");
-                const latestCheckOutLog = checkOutLogs.reduce((latest, current) => {
-                  if (!latest) return current;
-                  const latestTime = new Date(latest?.metadata?.checkedOutAt || latest?.createdAt || 0).getTime();
-                  const currentTime = new Date(current?.metadata?.checkedOutAt || current?.createdAt || 0).getTime();
-                  return currentTime > latestTime ? current : latest;
-                }, null);
-                const checkOutTime = latestCheckOutLog?.metadata?.checkedOutAt || latestCheckOutLog?.createdAt;
-
-                const endedLog = (activityLogs || []).find((log) => log?.activityType === "visit_ended");
-                const visitEndedAt = endedLog?.metadata?.endedAt || result.visitEndedAt || result.visit_ended_at;
-
-                const fields = [];
-                const displayedLabels = new Set();
-                const pushField = (label, value, icon = ICONS.info) => {
-                  const rendered = renderFieldValue(value);
-                  if (rendered == null) return;
-                  fields.push({ icon, label, value: rendered });
-                  displayedLabels.add(normalizeKey(label));
-                };
-
-                // Visit Ended: full info + checkout time + visit end time
-                if (isEnded) {
-                  pushField("Name", visitorName, ICONS.person);
-                  pushField("Company", company, ICONS.business);
-                  pushField("Purpose", purpose, ICONS.info);
-                  pushField("Department", department, ICONS.business);
-                  pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
-                  if (result.approved_from || result.approved_to) {
-                    pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
-                    pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
-                  }
-                  pushField("Access Level", accessLevel, ICONS.security);
-                  if (checkOutTime) pushField("Checked Out At", `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`, ICONS.logout);
-                  if (visitEndedAt) pushField("Visit Ended At", `${formatDate(visitEndedAt)} ${formatTime(visitEndedAt)}`, ICONS.logout);
-                }
-                // Rejected/Cancelled/Expired: full info + rejection reason if available
-                else if (isRejected || isCancelled || isExpired) {
-                  pushField("Name", visitorName, ICONS.person);
-                  pushField("Company", company, ICONS.business);
-                  pushField("Purpose", purpose, ICONS.info);
-                  pushField("Department", department, ICONS.business);
-                  pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
-                  if (result.approved_from || result.approved_to) {
-                    pushField(
-                      "Approved Date",
-                      `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
-                      ICONS.event
-                    );
-                    pushField(
-                      "Approved Time",
-                      `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
-                      ICONS.time
-                    );
-                  }
-                  pushField("Access Level", accessLevel, ICONS.security);
-                  if (isRejected) {
-                    const reason = result.rejectionReason || result.rejection_reason;
-                    if (reason) pushField("Rejection Reason", reason, ICONS.info);
-                  }
-                }
-                // Approved/CheckedOut: full approved details + checkout time for checked_out
-                else if (isApproved || isCheckedOut) {
-                  pushField("Name", visitorName, ICONS.person);
-                  pushField("Company", company, ICONS.business);
-                  pushField("Purpose", purpose, ICONS.info);
-                  pushField("Department", department, ICONS.business);
-                  pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
-                  if (result.approved_from || result.approved_to) {
-                    pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
-                    pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
-                  }
-                  pushField("Access Level", accessLevel, ICONS.security);
-                  if (isCheckedOut && checkOutTime) pushField("Checked Out At", `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`, ICONS.logout);
-                }
-                // Pending/AdminApproved: visitor name, purpose of visit, department
-                else if (isPending) {
-                  pushField("Name", visitorName, ICONS.person);
-                  pushField("Purpose", purpose, ICONS.info);
-                  pushField("Department", department, ICONS.business);
-                  pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
-                }
-                // CheckedIn: Show check-in timestamp, expected checkout time
-                else if (isCheckedIn) {
-                  pushField("Name", visitorName, ICONS.person);
-                  pushField("Company", company, ICONS.business);
-                  pushField("Purpose", purpose, ICONS.info);
-                  pushField("Department", department, ICONS.business);
-                  pushField("ID Type", resolvedId?.type, ICONS.badge);
-                  pushField(resolvedId?.type ? `${resolvedId.type} Number` : "ID Number", resolvedId?.value, ICONS.vpnKey);
-                  if (result.approved_from || result.approved_to) {
-                    pushField("Approved Date", `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`, ICONS.event);
-                    pushField("Approved Time", `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`, ICONS.time);
-                  }
-                  pushField("Access Level", accessLevel, ICONS.security);
-                  if (checkInTime) pushField("Check-in Time", `${formatDate(checkInTime)} ${formatTime(checkInTime)}`, ICONS.login);
-                  pushField("Expected Checkout", expectedCheckout, ICONS.logout);
-                }
-
-                return fields.map((item, idx) => (
-                  <ListItem key={`${item.label}-${idx}`} disablePadding sx={{ py: 0.8 }}>
-                    <ListItemIcon sx={{ minWidth: 36, color: "primary.main" }}>
-                      {(() => {
-                        const IconComponent = item.icon || ICONS.info;
-                        return <IconComponent fontSize="small" />;
-                      })()}
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={item.label} 
-                      secondary={item.value} 
-                      primaryTypographyProps={{ variant: "caption", color: "text.secondary", fontWeight: 600 }}
-                      secondaryTypographyProps={{ variant: "body1", color: "text.primary", fontWeight: 500 }}
-                    />
-                  </ListItem>
-                ));
-              })()}
-            </List>
-
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mt={4}>
-              {(() => {
-                const status = result.status;
-                const isPending = ["pending", "admin_approved"].includes(status);
-                const isApproved = status === "approved";
-                const isCheckedIn = status === "checked_in";
-                const isCheckedOut = status === "checked_out";
-                const isEnded = status === "visit_ended";
-                const isMulti = result.allow_multi_checkin ?? result.allowMultiCheckin;
-                const isVipEnded = isEnded && (result.is_vip_fast_track || result.isVipFastTrack);
-
-                return (
-                  <>
+                  <Stack spacing={2}>
                     <Button
+                      variant="contained"
+                      size="large"
                       fullWidth
-                      variant="outlined"
-                      startIcon={<ICONS.close />}
-                      onClick={reset}
+                      startIcon={<ICONS.qrCodeScanner />}
+                      onClick={() => setShowScanner(true)}
+                      disabled={!isOnline}
+                      sx={{ py: 1.8, borderRadius: 3, fontSize: "1.1rem" }}
                     >
-                      Close
+                      QR Check-in
                     </Button>
-
-                    {isPending && (
+                    {canVipBypass && (
                       <Button
+                        variant="outlined"
                         fullWidth
-                        variant="contained"
-                        disabled
-                        startIcon={<ICONS.time />}
-                        sx={{
-                          fontSize: "0.85rem",
-                          bgcolor: isDark ? "rgba(255,255,255,0.08) !important" : "rgba(0,0,0,0.06) !important",
-                          color: isDark ? "rgba(255,255,255,0.4) !important" : "rgba(0,0,0,0.4) !important",
-                          border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
-                        }}
+                        startIcon={<ICONS.key />}
+                        onClick={() => setVipModalOpen(true)}
+                        sx={{ py: 1.5, borderRadius: 3 }}
                       >
-                        Awaiting Approval
+                        VIP Fast Track
                       </Button>
                     )}
-
-                    {isApproved && (
+                    {canTodayVisitors && (
                       <Button
+                        variant="outlined"
                         fullWidth
-                        variant="contained"
-                        color="success"
-                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
-                        onClick={handleCheckInAction}
-                        disabled={actionLoading}
+                        startIcon={<ICONS.event />}
+                        onClick={() => setTodayView(true)}
+                        sx={{ py: 1.5, borderRadius: 3 }}
                       >
-                        Check In
+                        Today&apos;s Visitors
                       </Button>
                     )}
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      color="error"
+                      startIcon={<ICONS.warning />}
+                      onClick={enterAssemblyMode}
+                      sx={{ py: 1.5, borderRadius: 3 }}
+                    >
+                      Assembly Mode
+                    </Button>
+                  </Stack>
+                </Paper>
+              )}
 
-                    {isCheckedIn && (
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        color="error"
-                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.logout />}
-                        onClick={handleCheckOutAction}
-                        disabled={actionLoading}
-                      >
-                        Check Out
-                      </Button>
-                    )}
+            {showScanner && (
+              <QrScanner
+                onScanSuccess={handleScanSuccess}
+                onCancel={() => setShowScanner(false)}
+                onError={(err) => {
+                  showMessage(err, "error");
+                  setShowScanner(false);
+                  setScannerFailed(true);
+                  setTimeout(() => idSearchRef.current?.focus(), 100);
+                }}
+              />
+            )}
 
-                    {isCheckedOut && isMulti && (
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        color="success"
-                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.login />}
-                        onClick={handleCheckInAction}
-                        disabled={actionLoading}
-                      >
-                        Check In Again
-                      </Button>
-                    )}
-                    {isVipEnded && (
-                      <Button
-                        fullWidth
-                        variant="contained"
-                        color="warning"
-                        startIcon={actionLoading ? <CircularProgress size={20} /> : <ICONS.star />}
-                        onClick={handleVipRevisit}
-                        disabled={actionLoading}
-                      >
-                        VIP Check In
-                      </Button>
-                    )}
-                  </>
-                );
-              })()}
-            </Stack>
-          </Paper>
-        )}
+            <VipFastTrackModal
+              open={vipModalOpen}
+              onClose={() => setVipModalOpen(false)}
+              onCheckedIn={() => setVipModalOpen(false)}
+            />
 
-        {error && (
-          <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: `1px solid ${isDark ? "rgba(211,47,47,0.5)" : "rgba(211,47,47,0.2)"}`, textAlign: "center", bgcolor: "background.paper", width: "100%" }}>
-            <ICONS.errorOutline sx={{ fontSize: 64, color: "error.main", mb: 2 }} />
-            <Typography variant="h6" fontWeight={700} color="error.main" gutterBottom>Verification Failed</Typography>
-            <Typography variant="body2" color="text.secondary" mb={3}>{error}</Typography>
-            <Button variant="contained" color="error" fullWidth startIcon={<ICONS.refresh />} onClick={reset} sx={{ borderRadius: 3 }}>Retry</Button>
-          </Paper>
-        )}
+            {loading && <LoadingState cardMaxWidth={380} />}
+
+            {result && (
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  borderRadius: 4,
+                  border: `1px solid ${sc.color === "success" ? (isDark ? "rgba(46,125,50,0.5)" : "rgba(46,125,50,0.3)") : "divider"}`,
+                  bgcolor: "background.paper",
+                }}
+              >
+                <Stack direction="row" alignItems="center" spacing={2} mb={3}>
+                  <Box
+                    sx={{
+                      bgcolor: `${sc.color}.main`,
+                      color:
+                        sc.color === "default"
+                          ? isDark
+                            ? "#fff"
+                            : "rgba(0,0,0,0.7)"
+                          : "#fff",
+                      p: 1,
+                      borderRadius: 2,
+                      display: "flex",
+                    }}
+                  >
+                    {sc.color === "success" ? (
+                      <ICONS.checkCircle />
+                    ) : sc.color === "error" ? (
+                      <ICONS.errorOutline />
+                    ) : ["visit_ended", "cancelled", "expired"].includes(
+                        result.status,
+                      ) ? (
+                      <ICONS.logout />
+                    ) : (
+                      <ICONS.time />
+                    )}
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" fontWeight={700}>
+                      {result.status === "visit_ended"
+                        ? "Visit Concluded"
+                        : result.status === "rejected"
+                          ? "Visit Rejected"
+                          : result.status === "cancelled"
+                            ? "Visit Cancelled"
+                            : result.status === "expired"
+                              ? "Visit Expired"
+                              : "Verification Success"}
+                    </Typography>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      flexWrap="wrap"
+                      useFlexGap
+                    >
+                      <Chip
+                        label={sc.label}
+                        color={sc.color}
+                        size="small"
+                        icon={sc.icon}
+                        sx={{ fontWeight: 600 }}
+                      />
+                      {(result.is_vip_fast_track || result.isVipFastTrack) && (
+                        <Chip
+                          icon={<ICONS.star style={{ fontSize: 14 }} />}
+                          label="VIP Fast Track"
+                          color="warning"
+                          size="small"
+                          sx={{ fontWeight: 800 }}
+                        />
+                      )}
+                      {result.overstay && (
+                        <Chip
+                          label="Overstay Detected"
+                          color="error"
+                          size="small"
+                          sx={{ fontWeight: 800 }}
+                        />
+                      )}
+                      {(result.is_vip || result.isVip) && (
+                        <Chip
+                          icon={<ICONS.star style={{ fontSize: 14 }} />}
+                          label="VIP"
+                          size="small"
+                          sx={{
+                            fontWeight: 800,
+                            bgcolor: "success.main",
+                            color: isDark ? "#000" : "#fff",
+                            "& .MuiChip-icon": {
+                              color: isDark ? "#000" : "#fff",
+                            },
+                          }}
+                        />
+                      )}
+                      {(result.allow_parking || result.allowParking) && (
+                        <Chip
+                          icon={<ICONS.parking style={{ fontSize: 14 }} />}
+                          label="Parking Allowed"
+                          size="small"
+                          sx={{
+                            fontWeight: 800,
+                            bgcolor: isDark ? "#CE93D8" : "#6A0DAD",
+                            color: isDark ? "#000" : "#fff",
+                            "& .MuiChip-icon": {
+                              color: isDark ? "#000" : "#fff",
+                            },
+                          }}
+                        />
+                      )}
+                      {(result.escort_required ??
+                        result.escortRequired ??
+                        true) && (
+                        <Chip
+                          icon={<ICONS.security style={{ fontSize: 14 }} />}
+                          label="Escort Required"
+                          size="small"
+                          sx={{
+                            fontWeight: 800,
+                            bgcolor: isDark ? "#FF8A65" : "#E64A19",
+                            color: "#fff",
+                            "& .MuiChip-icon": { color: "#fff" },
+                          }}
+                        />
+                      )}
+                    </Stack>
+                  </Box>
+                  {[
+                    "admin_approved",
+                    "approved",
+                    "checked_in",
+                    "checked_out",
+                  ].includes(result.status) && (
+                    <Tooltip title="Print Badge">
+                      <IconButton
+                        onClick={() => handlePrintBadge(result)}
+                        sx={{ color: "success.main" }}
+                      >
+                        <ICONS.print />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </Stack>
+
+                <Divider sx={{ mb: 2 }} />
+
+                {outsideHoursWarning && (
+                  <Alert
+                    severity="warning"
+                    icon={<ICONS.time fontSize="small" />}
+                    sx={{ mb: 2, borderRadius: 2, fontWeight: 600 }}
+                  >
+                    This{" "}
+                    {outsideHoursWarning === "check_in"
+                      ? "check-in"
+                      : "check-out"}{" "}
+                    was performed outside working hours and has been flagged for
+                    review.
+                  </Alert>
+                )}
+                {result.status === "pending" && (
+                  <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                    Not yet approved
+                  </Alert>
+                )}
+                {result.status === "visit_ended" &&
+                  !(result.is_vip_fast_track || result.isVipFastTrack) && (
+                    <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+                      This visit has already been concluded. No further actions
+                      available.
+                    </Alert>
+                  )}
+                {result.status === "rejected" && (
+                  <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+                    {result.rejectionReason || result.rejection_reason
+                      ? `This registration was rejected for the following reason: ${result.rejectionReason || result.rejection_reason}`
+                      : "This registration was rejected."}
+                  </Alert>
+                )}
+                {result.status === "cancelled" && (
+                  <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                    This visit has been cancelled. No further actions available.
+                  </Alert>
+                )}
+                {result.status === "expired" && (
+                  <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+                    This registration has expired. No further actions available.
+                  </Alert>
+                )}
+
+                {/* Field Display Logic */}
+                <List dense disablePadding>
+                  {(() => {
+                    const status = result.status;
+                    const isPending = status === "pending";
+                    const isApproved = ["approved", "admin_approved"].includes(
+                      status,
+                    );
+                    const isCheckedIn = status === "checked_in";
+                    const isCheckedOut = status === "checked_out";
+                    const isEnded = status === "visit_ended";
+                    const isRejected = status === "rejected";
+                    const isCancelled = status === "cancelled";
+                    const isExpired = status === "expired";
+                    const fieldValues = Array.isArray(result.fieldValues)
+                      ? result.fieldValues
+                      : Array.isArray(result.visitor?.fieldValues)
+                        ? result.visitor.fieldValues
+                        : [];
+
+                    const normalizeKey = (value) =>
+                      String(value ?? "")
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]/g, "");
+                    const renderFieldValue = (value) => {
+                      if (value == null || value === "") return null;
+                      if (typeof value === "object") {
+                        return (
+                          value.name ||
+                          value.label ||
+                          value.value ||
+                          JSON.stringify(value)
+                        );
+                      }
+                      return String(value);
+                    };
+                    const findCustomFieldValue = (aliases) => {
+                      const normalizedAliases = aliases.map(normalizeKey);
+                      const match = fieldValues.find((fv) => {
+                        const key = normalizeKey(
+                          fv?.customField?.fieldKey || fv?.customField?.name,
+                        );
+                        const label = normalizeKey(fv?.customField?.label);
+                        return (
+                          normalizedAliases.includes(key) ||
+                          normalizedAliases.includes(label)
+                        );
+                      });
+                      return renderFieldValue(match?.value);
+                    };
+
+                    // Final field extraction with fallback to visitor summary
+                    const visitorName =
+                      findCustomFieldValue([
+                        "fullname",
+                        "name",
+                        "visitorname",
+                      ]) ||
+                      result.visitor?.fullName ||
+                      result.full_name ||
+                      result.user?.fullName ||
+                      "N/A";
+                    const company =
+                      findCustomFieldValue([
+                        "company",
+                        "organisation",
+                        "organization",
+                        "employer",
+                        "firm",
+                      ]) ||
+                      result.visitor?.companyName ||
+                      result.visitor?.organisation ||
+                      result.organisation ||
+                      result.companyName ||
+                      result.user?.companyName ||
+                      null;
+                    const rawPurpose = findCustomFieldValue([
+                      "purposeofvisit",
+                      "purpose",
+                      "visitpurpose",
+                    ]);
+                    const purpose =
+                      (rawPurpose === "Other"
+                        ? findCustomFieldValue([
+                            "pleasespecify",
+                            "specify",
+                            "otherdetails",
+                            "purposeotherdetails",
+                          ]) || rawPurpose
+                        : rawPurpose) ||
+                      result.visitor?.purposeOfVisit ||
+                      result.purpose_of_visit ||
+                      null;
+                    const department =
+                      findCustomFieldValue([
+                        "department",
+                        "dept",
+                        "division",
+                        "unit",
+                        "section",
+                        "team",
+                        "businessunit",
+                      ]) ||
+                      result.visitor?.department?.name ||
+                      result.visitor?.department ||
+                      result.department?.name ||
+                      result.department ||
+                      null;
+                    const accessLevel =
+                      findCustomFieldValue([
+                        "accesslevel",
+                        "access level",
+                        "access",
+                        "clearance",
+                        "securitylevel",
+                        "badgelevel",
+                        "accesstype",
+                        "zone",
+                      ]) ||
+                      result.visitor?.accessLevel?.name ||
+                      result.visitor?.accessLevel ||
+                      result.accessLevel?.name ||
+                      result.accessLevel ||
+                      null;
+                    const idTypeFromField = findCustomFieldValue([
+                      "idtype",
+                      "identificationtype",
+                      "documenttype",
+                      "doctype",
+                      "id document type",
+                    ]);
+                    const omanIdValue = findCustomFieldValue([
+                      "omanid",
+                      "omanidnumber",
+                      "omannationalid",
+                      "nationalid",
+                      "civilid",
+                      "idcardnumber",
+                    ]);
+                    const passportValue = findCustomFieldValue([
+                      "passport",
+                      "passportnumber",
+                      "passportno",
+                      "passportid",
+                    ]);
+                    const genericIdValue = findCustomFieldValue([
+                      "idnumber",
+                      "idno",
+                      "identificationnumber",
+                      "documentnumber",
+                    ]);
+
+                    const resolvedId = (() => {
+                      const normalizedType = normalizeKey(idTypeFromField);
+
+                      if (
+                        normalizedType.includes("oman") &&
+                        (omanIdValue || genericIdValue)
+                      ) {
+                        return {
+                          type: "Oman ID",
+                          value: omanIdValue || genericIdValue,
+                        };
+                      }
+                      if (
+                        normalizedType.includes("passport") &&
+                        (passportValue || genericIdValue)
+                      ) {
+                        return {
+                          type: "Passport",
+                          value: passportValue || genericIdValue,
+                        };
+                      }
+                      if (omanIdValue) {
+                        return { type: "Oman ID", value: omanIdValue };
+                      }
+                      if (passportValue) {
+                        return { type: "Passport", value: passportValue };
+                      }
+                      if (idTypeFromField && genericIdValue) {
+                        return { type: idTypeFromField, value: genericIdValue };
+                      }
+                      if (genericIdValue) {
+                        return { type: "ID", value: genericIdValue };
+                      }
+                      return null;
+                    })();
+
+                    // Get latest check-in time from logs
+                    const checkInLogs = (activityLogs || []).filter(
+                      (log) => log?.activityType === "checked_in",
+                    );
+                    const latestCheckInLog = checkInLogs.reduce(
+                      (latest, current) => {
+                        if (!latest) return current;
+
+                        const latestTime = new Date(
+                          latest?.metadata?.checkedInAt ||
+                            latest?.createdAt ||
+                            0,
+                        ).getTime();
+                        const currentTime = new Date(
+                          current?.metadata?.checkedInAt ||
+                            current?.createdAt ||
+                            0,
+                        ).getTime();
+
+                        return currentTime > latestTime ? current : latest;
+                      },
+                      null,
+                    );
+                    const checkInTime =
+                      latestCheckInLog?.metadata?.checkedInAt ||
+                      latestCheckInLog?.createdAt;
+                    const expectedCheckout = result.currentVisitEnd
+                      ? `${formatDate(result.currentVisitEnd)} ${formatTime(result.currentVisitEnd)}`
+                      : result.approved_to
+                        ? `${formatDate(result.approved_to)} ${formatTime(result.approved_to)}`
+                        : null;
+
+                    const checkOutLogs = (activityLogs || []).filter(
+                      (log) => log?.activityType === "checked_out",
+                    );
+                    const latestCheckOutLog = checkOutLogs.reduce(
+                      (latest, current) => {
+                        if (!latest) return current;
+                        const latestTime = new Date(
+                          latest?.metadata?.checkedOutAt ||
+                            latest?.createdAt ||
+                            0,
+                        ).getTime();
+                        const currentTime = new Date(
+                          current?.metadata?.checkedOutAt ||
+                            current?.createdAt ||
+                            0,
+                        ).getTime();
+                        return currentTime > latestTime ? current : latest;
+                      },
+                      null,
+                    );
+                    const checkOutTime =
+                      latestCheckOutLog?.metadata?.checkedOutAt ||
+                      latestCheckOutLog?.createdAt;
+
+                    const endedLog = (activityLogs || []).find(
+                      (log) => log?.activityType === "visit_ended",
+                    );
+                    const visitEndedAt =
+                      endedLog?.metadata?.endedAt ||
+                      result.visitEndedAt ||
+                      result.visit_ended_at;
+
+                    const fields = [];
+                    const displayedLabels = new Set();
+                    const pushField = (label, value, icon = ICONS.info) => {
+                      const rendered = renderFieldValue(value);
+                      if (rendered == null) return;
+                      fields.push({ icon, label, value: rendered });
+                      displayedLabels.add(normalizeKey(label));
+                    };
+
+                    // Visit Ended: full info + checkout time + visit end time
+                    if (isEnded) {
+                      pushField("Name", visitorName, ICONS.person);
+                      pushField("Company", company, ICONS.business);
+                      pushField("Purpose", purpose, ICONS.info);
+                      pushField("Visiting Department", department, ICONS.business);
+                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(
+                        resolvedId?.type
+                          ? `${resolvedId.type} Number`
+                          : "ID Number",
+                        resolvedId?.value,
+                        ICONS.vpnKey,
+                      );
+                      if (result.approved_from || result.approved_to) {
+                        pushField(
+                          "Approved Date",
+                          `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                          ICONS.event,
+                        );
+                        pushField(
+                          "Approved Time",
+                          `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                          ICONS.time,
+                        );
+                      }
+                      pushField("Access Level", accessLevel, ICONS.security);
+                      if (checkOutTime)
+                        pushField(
+                          "Checked Out At",
+                          `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`,
+                          ICONS.logout,
+                        );
+                      if (visitEndedAt)
+                        pushField(
+                          "Visit Ended At",
+                          `${formatDate(visitEndedAt)} ${formatTime(visitEndedAt)}`,
+                          ICONS.logout,
+                        );
+                    }
+                    // Rejected/Cancelled/Expired: full info + rejection reason if available
+                    else if (isRejected || isCancelled || isExpired) {
+                      pushField("Name", visitorName, ICONS.person);
+                      pushField("Company", company, ICONS.business);
+                      pushField("Purpose", purpose, ICONS.info);
+                      pushField("Visiting Department", department, ICONS.business);
+                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(
+                        resolvedId?.type
+                          ? `${resolvedId.type} Number`
+                          : "ID Number",
+                        resolvedId?.value,
+                        ICONS.vpnKey,
+                      );
+                      if (result.approved_from || result.approved_to) {
+                        pushField(
+                          "Approved Date",
+                          `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                          ICONS.event,
+                        );
+                        pushField(
+                          "Approved Time",
+                          `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                          ICONS.time,
+                        );
+                      }
+                      pushField("Access Level", accessLevel, ICONS.security);
+                      if (isRejected) {
+                        const reason =
+                          result.rejectionReason || result.rejection_reason;
+                        if (reason)
+                          pushField("Rejection Reason", reason, ICONS.info);
+                      }
+                    }
+                    // Approved/CheckedOut: full approved details + checkout time for checked_out
+                    else if (isApproved || isCheckedOut) {
+                      pushField("Name", visitorName, ICONS.person);
+                      pushField("Company", company, ICONS.business);
+                      pushField("Purpose", purpose, ICONS.info);
+                      pushField("Visiting Department", department, ICONS.business);
+                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(
+                        resolvedId?.type
+                          ? `${resolvedId.type} Number`
+                          : "ID Number",
+                        resolvedId?.value,
+                        ICONS.vpnKey,
+                      );
+                      if (result.approved_from || result.approved_to) {
+                        pushField(
+                          "Approved Date",
+                          `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                          ICONS.event,
+                        );
+                        pushField(
+                          "Approved Time",
+                          `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                          ICONS.time,
+                        );
+                      }
+                      pushField("Access Level", accessLevel, ICONS.security);
+                      if (isCheckedOut && checkOutTime)
+                        pushField(
+                          "Checked Out At",
+                          `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`,
+                          ICONS.logout,
+                        );
+                    }
+                    // Pending/AdminApproved: visitor name, purpose of visit, department
+                    else if (isPending) {
+                      pushField("Name", visitorName, ICONS.person);
+                      pushField("Purpose", purpose, ICONS.info);
+                      pushField("Visiting Department", department, ICONS.business);
+                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(
+                        resolvedId?.type
+                          ? `${resolvedId.type} Number`
+                          : "ID Number",
+                        resolvedId?.value,
+                        ICONS.vpnKey,
+                      );
+                    }
+                    // CheckedIn: Show check-in timestamp, expected checkout time
+                    else if (isCheckedIn) {
+                      pushField("Name", visitorName, ICONS.person);
+                      pushField("Company", company, ICONS.business);
+                      pushField("Purpose", purpose, ICONS.info);
+                      pushField("Visiting Department", department, ICONS.business);
+                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(
+                        resolvedId?.type
+                          ? `${resolvedId.type} Number`
+                          : "ID Number",
+                        resolvedId?.value,
+                        ICONS.vpnKey,
+                      );
+                      if (result.approved_from || result.approved_to) {
+                        pushField(
+                          "Approved Date",
+                          `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                          ICONS.event,
+                        );
+                        pushField(
+                          "Approved Time",
+                          `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                          ICONS.time,
+                        );
+                      }
+                      pushField("Access Level", accessLevel, ICONS.security);
+                      if (checkInTime)
+                        pushField(
+                          "Check-in Time",
+                          `${formatDate(checkInTime)} ${formatTime(checkInTime)}`,
+                          ICONS.login,
+                        );
+                      pushField(
+                        "Expected Checkout",
+                        expectedCheckout,
+                        ICONS.logout,
+                      );
+                    }
+
+                    pushField(
+                      "Vehicle Plate",
+                      result.vehicle_plate || result.vehiclePlate,
+                      ICONS.parking,
+                    );
+
+                    return fields.map((item, idx) => (
+                      <ListItem
+                        key={`${item.label}-${idx}`}
+                        disablePadding
+                        sx={{ py: 0.8 }}
+                      >
+                        <ListItemIcon
+                          sx={{ minWidth: 36, color: "primary.main" }}
+                        >
+                          {(() => {
+                            const IconComponent = item.icon || ICONS.info;
+                            return <IconComponent fontSize="small" />;
+                          })()}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={item.label}
+                          secondary={item.value}
+                          primaryTypographyProps={{
+                            variant: "caption",
+                            color: "text.secondary",
+                            fontWeight: 600,
+                          }}
+                          secondaryTypographyProps={{
+                            variant: "body1",
+                            color: "text.primary",
+                            fontWeight: 500,
+                          }}
+                        />
+                      </ListItem>
+                    ));
+                  })()}
+                </List>
+
+                <Stack spacing={2} mt={4}>
+                  {(() => {
+                    const status = result.status;
+                    const isPending = result.status === "pending";
+                    const isApproved = ["approved", "admin_approved"].includes(
+                      result.status,
+                    );
+                    const isCheckedIn = result.status === "checked_in";
+                    const isCheckedOut = result.status === "checked_out";
+                    const isEnded = result.status === "visit_ended";
+                    const isMulti =
+                      result.allow_multi_checkin ?? result.allowMultiCheckin;
+                    const isVipEnded =
+                      isEnded &&
+                      (result.is_vip_fast_track || result.isVipFastTrack);
+
+                    const _fvs = Array.isArray(result.fieldValues)
+                      ? result.fieldValues
+                      : Array.isArray(result.visitor?.fieldValues)
+                        ? result.visitor.fieldValues
+                        : [];
+                    const _nk = (v) =>
+                      String(v ?? "")
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]/g, "");
+                    const _rv = (v) => {
+                      if (v == null || v === "") return null;
+                      if (typeof v === "object")
+                        return v.name || v.label || v.value || null;
+                      return String(v);
+                    };
+                    const _find = (aliases) => {
+                      const norm = aliases.map(_nk);
+                      const m = _fvs.find(
+                        (fv) =>
+                          norm.includes(
+                            _nk(
+                              fv?.customField?.fieldKey ||
+                                fv?.customField?.name,
+                            ),
+                          ) || norm.includes(_nk(fv?.customField?.label)),
+                      );
+                      return _rv(m?.value);
+                    };
+                    const _idType = _find([
+                      "idtype",
+                      "identificationtype",
+                      "documenttype",
+                      "doctype",
+                    ]);
+                    const _omanId = _find([
+                      "omanid",
+                      "nationalid",
+                      "civilid",
+                      "idcardnumber",
+                      "idnumber",
+                      "idno",
+                    ]);
+                    const _passport = _find([
+                      "passport",
+                      "passportnumber",
+                      "passportno",
+                    ]);
+                    const _nk2 = _nk(_idType || "");
+                    const resolvedId = (() => {
+                      if (_nk2.includes("passport") && (_passport || _omanId))
+                        return {
+                          type: "Passport",
+                          value: _passport || _omanId,
+                        };
+                      if (_omanId)
+                        return {
+                          type: _nk2.includes("passport") ? "Passport" : "ID",
+                          value: _omanId,
+                        };
+                      if (_passport)
+                        return { type: "Passport", value: _passport };
+                      return null;
+                    })();
+
+                    const isVipFastTrack =
+                      result.is_vip_fast_track || result.isVipFastTrack;
+                    const bufferMs =
+                      (workingHours?.checkInBufferMinutes ?? 60) * 60 * 1000;
+
+                    // Check-in window: full approvedFrom–approvedTo range
+                    const outsideWindow = (() => {
+                      if (isVipFastTrack || !isApproved) return false;
+                      if (result.status === "admin_approved") return false;
+                      if (!result.approved_from || !result.approved_to) return false;
+                      const now = Date.now();
+                      const fromMs = new Date(result.approved_from).getTime();
+                      const toMs = new Date(result.approved_to).getTime();
+                      return now < fromMs - bufferMs || now > toMs + bufferMs;
+                    })();
+
+                    const fmtWindow = () => {
+                      const fmt = (d) => `${formatDate(d)} ${formatTime(d)}`;
+                      const from = new Date(
+                        new Date(result.approved_from).getTime() - bufferMs,
+                      );
+                      const to = new Date(
+                        new Date(result.approved_to).getTime() + bufferMs,
+                      );
+                      return `${fmt(from)} – ${fmt(to)}`;
+                    };
+
+                    // For single-day visits: today must match the appointment day.
+                    // For multi-day visits: today must fall within approved_from – approved_to.
+                    const isMultiDay = (() => {
+                      const f = result.approved_from;
+                      const t = result.approved_to;
+                      if (!f || !t) return false;
+                      return new Date(f).toDateString() !== new Date(t).toDateString();
+                    })();
+                    const outsideCheckoutDay = (() => {
+                      if (!isCheckedIn) return false;
+                      if (isMultiDay) {
+                        const todayMs = new Date().setHours(0, 0, 0, 0);
+                        const fromMs = new Date(result.approved_from).setHours(0, 0, 0, 0);
+                        const toMs = new Date(result.approved_to).setHours(0, 0, 0, 0);
+                        return todayMs < fromMs || todayMs > toMs;
+                      }
+                      const ref = result.approved_to || result.approved_from;
+                      if (!ref) return false;
+                      return new Date(ref).toDateString() !== new Date().toDateString();
+                    })();
+
+                    return (
+                      <>
+                        {resolvedId &&
+                          (isApproved || (isCheckedOut && isMulti)) && (
+                            <Box
+                              onClick={() => setIdVerified((v) => !v)}
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 1.5,
+                                p: 1.5,
+                                borderRadius: 2,
+                                border: "1px solid",
+                                borderColor: idVerified
+                                  ? "success.main"
+                                  : "warning.main",
+                                bgcolor: idVerified
+                                  ? isDark
+                                    ? "rgba(46,125,50,0.12)"
+                                    : "rgba(46,125,50,0.06)"
+                                  : isDark
+                                    ? "rgba(237,108,2,0.12)"
+                                    : "rgba(237,108,2,0.06)",
+                                cursor: "pointer",
+                                userSelect: "none",
+                                width: "100%",
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  width: 20,
+                                  height: 20,
+                                  borderRadius: 0.5,
+                                  flexShrink: 0,
+                                  border: "2px solid",
+                                  borderColor: idVerified
+                                    ? "success.main"
+                                    : "warning.main",
+                                  bgcolor: idVerified
+                                    ? "success.main"
+                                    : "transparent",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {idVerified && (
+                                  <ICONS.check
+                                    sx={{ fontSize: 14, color: "#fff" }}
+                                  />
+                                )}
+                              </Box>
+                              <Box>
+                                <Typography
+                                  variant="body2"
+                                  fontWeight={700}
+                                  color={
+                                    idVerified ? "success.main" : "warning.main"
+                                  }
+                                  display="block"
+                                >
+                                  {idVerified
+                                    ? "ID Verified"
+                                    : "ID Verification Required"}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {resolvedId.type}:{" "}
+                                  <strong>{resolvedId.value}</strong>
+                                </Typography>
+                              </Box>
+                            </Box>
+                          )}
+
+                        {outsideWindow && (
+                          <Alert
+                            severity="error"
+                            icon={<ICONS.time fontSize="small" />}
+                            sx={{ borderRadius: 2, fontWeight: 600, mb: 1 }}
+                          >
+                            Outside check-in window. Allowed: {fmtWindow()}
+                          </Alert>
+                        )}
+
+                        {outsideCheckoutDay && (
+                          <Alert
+                            severity="error"
+                            icon={<ICONS.time fontSize="small" />}
+                            sx={{ borderRadius: 2, fontWeight: 600, mb: 1 }}
+                          >
+                            {isMultiDay
+                              ? `Today is outside the approved visit window (${formatDate(result.approved_from)} – ${formatDate(result.approved_to)}).`
+                              : `Check-out must be on the same day as the appointment (${formatDate(result.approved_to || result.approved_from)}).`}
+                          </Alert>
+                        )}
+
+                        <Stack
+                          direction={{ xs: "column", sm: "row" }}
+                          spacing={2}
+                        >
+                          <Button
+                            fullWidth
+                            variant="outlined"
+                            startIcon={<ICONS.close />}
+                            onClick={reset}
+                          >
+                            Close
+                          </Button>
+
+                          {isPending && (
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              disabled
+                              startIcon={<ICONS.time />}
+                              sx={{
+                                fontSize: "0.85rem",
+                                bgcolor: isDark
+                                  ? "rgba(255,255,255,0.08) !important"
+                                  : "rgba(0,0,0,0.06) !important",
+                                color: isDark
+                                  ? "rgba(255,255,255,0.4) !important"
+                                  : "rgba(0,0,0,0.4) !important",
+                                border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
+                              }}
+                            >
+                              Awaiting Approval
+                            </Button>
+                          )}
+
+                          {isApproved && canCheckin && (
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              color="success"
+                              startIcon={
+                                actionLoading ? (
+                                  <CircularProgress size={20} />
+                                ) : (
+                                  <ICONS.login />
+                                )
+                              }
+                              onClick={handleCheckInAction}
+                              disabled={
+                                actionLoading ||
+                                (Boolean(resolvedId) && !idVerified) ||
+                                outsideWindow
+                              }
+                            >
+                              Check In
+                            </Button>
+                          )}
+
+                          {isCheckedIn && canCheckout && (
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              color="error"
+                              startIcon={
+                                actionLoading ? (
+                                  <CircularProgress size={20} />
+                                ) : (
+                                  <ICONS.logout />
+                                )
+                              }
+                              onClick={handleCheckOutAction}
+                              disabled={actionLoading || outsideCheckoutDay}
+                            >
+                              Check Out
+                            </Button>
+                          )}
+
+                          {isCheckedOut && isMulti && canCheckin && (
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              color="success"
+                              startIcon={
+                                actionLoading ? (
+                                  <CircularProgress size={20} />
+                                ) : (
+                                  <ICONS.login />
+                                )
+                              }
+                              onClick={handleCheckInAction}
+                              disabled={
+                                actionLoading ||
+                                (Boolean(resolvedId) && !idVerified)
+                              }
+                            >
+                              Check In Again
+                            </Button>
+                          )}
+
+                          {isVipEnded && (
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              color="warning"
+                              startIcon={
+                                actionLoading ? (
+                                  <CircularProgress size={20} />
+                                ) : (
+                                  <ICONS.star />
+                                )
+                              }
+                              onClick={handleVipRevisit}
+                              disabled={actionLoading}
+                            >
+                              VIP Check In
+                            </Button>
+                          )}
+                        </Stack>
+                      </>
+                    );
+                  })()}
+                </Stack>
+              </Paper>
+            )}
+
+            {error && (
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 4,
+                  borderRadius: 4,
+                  border: `1px solid ${isDark ? "rgba(211,47,47,0.5)" : "rgba(211,47,47,0.2)"}`,
+                  textAlign: "center",
+                  bgcolor: "background.paper",
+                  width: "100%",
+                }}
+              >
+                <ICONS.errorOutline
+                  sx={{ fontSize: 64, color: "error.main", mb: 2 }}
+                />
+                <Typography
+                  variant="h6"
+                  fontWeight={700}
+                  color="error.main"
+                  gutterBottom
+                >
+                  Verification Failed
+                </Typography>
+                <Typography variant="body2" color="text.secondary" mb={3}>
+                  {error}
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="error"
+                  fullWidth
+                  startIcon={<ICONS.refresh />}
+                  onClick={reset}
+                  sx={{ borderRadius: 3 }}
+                >
+                  Retry
+                </Button>
+              </Paper>
+            )}
           </Box>
+        </>
+        )}
         </Box>
       </Container>
+
+      {/* ID Verification Dialog — auto-opens on QR scan when ID is required */}
+      <Dialog
+        open={showIdVerifyDialog}
+        onClose={() => setShowIdVerifyDialog(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 4, p: 1 },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            fontWeight: 700,
+          }}
+        >
+          <ICONS.vpnKey sx={{ color: "warning.main" }} />
+          ID Verification Required
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            Please verify the visitor's identity before checking in.
+          </Typography>
+          {resolvedId && (
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: "warning.main",
+                bgcolor: isDark
+                  ? "rgba(237,108,2,0.08)"
+                  : "rgba(237,108,2,0.04)",
+              }}
+            >
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                display="block"
+                mb={0.5}
+              >
+                Expected {resolvedId.type}
+              </Typography>
+              <Typography variant="h6" fontWeight={700}>
+                {resolvedId.value}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 2,
+            gap: 1,
+            display: "flex",
+            flexDirection: { xs: "column-reverse", sm: "row" },
+            justifyContent: { xs: "flex-end", sm: "space-between" },
+            width: "100%",
+          }}
+        >
+          <Button
+            fullWidth
+            variant="outlined"
+            color="inherit"
+            onClick={() => setShowIdVerifyDialog(false)}
+            sx={{ borderRadius: 3, py: 1.5, whiteSpace: "nowrap" }}
+          >
+            Cancel
+          </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            color="success"
+            startIcon={<ICONS.check />}
+            onClick={() => {
+              setIdVerified(true);
+              setShowIdVerifyDialog(false);
+              handleCheckInAction();
+            }}
+            sx={{ borderRadius: 3, py: 1.5, whiteSpace: "nowrap" }}
+          >
+            Verify & Check In
+          </Button>
+        </DialogActions>
+      </Dialog>
     </RoleGuard>
   );
 }

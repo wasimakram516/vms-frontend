@@ -12,14 +12,19 @@ import {
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { sendOtp, verifyOtp, checkNdaValidity } from "@/services/registrationService";
+import { applyReturningVerification } from "@/utils/returningFlow";
+import { useLanguage } from "@/contexts/LanguageContext";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
 
 const OTP_LENGTH = 4;
 
 export default function RegisterOtpPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
+  const { t, isRtl } = useLanguage();
+  const dir = isRtl ? "rtl" : "ltr";
   const [otp, setOtp] = useState(() => Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(60);
@@ -114,63 +119,10 @@ export default function RegisterOtpPage() {
     if (code.length < OTP_LENGTH || loading) return;
 
     setLoading(true);
-    console.log(`Verifying OTP: ${code} for Identity: ${visitorData.identity}`);
     try {
       const res = await verifyOtp(visitorData.identity, code);
       if (!res.error && res.success) {
-        // Check if returning visitor's NDA has expired and needs re-acceptance
-        const visitorEmail = res.user?.email || visitorData.identity;
-        let ndaStillValid = true;
-        if (visitorEmail) {
-          const validityRes = await checkNdaValidity(visitorEmail).catch(() => null);
-          if (validityRes?.ndaRequired) ndaStillValid = false;
-        }
-
-        setFlowState((prev) => ({
-          ...prev,
-          otpVerified: true,
-          ndaAccepted: ndaStillValid,
-          isReturning: true,
-          currentStep: ndaStillValid ? "booking" : "nda"
-        }));
-
-        setVisitorData((prev) => {
-          const newData = { ...prev };
-
-          if (res.user) {
-            newData.userId = res.user.id;
-            newData.fullName = res.user.fullName || prev.fullName;
-            newData.email = res.user.email || prev.email;
-            newData.phone = res.user.phone || prev.phone;
-          }
-
-          if (res.lastFieldValues) {
-            newData.dynamicFields = {
-              ...prev.dynamicFields,
-              ...res.lastFieldValues
-            };
-
-            // Extract phoneIsoCode from returning visitor's last registration
-            const isoCode = res.phoneIsoCode || res.phone_iso_code || res.isoCode || res.iso_code;
-            if (isoCode) {
-              newData.phoneIsoCode = isoCode;
-            }
-
-            if (res.user?.fullName && !newData.dynamicFields.full_name) {
-              newData.dynamicFields.full_name = res.user.fullName;
-            }
-            if (res.user?.email && !newData.dynamicFields.email) {
-              newData.dynamicFields.email = res.user.email;
-            }
-            if (res.user?.phone && !newData.dynamicFields.phone) {
-              newData.dynamicFields.phone = res.user.phone;
-            }
-          }
-
-          return newData;
-        });
-
-        router.push("/register/booking");
+        await applyReturningVerification(res, { setFlowState, setVisitorData, router, checkNdaValidity });
       } else {
         setOtp(Array(OTP_LENGTH).fill(""));
         inputRefs.current[0]?.focus();
@@ -181,14 +133,17 @@ export default function RegisterOtpPage() {
   };
 
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading="Verify Identity">
+    <VisitorLayout justifyContent="center" mobileSubheading={t("otpHeading")}>
       <Stack spacing={3}>
         <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
           <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            Verify Identity
+            {t("otpHeading")}
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>
-            We've sent a 4-digit code to <Typography component="span" fontWeight={700} color="text.primary">{visitorData.identity || "your device"}</Typography>
+            {t("otpSubtitle")}{" "}
+            <Typography component="span" fontWeight={700} color="text.primary">
+              {visitorData.identity || t("otpYourDevice")}
+            </Typography>
           </Typography>
         </Box>
 
@@ -240,26 +195,29 @@ export default function RegisterOtpPage() {
           disabled={loading}
           onClick={handleVerify}
           startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <ICONS.checkCircle />}
-          sx={{ py: 1.8, borderRadius: 30, fontWeight: 700 }}
+          sx={{ py: 1.8, borderRadius: 30, fontWeight: 700, ...getStartIconSpacing(dir) }}
         >
-          {loading ? "Verifying..." : "Verify"}
+          {loading ? t("otpVerifying") : t("otpVerify")}
         </Button>
 
         <Typography variant="caption" color="text.secondary" align="center">
-          Didn't receive code?{" "}
-          <Typography 
-            component="span" 
-            variant="caption" 
+          {t("otpNoCode")}{" "}
+          <Typography
+            component="span"
+            variant="caption"
             onClick={handleResend}
-            sx={{ 
-              color: resendTimer > 0 || resending ? "text.disabled" : "primary.main", 
-              cursor: resendTimer > 0 || resending ? "default" : "pointer", 
+            sx={{
+              color: resendTimer > 0 || resending ? "text.disabled" : "primary.main",
+              cursor: resendTimer > 0 || resending ? "default" : "pointer",
               fontWeight: 700,
-              textDecoration: resendTimer > 0 || resending ? "none" : "hover",
               "&:hover": { textDecoration: resendTimer > 0 || resending ? "none" : "underline" }
             }}
           >
-            {resending ? "Sending..." : resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend"}
+            {resending
+              ? t("otpResending")
+              : resendTimer > 0
+                ? t("otpResendIn").replace("{{s}}", resendTimer)
+                : t("otpResend")}
           </Typography>
         </Typography>
 
@@ -269,9 +227,9 @@ export default function RegisterOtpPage() {
           size="small"
           startIcon={<ICONS.back />}
           onClick={() => router.back()}
-          sx={{ color: "text.disabled", textTransform: "none" }}
+          sx={{ color: "text.disabled", textTransform: "none", ...getStartIconSpacing(dir) }}
         >
-          Back
+          {t("back")}
         </Button>
       </Stack>
     </VisitorLayout>

@@ -40,7 +40,17 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body style={{ margin: 0, padding: 0 }}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var l=localStorage.getItem('sinan-lang');if(l==='ar')document.documentElement.setAttribute('dir','rtl');}catch(e){}`
+          }}
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+      </head>
+      <body style={{ margin: 0, padding: 0, fontFamily: "var(--font-primary)" }}>
         <ClientRoot>
           <Navbar />
           <Box 

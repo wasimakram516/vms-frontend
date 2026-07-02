@@ -46,6 +46,27 @@ export const verifyOtp = withApiHandler(async (target, code) => {
   return data;
 });
 
+/**
+ * Match a returning visitor by their ID custom-field values + phone number.
+ * No OTP code is required — the match itself is the verification.
+ * On success returns the same shape as verifyOtp (user, lastFieldValues, activeRegistration, …).
+ */
+export const verifyReturningById = withApiHandler(async (fieldValues, phone) => {
+  const { data } = await api.post("/auth/otp/verify-by-id", { fieldValues, phone });
+  if (data?.success) {
+    return {
+      success: true,
+      ...data.data,
+    };
+  }
+  return data;
+});
+
+export const visitorEditRegistration = withApiHandler(async (id, payload) => {
+  const { data } = await api.patch(`/registrations/${id}/visitor-edit`, payload);
+  return data?.data ?? data;
+});
+
 export const createRegistration = withApiHandler(
   async (payload) => {
     const { data } = await api.post("/registrations", payload);
@@ -60,29 +81,56 @@ export const mapRegistration = (r) => {
     id: r.id,
     full_name: r.user?.fullName || "N/A",
     email: r.user?.email || null,
-    phone: r.user?.phone || "N/A",
-    purpose_of_visit: r.purposeOfVisit,
+    phone: r.user?.phone || null,
+    purpose_of_visit: (() => {
+      const col = r.purposeOfVisit || null;
+      if (col && col !== 'Other') return col;
+      if (!Array.isArray(r.fieldValues)) return col;
+      const normKey = (s = '') => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const purposeFv = r.fieldValues.find((fv) => {
+        const k = normKey(fv.customField?.fieldKey || fv.customField?.field_key);
+        return k.includes('purposeofvisit') || k === 'purpose';
+      });
+      const purposeVal = purposeFv?.value ?? col;
+      if (purposeVal !== 'Other') return purposeVal;
+      // Resolve "Other" → companion specify field
+      const specifyFv = r.fieldValues.find((fv) => {
+        const k = normKey(fv.customField?.fieldKey || fv.customField?.field_key);
+        return k.includes('specify') || k.includes('otherdetail');
+      });
+      return specifyFv?.value ?? purposeVal;
+    })(),
     status: r.status,
     requested_from: r.requestedFrom,
     requested_to: r.requestedTo,
     approved_from: r.approvedFrom,
     approved_to: r.approvedTo,
-    phone_iso_code: r.phoneIsoCode,
+    phone_iso_code: r.phoneIsoCode || r.user?.iso_code || r.user?.phoneIsoCode || r.user?.isoCode,
     created_at: r.createdAt,
     qr_token: r.qrToken,
     rejection_reason: r.rejectionReason,
     allow_multi_checkin: r.allowMultiCheckin,
     allow_parking: r.allowParking ?? false,
     is_vip: r.isVip ?? false,
+    escort_required: r.escortRequired ?? true,
     department: r.department,
     department_id: r.departmentId,
     access_level: r.accessLevel,
     access_level_id: r.accessLevelId,
+    access_levels: r.accessLevels ?? [],
+    vehicle_plate: r.vehiclePlate ?? null,
+    approval_note: r.approvalNote ?? null,
+    vip_reason: r.vipReason ?? null,
     admin_approved_at: r.adminApprovedAt,
     admin_approved_by_user_id: r.adminApprovedByUserId,
     admin_rejection_reason: r.adminRejectionReason,
     is_vip_fast_track: r.isVipFastTrack ?? false,
     vip_fast_track_approved_at: r.vipFastTrackApprovedAt,
+    recurring_type: r.recurringType ?? null,
+    recurring_days: r.recurringDays ?? null,
+    recurring_time_from: r.recurringTimeFrom ?? null,
+    recurring_time_to: r.recurringTimeTo ?? null,
+    current_visit_end: r.currentVisitEnd ?? null,
     ...r,
   };
 
@@ -93,11 +141,12 @@ export const mapRegistration = (r) => {
   return mapped;
 };
 
-export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}) => {
+export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}, userId) => {
   const params = {};
   if (status && status !== "all") params.status = status;
   if (from) params.from = from;
   if (to) params.to = to;
+  if (userId) params.userId = userId;
   const res = await api.get("/registrations", { params });
   const registrations = res.data?.data || res.data || [];
 
@@ -137,8 +186,9 @@ export const updateRegistration = withApiHandler(
 
 export const getRegistrationActivityLogs = withApiHandler(async (id) => {
   const res = await api.get(`/registrations/${id}/activity-logs`);
-  return res.data?.data || res.data || [];
-});
+  const payload = res.data?.data;
+  return Array.isArray(payload) ? payload : [];
+}, { suppressErrorStatus: [403, 404] });
 
 export async function exportVisitorHistoryCsv(registrationId) {
   const params = new URLSearchParams({
@@ -219,3 +269,80 @@ export const verifyRegistrationById = withApiHandler(async (idNumber) => {
     visitEnded: result.visitEnded,
   }));
 });
+
+// Fetch checked-in registrations for the kitchen order picker — gated by kitchen:read,
+// department-scoped. Used in cms/kitchen so a kitchen admin can pick who to order for
+// without needing full visits/visitors access.
+export const getKitchenEligibleVisitors = withApiHandler(async () => {
+  const res = await api.get('/registrations/for-kitchen');
+  const registrations = res.data?.data || res.data || [];
+  return Array.isArray(registrations) ? registrations.map(mapRegistration) : [];
+});
+
+export const getCurrentlyInside = withApiHandler(async () => {
+  const res = await api.get('/registrations/currently-inside');
+  const payload = res.data?.data ?? res.data ?? [];
+  return Array.isArray(payload) ? payload.map(mapRegistration) : [];
+});
+
+export const getTodayVisitors = withApiHandler(async () => {
+  const res = await api.get('/registrations/today');
+  const payload = res.data?.data ?? res.data ?? [];
+  return Array.isArray(payload) ? payload.map(mapRegistration) : [];
+});
+
+/**
+ * Fetch the list of existing visitors an admin may create new visits for.
+ * SuperAdmin sees all visitors; departmental admin sees only visitors who
+ * have previously visited their department(s).
+ */
+export const getEligibleVisitors = withApiHandler(async () => {
+  const res = await api.get("/registrations/eligible-visitors");
+  const data = res.data?.data || res.data || [];
+  return Array.isArray(data)
+    ? data.map((u) => ({
+        id: u.id,
+        fullName: u.fullName || u.full_name || "",
+        email: u.email || "",
+        phone: u.phone || "",
+        iso_code: u.iso_code || null,
+        hasActiveVisit: u.hasActiveVisit ?? false,
+      }))
+    : [];
+});
+
+/**
+ * Admin creates one or more visits on behalf of existing visitors.
+ * Returns { created: Registration[], skipped: { userId, reason }[] }.
+ */
+export const adminCreateVisits = withApiHandler(
+  async (payload) => {
+    const { data } = await api.post("/registrations/admin-create", payload);
+    return data?.data ?? data;
+  },
+  { showSuccess: true },
+);
+
+export async function exportRegistrationsXlsx(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return;
+  const res = await api.get(
+    '/registrations/export-registrations',
+    {
+      params: {
+        ids: ids.join(','),
+        tzOffset: new Date().getTimezoneOffset(),
+        tzName: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+      responseType: 'blob',
+    },
+  );
+  const date = new Date().toISOString().slice(0, 10);
+  const url = URL.createObjectURL(new Blob([res.data]));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `registrations-${date}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

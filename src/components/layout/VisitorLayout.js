@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Typography, GlobalStyles } from "@mui/material";
+import { Box, GlobalStyles, Typography } from "@mui/material";
 import { motion } from "framer-motion";
 import { useColorMode } from "@/contexts/ThemeContext";
-import ICONS from "@/utils/iconUtil";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
 const bgPortrait  = "/bg-portrait.webp";
@@ -14,28 +14,75 @@ const brandLogoSrc = "/logo-light.png";
 const fontStyles = (
   <GlobalStyles
     styles={`
-      @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap');
+      @font-face {
+        font-family: 'DINNextLTArabic';
+        src: url('/DINNextLTArabic-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      [dir="rtl"],
+      [dir="rtl"] .MuiTypography-root,
+      [dir="rtl"] .MuiInputBase-input,
+      [dir="rtl"] .MuiButton-root,
+      [dir="rtl"] .MuiMenuItem-root,
+      [dir="rtl"] .MuiInputLabel-root,
+      [dir="rtl"] .MuiFormHelperText-root,
+      [dir="rtl"] .MuiFormLabel-root,
+      [dir="rtl"] .MuiTab-root,
+      [dir="rtl"] .MuiSelect-select,
+      [dir="rtl"] .MuiTooltip-tooltip,
+      [dir="rtl"] .MuiAlert-message,
+      [dir="rtl"] .MuiChip-label {
+        font-family: 'DINNextLTArabic', sans-serif !important;
+      }
+
+      [dir="rtl"] .visitor-layout-brand-title {
+        font-family: 'Comfortaa', cursive !important;
+      }
     `}
   />
 );
 
-export default function VisitorLayout({ 
-  children, 
-  title = "Sinan Sentry",
-  subtitle = "Experience a seamless visitor journey at Sinan. Please select your visit type to proceed.",
+export default function VisitorLayout({
+  children,
+  title,
+  subtitle,
   mobileSubheading = "",
   maxWidth = 450,
   justifyContent = "flex-start",
 }) {
   const { mode } = useColorMode();
+  const { t } = useLanguage();
   const isDark = mode === "dark";
-  const [isMobileCardExpanded, setIsMobileCardExpanded] = useState(true);
-  const MobileCardToggleIcon = isMobileCardExpanded ? ICONS.expandMore : ICONS.expandLess;
+  const effectiveTitle = title ?? t("layoutBrandTitle");
+  const effectiveSubtitle = subtitle ?? t("layoutBrandSubtitle");
+  const [isMobileCardExpanded] = useState(true);
+
+  const rtlInputStyles = (
+    <GlobalStyles
+      styles={{
+        '[dir="rtl"] #visitor-layout-root .MuiOutlinedInput-notchedOutline': {
+          borderColor: isDark ? 'rgba(255,255,255,0.1) !important' : 'rgba(0,0,0,0.1) !important',
+        },
+        '[dir="rtl"] #visitor-layout-root .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': {
+          borderColor: isDark ? 'rgba(255,255,255,0.3) !important' : 'rgba(0,0,0,0.3) !important',
+        },
+        '[dir="rtl"] #visitor-layout-root .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+          borderColor: isDark ? '#ffffff !important' : '#000000 !important',
+          borderWidth: '1px !important',
+        },
+      }}
+    />
+  );
 
   return (
     <>
       {fontStyles}
+      {rtlInputStyles}
       <Box
+        id="visitor-layout-root"
         sx={{
           height: "100%",
           display: "flex",
@@ -128,19 +175,22 @@ export default function VisitorLayout({
                 }}
               >
                 <Typography
+                  dir="ltr"
+                  className="visitor-layout-brand-title"
                   sx={{
-                    fontFamily: "'Comfortaa', cursive",
                     fontSize: { xs: "1.45rem", sm: "1.7rem", md: "3rem" },
                     fontWeight: 800,
                     color: "#fff",
                     mb: { xs: 0.75, md: 2 },
                     lineHeight: 1.1,
                     opacity: { xs: 0.92, md: 1 },
+                    fontFamily: "'Comfortaa', cursive",
                   }}
                 >
-                  {title}
+                  {effectiveTitle}
                 </Typography>
                 <Typography
+                  dir="ltr"
                   sx={{
                     color: "rgba(255,255,255,0.8)",
                     maxWidth: 320,
@@ -148,7 +198,7 @@ export default function VisitorLayout({
                     fontSize: { xs: "0.92rem", md: "1rem" },
                   }}
                 >
-                  {subtitle}
+                  {effectiveSubtitle}
                 </Typography>
               </Box>
             </Box>
@@ -185,7 +235,7 @@ export default function VisitorLayout({
               zIndex: 1,
             }}
           >
-            <motion.div
+              <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={transition}
@@ -236,7 +286,6 @@ export default function VisitorLayout({
                     <Typography
                       variant="subtitle2"
                       sx={{
-                        fontFamily: "'Comfortaa', cursive",
                         fontWeight: 800,
                         color: isDark ? "#ffffff" : "text.primary",
                         mb: 1,

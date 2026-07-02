@@ -9,8 +9,19 @@ import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { useEffect } from "react";
 import { VisitorProvider } from "@/contexts/VisitorContext";
+import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
+import "dayjs/locale/ar";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { KitchenNotificationProvider } from "@/contexts/KitchenNotificationContext";
+
+function LocalizedDateProvider({ children }) {
+  const { lang } = useLanguage();
+  return (
+    <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={lang}>
+      {children}
+    </LocalizationProvider>
+  );
+}
 
 export default function ClientRoot({ children }) {
   useEffect(() => {
@@ -130,10 +141,11 @@ export default function ClientRoot({ children }) {
 
   return (
     <>
+      <LanguageProvider>
       <MessageProvider>
         <SocketProvider>
           <ThemeRegistry>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <LocalizedDateProvider>
               <AuthProvider>
                 <SettingsProvider>
                   <VisitorProvider>
@@ -143,10 +155,11 @@ export default function ClientRoot({ children }) {
                   </VisitorProvider>
                 </SettingsProvider>
               </AuthProvider>
-            </LocalizationProvider>
+            </LocalizedDateProvider>
           </ThemeRegistry>
         </SocketProvider>
       </MessageProvider>
+      </LanguageProvider>
     </>
   );
 }

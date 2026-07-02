@@ -39,7 +39,7 @@ import useSocket from "@/utils/useSocket";
 
 dayjs.extend(isBetween);
 
-export default function OrderTrackingModal({ open, onClose, user }) {
+export default function OrderTrackingModal({ open, onClose, user, canCancel, canUpdate }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const isSuperAdmin = user?.role?.toLowerCase() === "superadmin";
@@ -112,8 +112,8 @@ export default function OrderTrackingModal({ open, onClose, user }) {
             myUnseen.forEach(id => next.add(id));
             return next;
           });
-          markOrdersAsSeen(); 
-          markAllAsSeen(); 
+          if (canUpdate) markOrdersAsSeen(); 
+          if (canUpdate) markAllAsSeen(); 
         }
       }
     } finally {
@@ -649,8 +649,8 @@ export default function OrderTrackingModal({ open, onClose, user }) {
                     </Box>
                   )}
 
-                  {/* Cancel Action for Requester/SuperAdmin */}
-                  {(order.status === "initiated" || order.status === "received") && 
+                  {/* Cancel Action for Requester/SuperAdmin (gated by permission) */}
+                  {canCancel && (order.status === "initiated" || order.status === "received") && 
                    (isSuperAdmin || user?.id === order.requester_id) && (
                     <Box sx={{ mt: 2, pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
                       <Button

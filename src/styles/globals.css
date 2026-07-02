@@ -1,8 +1,5 @@
-/* Import Comfortaa from Google Fonts */
-@import url("https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;700&display=swap");
-
 :root {
-  --font-primary: "Comfortaa", sans-serif;
+  --font-primary: "Comfortaa", "Segoe UI", Arial, sans-serif;
 }
 
 html,
@@ -81,8 +78,43 @@ select,
 }
 
 /* --- RTL FIX FOR MUI OUTLINED INPUT --- */
-[dir="rtl"] .MuiOutlinedInput-root {
+
+/* Rule 1 — root + fieldset direction so legend flows from the right */
+[dir="rtl"] .MuiOutlinedInput-root,
+[dir="rtl"] .MuiOutlinedInput-notchedOutline {
   direction: rtl !important;
+}
+
+/* Rule 2 — text-align on fieldset positions the legend on the right side */
+[dir="rtl"] .MuiOutlinedInput-notchedOutline {
+  text-align: right !important;
+}
+
+/* Rule 3 — let MUI JS control max-width; just ensure no float interference */
+[dir="rtl"] .MuiOutlinedInput-notchedOutline legend {
+  float: unset !important;
+  direction: rtl !important;
+}
+
+/* Rule 4 — focused state border color */
+[dir="rtl"] .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: currentColor !important;
+}
+
+/* Rule 5 — flip start-adornment margin only when an end-adornment is also present (e.g. password field) */
+[dir="rtl"] .MuiInputBase-adornedEnd .MuiInputAdornment-positionStart {
+  margin-right: 0 !important;
+  margin-left: 8px !important;
+}
+
+/* Rule 6 — nudge email icon (start-only field) slightly left in RTL */
+[dir="rtl"] .MuiInputBase-root:not(.MuiInputBase-adornedEnd) .MuiInputAdornment-positionStart {
+  margin-right: 14px !important;
+}
+
+[dir="rtl"] .MuiInputAdornment-positionEnd {
+  margin-left: 0 !important;
+  margin-right: 8px !important;
 }
 
 html.android-webview .MuiInputBase-input[data-android-webview-dir-mode],
@@ -109,31 +141,6 @@ html.android-webview .MuiOutlinedInput-root[data-android-webview-dir-mode="auto"
 html.android-webview .MuiFilledInput-root[data-android-webview-dir-mode="auto"],
 html.android-webview .MuiInput-root[data-android-webview-dir-mode="auto"] {
   direction: inherit !important;
-}
-
-[dir="rtl"] .MuiOutlinedInput-notchedOutline {
-  text-align: right !important;
-  direction: rtl !important;
-  border-color: currentColor !important;
-}
-
-[dir="rtl"] .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
-  border-color: currentColor !important;
-}
-
-/* ensure the legend notch stays visible */
-[dir="rtl"] .MuiOutlinedInput-notchedOutline legend {
-  float: none !important;
-  width: auto !important;
-  max-width: 100% !important;
-  direction: rtl !important;
-  text-align: right !important;
-}
-
-/* --- Remove notch gap in RTL when label is empty --- */
-[dir="rtl"] .MuiOutlinedInput-root:not(.Mui-focused):not(.MuiInputLabel-shrink) .MuiOutlinedInput-notchedOutline legend {
-  max-width: 0 !important;
-  padding: 0 !important;
 }
 
 @keyframes fadeInUp {

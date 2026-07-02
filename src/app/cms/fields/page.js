@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Box,
   Typography,
@@ -45,6 +46,8 @@ import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import DialogHeader from "@/components/modals/DialogHeader";
 import RecordMetadata from "@/components/RecordMetadata";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
+import { canAccessResource } from "@/utils/permissions";
 
 const INPUT_TYPES = [
   "text",
@@ -69,6 +72,7 @@ const emptyForm = () => ({
   label: "",
   inputType: "text",
   isRequired: false,
+  isVipRequired: false,
   isActive: true,
   isUnique: false,
   isVipFastTrack: false,
@@ -78,6 +82,10 @@ const emptyForm = () => ({
 });
 
 export default function CmsFieldsPage() {
+  const { user } = useAuth();
+  const canCreate = canAccessResource(user, "fields", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "create" });
+  const canUpdate = canAccessResource(user, "fields", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "update" });
+  const canDelete = canAccessResource(user, "fields", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "delete" });
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -157,6 +165,7 @@ export default function CmsFieldsPage() {
         ? field.inputType
         : "text",
       isRequired: !!field.isRequired,
+      isVipRequired: !!field.isVipRequired,
       isActive: field.isActive !== false,
       isUnique: !!field.isUnique,
       isVipFastTrack: field.isVipFastTrack ?? false,
@@ -274,6 +283,7 @@ export default function CmsFieldsPage() {
       label: form.label.trim(),
       inputType: form.inputType,
       isRequired: form.isRequired,
+      isVipRequired: form.isVipRequired,
       isActive: form.isActive,
       isUnique: form.isUnique,
       isVipFastTrack: form.isVipFastTrack,
@@ -316,6 +326,7 @@ export default function CmsFieldsPage() {
   const needsDependents = HAS_DEPENDENTS.includes(form.inputType) && parsedOptions.length >= 2;
 
   return (
+    <PermissionRouteGuard resource="fields" hardcodeAllowed={user?.role === "superadmin" || user?.role === "dev"}>
     <Box>
       <Box
         sx={{
@@ -337,11 +348,13 @@ export default function CmsFieldsPage() {
             Global dynamic fields used in the public visitor registration form.
           </Typography>
         </Box>
-        <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, width: { xs: "100%", sm: "auto" } }}>
-          <Button variant="contained" startIcon={<ICONS.add />} onClick={openAdd}>
-            Create
-          </Button>
-        </Box>
+        {canCreate && (
+          <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, width: { xs: "100%", sm: "auto" } }}>
+            <Button variant="contained" startIcon={<ICONS.add />} onClick={openAdd}>
+              Create
+            </Button>
+          </Box>
+        )}
       </Box>
 
       <Divider sx={{ mb: 3 }} />
@@ -499,6 +512,16 @@ export default function CmsFieldsPage() {
                             sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
                           />
                         )}
+                        {field.isVipRequired && (
+                          <Chip
+                            label="VIP Required"
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            icon={<ICONS.starBorder style={{ fontSize: "0.75rem" }} />}
+                            sx={{ fontWeight: 800, fontSize: "0.65rem", height: 20 }}
+                          />
+                        )}
                       </Stack>
                     </Box>
                   </Box>
@@ -525,19 +548,23 @@ export default function CmsFieldsPage() {
                       />
                     </Box>
                     <Stack direction="row" spacing={1} justifyContent="flex-end">
-                      <IconButton
-                        size="small" color="primary" onClick={() => openEdit(field)}
-                        sx={{ bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)" }}
-                      >
-                        <ICONS.edit fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small" color="error" onClick={() => setDeleteTarget(field)}
-                        sx={{ bgcolor: isDark ? "rgba(255,100,100,0.05)" : "rgba(255,0,0,0.03)" }}
-                      >
-                        <ICONS.delete fontSize="small" />
-                      </IconButton>
-                    </Stack>
+                        {canUpdate && (
+                        <IconButton
+                          size="small" color="primary" onClick={() => openEdit(field)}
+                          sx={{ bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)" }}
+                        >
+                          <ICONS.edit fontSize="small" />
+                        </IconButton>
+                        )}
+                        {canDelete && (
+                        <IconButton
+                          size="small" color="error" onClick={() => setDeleteTarget(field)}
+                          sx={{ bgcolor: isDark ? "rgba(255,100,100,0.05)" : "rgba(255,0,0,0.03)" }}
+                        >
+                          <ICONS.delete fontSize="small" />
+                        </IconButton>
+                        )}
+                      </Stack>
                   </Box>
                 </AppCard>
               ))}
@@ -561,7 +588,7 @@ export default function CmsFieldsPage() {
       <Dialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 4, variant: "frosted" } }}
       >
@@ -826,11 +853,22 @@ export default function CmsFieldsPage() {
               control={
                 <Switch
                   checked={form.isVipFastTrack}
-                  onChange={(e) => setForm((p) => ({ ...p, isVipFastTrack: e.target.checked }))}
+                  onChange={(e) => setForm((p) => ({ ...p, isVipFastTrack: e.target.checked, isVipRequired: e.target.checked ? p.isVipRequired : false }))}
                   color="success"
                 />
               }
               label="VIP Fast Track"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={form.isVipRequired}
+                  onChange={(e) => setForm((p) => ({ ...p, isVipRequired: e.target.checked }))}
+                  disabled={!form.isVipFastTrack}
+                  color="success"
+                />
+              }
+              label="VIP Required"
             />
           </Box>
 
@@ -866,5 +904,6 @@ export default function CmsFieldsPage() {
         confirmButtonIcon={<ICONS.delete fontSize="small" />}
       />
     </Box>
+    </PermissionRouteGuard>
   );
 }

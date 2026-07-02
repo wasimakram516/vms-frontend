@@ -8,17 +8,41 @@ import {
     Box,
     Typography,
     TextField,
-    InputBase,
     ListSubheader,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import { COUNTRY_CODES, DEFAULT_COUNTRY_CODE, DEFAULT_ISO_CODE, getFlagImageUrl, getCountryCodeByIsoCode, getCountryCodeByCode } from "@/utils/countryCodes";
+import { COUNTRY_CODES, DEFAULT_ISO_CODE, getFlagImageUrl, getCountryCodeByIsoCode, getCountryCodeByCode } from "@/utils/countryCodes";
+
+const AR_OVERRIDES = {
+    DG: "دييغو غارسيا",
+    EH: "الصحراء الغربية",
+    AC: "جزيرة أسينشن",
+    TA: "تريستان دا كونا",
+    BQ: "جزر الكاريبي الهولندية",
+    XK: "كوسوفو",
+    CP: "جزيرة كليبرتون",
+    EA: "سبتة ومليلية",
+};
+
+function getDisplayName(isoCode, lang) {
+    if (lang === "en") return null;
+    const upper = isoCode.toUpperCase();
+    if (lang === "ar" && AR_OVERRIDES[upper]) return AR_OVERRIDES[upper];
+    try {
+        const name = new Intl.DisplayNames([lang], { type: "region" }).of(upper);
+        if (!name || name.toUpperCase() === upper) return null;
+        return name;
+    } catch {
+        return null;
+    }
+}
 
 const CountryCodeSelector = ({
     value,
     onChange,
     disabled = false,
     dir = "ltr",
+    lang = "en",
 }) => {
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -37,18 +61,24 @@ const CountryCodeSelector = ({
     const selectedCountry = COUNTRY_CODES.find((cc) => cc.isoCode === selectedIsoCode) ||
         COUNTRY_CODES.find((cc) => cc.isoCode === DEFAULT_ISO_CODE);
 
+    const countriesWithDisplay = useMemo(() => {
+        return COUNTRY_CODES.map((cc) => ({
+            ...cc,
+            displayName: getDisplayName(cc.isoCode, lang) || cc.country,
+        }));
+    }, [lang]);
+
     const filteredCountries = useMemo(() => {
-        if (!searchQuery.trim()) {
-            return COUNTRY_CODES;
-        }
+        if (!searchQuery.trim()) return countriesWithDisplay;
         const query = searchQuery.toLowerCase();
-        return COUNTRY_CODES.filter(
+        return countriesWithDisplay.filter(
             (country) =>
+                country.displayName.toLowerCase().includes(query) ||
                 country.country.toLowerCase().includes(query) ||
                 country.code.includes(query) ||
                 country.isoCode.toLowerCase().includes(query)
         );
-    }, [searchQuery]);
+    }, [searchQuery, countriesWithDisplay]);
 
     return (
         <InputAdornment position="start" sx={{ m: 0 }}>
@@ -89,30 +119,15 @@ const CountryCodeSelector = ({
                         alignItems: "center",
                         gap: 0.5,
                         border: "none",
-                        "&:focus": {
-                            backgroundColor: "transparent",
-                        },
+                        "&:focus": { backgroundColor: "transparent" },
                     },
-                    "& .MuiOutlinedInput-notchedOutline": {
-                        border: "none",
-                    },
-                    "&:hover .MuiOutlinedInput-notchedOutline": {
-                        border: "none",
-                    },
-                    "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                        border: "none",
-                    },
-                    "& .MuiSelect-icon": {
-                        right: "4px !important",
-                        width: "16px",
-                    },
+                    "& .MuiOutlinedInput-notchedOutline": { border: "none" },
+                    "&:hover .MuiOutlinedInput-notchedOutline": { border: "none" },
+                    "&.Mui-focused .MuiOutlinedInput-notchedOutline": { border: "none" },
+                    "& .MuiSelect-icon": { right: "4px !important", width: "16px" },
                 }}
                 MenuProps={{
-                    PaperProps: {
-                        sx: {
-                            maxHeight: 400,
-                        },
-                    },
+                    PaperProps: { sx: { maxHeight: 400 } },
                     autoFocus: false,
                 }}
                 onClose={() => setSearchQuery("")}
@@ -132,7 +147,7 @@ const CountryCodeSelector = ({
                         <TextField
                             fullWidth
                             size="small"
-                            placeholder="Search country..."
+                            placeholder={lang === "ar" ? "ابحث عن دولة..." : "Search country..."}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             onClick={(e) => e.stopPropagation()}
@@ -171,7 +186,7 @@ const CountryCodeSelector = ({
                                     />
                                 )}
                                 <Typography variant="body2">
-                                    {country.country} ({country.code})
+                                    {country.displayName} ({country.code})
                                 </Typography>
                             </Box>
                         </MenuItem>
@@ -179,7 +194,7 @@ const CountryCodeSelector = ({
                 ) : (
                     <MenuItem disabled>
                         <Typography variant="body2" color="text.secondary">
-                            No countries found
+                            {lang === "ar" ? "لا توجد دول" : "No countries found"}
                         </Typography>
                     </MenuItem>
                 )}
@@ -189,4 +204,3 @@ const CountryCodeSelector = ({
 };
 
 export default CountryCodeSelector;
-

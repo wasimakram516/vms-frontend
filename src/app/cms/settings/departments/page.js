@@ -28,6 +28,9 @@ import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import PermissionGuard, { usePermission } from "@/components/auth/PermissionGuard";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessResource } from "@/utils/permissions";
 import RecordMetadata from "@/components/RecordMetadata";
 import {
   getDepartments,
@@ -37,7 +40,11 @@ import {
 } from "@/services/departmentService";
 
 function DepartmentsContent() {
+  const { user } = useAuth();
   const { readOnly } = usePermission();
+  const canCreate = canAccessResource(user, "departments", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "create" });
+  const canUpdate = canAccessResource(user, "departments", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "update" });
+  const canDelete = canAccessResource(user, "departments", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "dev", action: "delete" });
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -142,7 +149,7 @@ function DepartmentsContent() {
               : "Manage departments that visitors can select when registering."}
           </Typography>
         </Box>
-        {!readOnly && (
+        {canCreate && (
           <Button
             variant="contained"
             startIcon={<ICONS.add />}
@@ -300,13 +307,15 @@ function DepartmentsContent() {
                     sx={{ px: 0, py: 0 }}
                   />
                 </Box>
-                {!readOnly && (
-                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                    {canUpdate && (
                     <Tooltip title="Edit">
                       <IconButton size="small" onClick={() => openEdit(dept)} sx={{ color: "primary.main" }}>
                         <ICONS.edit fontSize="small" />
                       </IconButton>
                     </Tooltip>
+                    )}
+                    {canDelete && (
                     <Tooltip title="Delete">
                       <IconButton
                         size="small"
@@ -316,8 +325,8 @@ function DepartmentsContent() {
                         <ICONS.delete fontSize="small" />
                       </IconButton>
                     </Tooltip>
+                    )}
                   </Stack>
-                )}
               </Box>
             </AppCard>
           ))}
@@ -328,7 +337,7 @@ function DepartmentsContent() {
       <Dialog
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
       >
@@ -425,9 +434,13 @@ function DepartmentsContent() {
 }
 
 export default function DepartmentsPage() {
+  const { user } = useAuth();
+  const hardcodeAllowed = user?.role === "superadmin" || user?.role === "admin";
   return (
-    <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
-      <DepartmentsContent />
-    </PermissionGuard>
+    <PermissionRouteGuard resource="departments" hardcodeAllowed={hardcodeAllowed}>
+      <PermissionGuard fullAccessRoles={["superadmin"]} readOnlyRoles={["admin"]}>
+        <DepartmentsContent />
+      </PermissionGuard>
+    </PermissionRouteGuard>
   );
 }

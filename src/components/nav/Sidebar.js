@@ -19,43 +19,61 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useState } from "react";
 import ICONS from "@/utils/iconUtil";
+import { canAccessResource } from "@/utils/permissions";
+
+// Full catalog: every CMS nav item with its pageId
+const buildCatalog = (user, isKitchenModuleEnabled = true) => {
+  const role = user?.role;
+  const adminType = user?.role === "admin" ? (user?.adminType || "departmental") : user?.adminType;
+  const isKitchenAdmin = role === "admin" && adminType === "kitchen";
+
+  const items = [
+    { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard", pageId: "dashboard" },
+    { label: "Analytics", icon: ICONS.insights, path: "/cms/analytics", pageId: "analytics" },
+    { label: "Visitors", icon: ICONS.badge, path: "/cms/visitors", pageId: "visitors" },
+    { label: "Visits", icon: ICONS.checkin, path: "/cms/visits", pageId: "visits" },
+    { label: "NDA Forms", icon: ICONS.verified, path: "/cms/nda-forms", pageId: "nda-forms" },
+    { label: "Fields", icon: ICONS.form, path: "/cms/fields", pageId: "fields" },
+    { label: "Users", icon: ICONS.people, path: "/cms/users", pageId: "users" },
+    { label: "Settings", icon: ICONS.settings, path: "/cms/settings", pageId: "settings" },
+  ];
+
+  if (isKitchenModuleEnabled) {
+    items.splice(items.length - 1, 0, { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen", pageId: "kitchen" });
+  }
+
+  return items;
+};
 
 const getNavItems = (user, isKitchenModuleEnabled = true) => {
   const role = user?.role;
-  const adminType = user?.role === "admin" ? (user?.adminType || "departmental") : user?.adminType;
+  const isDev = role === "dev";
 
-  // Base items for Departmental Admin, SuperAdmin
-  const base = [
-    { label: "Dashboard", icon: ICONS.home, path: "/cms/dashboard" },
-    { label: "Registrations", icon: ICONS.appRegister, path: "/cms/registrations" },
-    { label: "Approvals", icon: ICONS.checkCircle, path: "/cms/approvals" },
-    { label: "Fields", icon: ICONS.form, path: "/cms/fields" },
-    { label: "NDA Forms", icon: ICONS.verified, path: "/cms/nda-forms" },
-    { label: "Users", icon: ICONS.people, path: "/cms/users" },
-    { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
-  ];
-
-  if (role === "admin" && adminType === "kitchen") {
+  if (isDev) {
     return [
-      { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" },
-      { label: "Menu Settings", icon: ICONS.settings, path: "/cms/settings/kitchen-menu" }
+      { label: "Settings", icon: ICONS.settings, path: "/cms/settings" },
     ];
   }
 
-  // Departmental Admin: Everything EXCEPT Kitchen Orders
-  if (role === "admin" && adminType === "departmental") {
-    // base is already what we want, just make sure we don't add kitchen later
-  } else if (isKitchenModuleEnabled) {
-    // SuperAdmin: Add Kitchen Orders if enabled
-    base.push({ label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen" });
-  }
+  const catalog = buildCatalog(user, isKitchenModuleEnabled);
+  const isKitchenAdmin = role === "admin" && (user?.adminType || "departmental") === "kitchen";
+  const isSuperAdmin = role === "superadmin";
 
-  // Analytics is SuperAdmin-only — insert after Dashboard
-  if (role === "superadmin") {
-    base.splice(1, 0, { label: "Analytics", icon: ICONS.insights, path: "/cms/analytics" });
-  }
-
-  return base;
+  return catalog.filter((item) => {
+    if (item.pageId === "dashboard") return !isKitchenAdmin;
+    if (item.pageId === "settings") {
+      if (isKitchenAdmin) {
+        return canAccessResource(user, "kitchen-menu", { hardcodeAllowed: false });
+      }
+      if (isSuperAdmin) return true;
+      const settingsPages = ["access-control", "host-details", "departments", "access-levels", "kitchen-menu"];
+      return settingsPages.some((pageId) =>
+        canAccessResource(user, pageId, { hardcodeAllowed: false, action: "read" }),
+      );
+    }
+    if (isSuperAdmin) return true;
+    return canAccessResource(user, item.pageId, { hardcodeAllowed: false });
+  });
 };
 
 export default function Sidebar() {

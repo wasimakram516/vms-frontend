@@ -454,9 +454,9 @@ export default function CmsDashboardPage() {
               variant="outlined"
               startIcon={<ICONS.list />}
               sx={{ mt: 4, borderRadius: 3, px: 3, py: 1, fontWeight: 700 }}
-              onClick={() => router.push("/cms/registrations")}
+              onClick={() => router.push("/cms/visitors")}
             >
-              View All Registrations
+              View All Visitors
             </Button>
           </AppCard>
         </Grid>

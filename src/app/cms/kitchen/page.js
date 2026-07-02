@@ -41,13 +41,15 @@ import ListToolbar from "@/components/ListToolbar";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import PermissionGuard from "@/components/auth/PermissionGuard";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { useAuth } from "@/contexts/AuthContext";
+import { canAccessResource } from "@/utils/permissions";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { useKitchenNotifications } from "@/contexts/KitchenNotificationContext";
 import { getActiveMenuItems, createOrder, getMyOrders, markOrdersAsSeen } from "@/services/kitchenService";
-import { getRegistrations, mapRegistration } from "@/services/registrationService";
+import { getKitchenEligibleVisitors, mapRegistration } from "@/services/registrationService";
 import { useRef } from "react";
 import OrderTrackingModal from "./OrderTrackingModal";
 
@@ -91,6 +93,8 @@ const getLatestCheckedInVisitors = (registrations) => {
 
 function OrderingContent() {
   const { user } = useAuth();
+  const canCreate = canAccessResource(user, "kitchen", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "admin" || user?.role === "dev", action: "create" });
+  const canCancel = canAccessResource(user, "kitchen", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "admin" || user?.role === "dev", action: "update" });
   const { hostSettings, loading: settingsLoading } = useSettings();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -184,7 +188,7 @@ function OrderingContent() {
     if (shouldShowFullLoader) setResLoading(true);
     else if (!silent) setIsResListRefreshing(true);
     try {
-      const res = await getRegistrations();
+      const res = await getKitchenEligibleVisitors();
       setResList(getLatestCheckedInVisitors(res));
       setResHasLoadedOnce(true);
     } finally {
@@ -320,11 +324,13 @@ function OrderingContent() {
           getOptionLabel={(option) => {
             const name = option.user?.fullName || option.full_name || "Visitor";
             const org = option.organisation || option.companyName || "";
-            return `${name} (${org})`;
+            return org ? `${name} (${org})` : name;
           }}
           renderOption={(props, option) => {
             const { key: _muiKey, ...rest } = props;
-            return <li {...rest} key={String(getVisitorOptionKey(option))}>{`${option.user?.fullName || option.full_name || "Visitor"} (${option.organisation || option.companyName || ""})`}</li>;
+            const name = option.user?.fullName || option.full_name || "Visitor";
+            const org = option.organisation || option.companyName || "";
+            return <li {...rest} key={String(getVisitorOptionKey(option))}>{org ? `${name} (${org})` : name}</li>;
           }}
           noOptionsText="No checked-in visitors found"
           value={selectedVisitor}
@@ -369,13 +375,14 @@ function OrderingContent() {
               />
               <ListItemSecondaryAction>
                 <Stack direction="row" alignItems="center" spacing={1}>
-                  <IconButton size="small" onClick={() => updateQuantity(item.id, -1)} sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider" }}><ICONS.remove fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => updateQuantity(item.id, -1)} disabled={!canCreate} sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider" }}><ICONS.remove fontSize="small" /></IconButton>
                   <Typography variant="body2" fontWeight="bold" sx={{ minWidth: 20, textAlign: "center" }}>{item.quantity}</Typography>
-                  <IconButton 
-                    size="small" 
+                  <IconButton
+                    size="small"
                     onClick={() => updateQuantity(item.id, 1)}
-                    sx={{ 
-                      bgcolor: "primary.main", 
+                    disabled={!canCreate}
+                    sx={{
+                      bgcolor: "primary.main",
                       color: theme.palette.mode === "dark" ? "#000" : "#fff",
                       "&:hover": { bgcolor: "primary.dark" }
                     }}
@@ -395,6 +402,7 @@ function OrderingContent() {
           <Typography variant="h6" fontWeight="900" color="primary.main">{totalItems}</Typography>
         </Box>
 
+        {canCreate && (
         <Button
           fullWidth
           variant="contained"
@@ -405,6 +413,7 @@ function OrderingContent() {
         >
           {submitting ? <CircularProgress size={24} color="inherit" /> : "Confirm & Place Order"}
         </Button>
+        )}
 
         <Button
           fullWidth
@@ -551,7 +560,7 @@ function OrderingContent() {
             </Badge>
           </Box>
 
-          {totalItems > 0 && (
+          {totalItems > 0 && canCreate && (
             <Box sx={{ width: { xs: "100%", sm: "auto" } }}>
               <Button
                 variant="contained"
@@ -563,9 +572,9 @@ function OrderingContent() {
                   </Badge>
                 }
                 onClick={toggleCart(true)}
-                sx={{ 
-                  borderRadius: 30, 
-                  px: 3, 
+                sx={{
+                  borderRadius: 30,
+                  px: 3,
                   fontWeight: "bold",
                   height: 44,
                   boxShadow: (theme) => `0 4px 14px ${alpha(theme.palette.primary.main, 0.4)}`
@@ -670,24 +679,25 @@ function OrderingContent() {
 
                     <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: "action.hover" }}>
                       <Stack direction="row" alignItems="center" justifyContent="center" spacing={3}>
-                        <IconButton 
-                          size="small" 
+                        <IconButton
+                          size="small"
                           onClick={() => updateQuantity(item.id, -1)}
-                          disabled={qty === 0}
+                          disabled={qty === 0 || !canCreate}
                           sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider" }}
                         >
                           <ICONS.remove sx={{ fontSize: 18 }} />
                         </IconButton>
-                        
+
                         <Typography fontWeight="800" sx={{ minWidth: 20, textAlign: "center" }}>
                           {qty}
                         </Typography>
-                        
-                        <IconButton 
-                          size="small" 
+
+                        <IconButton
+                          size="small"
                           onClick={() => updateQuantity(item.id, 1)}
-                          sx={{ 
-                            bgcolor: "primary.main", 
+                          disabled={!canCreate}
+                          sx={{
+                            bgcolor: "primary.main",
                             color: theme.palette.mode === "dark" ? "#000" : "#fff",
                             "&:hover": { bgcolor: "primary.dark" }
                           }}
@@ -765,6 +775,8 @@ function OrderingContent() {
         open={trackingOpen}
         onClose={() => setTrackingOpen(false)}
         user={user}
+        canCancel={canCancel}
+        canUpdate={canCancel}
       />
 
       {/* Duplicate Order Confirmation */}
@@ -805,9 +817,14 @@ function OrderingContent() {
 }
 
 export default function KitchenOrderingPage() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "superadmin";
+  const isKitchenAdmin = user?.role === "admin" && user?.adminType === "kitchen";
   return (
-    <PermissionGuard fullAccessRoles={["superadmin", "admin"]} readOnlyRoles={[]}>
-      <OrderingContent />
-    </PermissionGuard>
+    <PermissionRouteGuard resource="kitchen" hardcodeAllowed={isSuperAdmin || isKitchenAdmin}>
+      <PermissionGuard fullAccessRoles={["superadmin", "admin"]} readOnlyRoles={[]}>
+        <OrderingContent />
+      </PermissionGuard>
+    </PermissionRouteGuard>
   );
 }

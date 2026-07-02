@@ -23,7 +23,7 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import ListToolbar from "@/components/ListToolbar";
-import RoleGuard from "@/components/auth/RoleGuard";
+import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMessage } from "@/contexts/MessageContext";
@@ -61,7 +61,8 @@ export default function NdaFormsPage() {
     return forms.filter((f) =>
       (f.user?.fullName || "").toLowerCase().includes(q) ||
       (f.user?.email || "").toLowerCase().includes(q) ||
-      (f.ndaTemplate?.name || "").toLowerCase().includes(q)
+      (f.ndaTemplate?.name || "").toLowerCase().includes(q) ||
+      (f.visitorIdValues || []).some(v => String(v).toLowerCase().includes(q))
     );
   }, [forms, searchQuery]);
 
@@ -96,7 +97,7 @@ export default function NdaFormsPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["superadmin", "admin"]} allowedAdminTypes={["departmental"]}>
+    <PermissionRouteGuard resource="nda-forms" hardcodeAllowed={isSuperAdmin}>
       <Box>
         {/* Page header */}
         <Box
@@ -135,7 +136,7 @@ export default function NdaFormsPage() {
                   fullWidth
                   size="small"
                   variant="outlined"
-                  placeholder="Search by name, email or template..."
+                  placeholder="Search by name, email, ID number or template..."
                   value={searchQuery}
                   onChange={handleSearch}
                   InputProps={{
@@ -324,6 +325,6 @@ export default function NdaFormsPage() {
         confirmButtonText="Delete"
         confirmButtonIcon={<ICONS.delete fontSize="small" />}
       />
-    </RoleGuard>
+    </PermissionRouteGuard>
   );
 }

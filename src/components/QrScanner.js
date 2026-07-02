@@ -1,15 +1,10 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import {
-  Box,
-  Typography,
-  IconButton,
-  Tooltip,
-  Button,
-} from "@mui/material";
+import { Box, Typography, IconButton, Tooltip, Button } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
+import jsQR from "jsqr";
 
 const CAMERA_SELECTIONS = {
   AUTO_DEFAULT: "__auto_default__",
@@ -67,7 +62,10 @@ const buildSelectableCameraOptions = (cameras = []) => {
     { id: CAMERA_SELECTIONS.AUTO_USER, label: "Front camera" },
   ];
   sortCamerasByScore(cameras).forEach((camera, index) => {
-    options.push({ id: camera.id, label: camera.label || `Camera ${index + 1}` });
+    options.push({
+      id: camera.id,
+      label: camera.label || `Camera ${index + 1}`,
+    });
   });
   return options;
 };
@@ -82,7 +80,11 @@ const isPermissionError = (error) => {
 
 const isNoCameraError = (error) => {
   const msg = getCameraErrorText(error);
-  return msg.includes("notfound") || msg.includes("camera not found") || msg.includes("overconstrained");
+  return (
+    msg.includes("notfound") ||
+    msg.includes("camera not found") ||
+    msg.includes("overconstrained")
+  );
 };
 
 const getCameraErrorMessage = (error) => {
@@ -95,9 +97,15 @@ const getCameraErrorMessage = (error) => {
 const toVideoInputs = (devices = []) =>
   devices
     .filter((d) => d.kind === "videoinput")
-    .map((d, i) => ({ id: d.deviceId, label: d.label || normalizeCameraLabel(d, i) }));
+    .map((d, i) => ({
+      id: d.deviceId,
+      label: d.label || normalizeCameraLabel(d, i),
+    }));
 
-const buildCameraStartCandidates = (cameras = [], preferredCameraId = CAMERA_SELECTIONS.AUTO_DEFAULT) => {
+const buildCameraStartCandidates = (
+  cameras = [],
+  preferredCameraId = CAMERA_SELECTIONS.AUTO_DEFAULT,
+) => {
   const candidates = [];
   const seen = new Set();
   const ranked = sortCamerasByScore(cameras);
@@ -118,14 +126,26 @@ const buildCameraStartCandidates = (cameras = [], preferredCameraId = CAMERA_SEL
     ...ranked.filter((c) => !FRONT_CAMERA_PATTERN.test(c.label)),
   ];
   const envFirst = [
-    ...ranked.filter((c) => EXTERNAL_CAMERA_PATTERN.test(c.label) || REAR_CAMERA_PATTERN.test(c.label) || getCameraScore(c) > 0),
-    ...ranked.filter((c) => !EXTERNAL_CAMERA_PATTERN.test(c.label) && !REAR_CAMERA_PATTERN.test(c.label) && getCameraScore(c) <= 0),
+    ...ranked.filter(
+      (c) =>
+        EXTERNAL_CAMERA_PATTERN.test(c.label) ||
+        REAR_CAMERA_PATTERN.test(c.label) ||
+        getCameraScore(c) > 0,
+    ),
+    ...ranked.filter(
+      (c) =>
+        !EXTERNAL_CAMERA_PATTERN.test(c.label) &&
+        !REAR_CAMERA_PATTERN.test(c.label) &&
+        getCameraScore(c) <= 0,
+    ),
   ];
 
   const ordered =
-    preferredCameraId === CAMERA_SELECTIONS.AUTO_USER ? frontFirst
-    : preferredCameraId === CAMERA_SELECTIONS.AUTO_ENVIRONMENT ? envFirst
-    : ranked;
+    preferredCameraId === CAMERA_SELECTIONS.AUTO_USER
+      ? frontFirst
+      : preferredCameraId === CAMERA_SELECTIONS.AUTO_ENVIRONMENT
+        ? envFirst
+        : ranked;
 
   ordered.forEach((c) => add(`device:${c.id}`, c.id, c.id));
   if (preferredCameraId === CAMERA_SELECTIONS.AUTO_USER) {
@@ -141,6 +161,9 @@ const buildCameraStartCandidates = (cameras = [], preferredCameraId = CAMERA_SEL
   return candidates;
 };
 
+const isBarcodeDetectorSupported = () =>
+  typeof window !== "undefined" && "BarcodeDetector" in window;
+
 export default function QrScanner({ onScanSuccess, onError, onCancel }) {
   const scannerElementId = useId().replace(/:/g, "_");
   const scannerHostRef = useRef(null);
@@ -153,16 +176,27 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
   const onErrorRef = useRef(onError);
   const scanHandledRef = useRef(false);
 
+  // Alternative decode loop (BarcodeDetector when available, jsQR otherwise)
+  const altLoopVersionRef = useRef(0);
+  const barcodeDetectorRef = useRef(null);
+  const jsQrCanvasRef = useRef(null);
+
   const [loading, setLoading] = useState(true);
   const [cameraOptions, setCameraOptions] = useState([]);
   const [activeCameraId, setActiveCameraId] = useState("");
-  const [selectedCameraId, setSelectedCameraId] = useState(CAMERA_SELECTIONS.AUTO_DEFAULT);
+  const [selectedCameraId, setSelectedCameraId] = useState(
+    CAMERA_SELECTIONS.AUTO_DEFAULT,
+  );
   const [switchError, setSwitchError] = useState("");
 
   const selectableCameraOptions = buildSelectableCameraOptions(cameraOptions);
 
-  useEffect(() => { onScanSuccessRef.current = onScanSuccess; }, [onScanSuccess]);
-  useEffect(() => { onErrorRef.current = onError; }, [onError]);
+  useEffect(() => {
+    onScanSuccessRef.current = onScanSuccess;
+  }, [onScanSuccess]);
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   const loadScannerModule = async () => {
     if (scannerModuleRef.current) return scannerModuleRef.current;
@@ -185,7 +219,99 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
     }
   };
 
+  const cancelAltLoop = () => {
+    altLoopVersionRef.current++;
+  };
+
+  // Primary path when BarcodeDetector is available (Chrome Android, newer desktop Chrome)
+  const startBarcodeDetectorLoop = (hostEl, loopVersion) => {
+    if (!barcodeDetectorRef.current) {
+      try {
+        barcodeDetectorRef.current = new window.BarcodeDetector({
+          formats: ["qr_code"],
+        });
+      } catch {
+        return;
+      }
+    }
+    const detector = barcodeDetectorRef.current;
+
+    const tick = async () => {
+      if (altLoopVersionRef.current !== loopVersion) return;
+      if (scanHandledRef.current) return;
+      const video = hostEl?.querySelector("video");
+      if (video && video.readyState >= 2) {
+        try {
+          const results = await detector.detect(video);
+          if (
+            results.length > 0 &&
+            !scanHandledRef.current &&
+            altLoopVersionRef.current === loopVersion
+          ) {
+            scanHandledRef.current = true;
+            altLoopVersionRef.current++;
+            await destroyScanner();
+            onScanSuccessRef.current?.(results[0].rawValue);
+            return;
+          }
+        } catch {}
+      }
+      if (altLoopVersionRef.current === loopVersion)
+        requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+
+  // Fallback path using jsQR — handles styled QRs with logos that ZXing/BarcodeDetector miss
+  const startJsQrLoop = (hostEl, loopVersion) => {
+    if (!jsQrCanvasRef.current) {
+      jsQrCanvasRef.current = document.createElement("canvas");
+    }
+    const canvas = jsQrCanvasRef.current;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    const tick = () => {
+      if (altLoopVersionRef.current !== loopVersion) return;
+      if (scanHandledRef.current) return;
+      const video = hostEl?.querySelector("video");
+      if (video && video.readyState >= 2 && video.videoWidth > 0) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "attemptBoth",
+        });
+        if (
+          code &&
+          code.data &&
+          !scanHandledRef.current &&
+          altLoopVersionRef.current === loopVersion
+        ) {
+          scanHandledRef.current = true;
+          altLoopVersionRef.current++;
+          destroyScanner().then(() => onScanSuccessRef.current?.(code.data));
+          return;
+        }
+      }
+      if (altLoopVersionRef.current === loopVersion)
+        requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+
+  const startAltLoop = (hostEl) => {
+    const loopVersion = ++altLoopVersionRef.current;
+    // Run both decoders in parallel — the styled-QR-tolerant jsQR alongside the fast
+    // BarcodeDetector. First successful detection wins.
+    startJsQrLoop(hostEl, loopVersion);
+    if (isBarcodeDetectorSupported()) {
+      startBarcodeDetectorLoop(hostEl, loopVersion);
+    }
+  };
+
   const destroyScanner = async (scannerInstance = scannerRef.current) => {
+    cancelAltLoop();
     const mod = scannerModuleRef.current;
     const scanner = scannerInstance;
     if (!scanner) {
@@ -199,8 +325,13 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
       const paused = mod?.Html5QrcodeScannerState?.PAUSED;
       if (state === scanning || state === paused) await scanner.stop();
     } catch {}
-    try { scanner.clear(); } catch {}
-    if (scannerHostRef.current && scannerHostRef.current.childElementCount > 0) {
+    try {
+      scanner.clear();
+    } catch {}
+    if (
+      scannerHostRef.current &&
+      scannerHostRef.current.childElementCount > 0
+    ) {
       scannerHostRef.current.innerHTML = "";
     }
   };
@@ -242,13 +373,21 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
               await destroyScanner(scanner);
               onScanSuccessRef.current?.(decodedText);
             },
-            () => {}
+            () => {},
           );
-          if (requestId !== requestIdRef.current) { await destroyScanner(scanner); return; }
-          setActiveCameraId(scanner.getRunningTrackSettings?.()?.deviceId || candidate.resolvedDeviceId || "");
+          if (requestId !== requestIdRef.current) {
+            await destroyScanner(scanner);
+            return;
+          }
+          setActiveCameraId(
+            scanner.getRunningTrackSettings?.()?.deviceId ||
+              candidate.resolvedDeviceId ||
+              "",
+          );
           setSelectedCameraId(nextCameraId);
           setLoading(false);
           setSwitchError("");
+          startAltLoop(scannerHostRef.current);
           // Use enumerateDevices directly — permission already granted, avoids a second
           // getUserMedia call that would interrupt the active stream on Android devices.
           const labeled = await navigator.mediaDevices
@@ -266,7 +405,10 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
         }
       }
       setLoading(false);
-      if (discovered.length > 0) { setSwitchError(getCameraErrorMessage(lastError)); return; }
+      if (discovered.length > 0) {
+        setSwitchError(getCameraErrorMessage(lastError));
+        return;
+      }
       onErrorRef.current?.(getCameraErrorMessage(lastError));
     } catch (error) {
       setLoading(false);
@@ -284,20 +426,35 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
   };
 
   useEffect(() => {
-    if (!isMediaDevicesSupported()) { onErrorRef.current?.("Camera API unavailable."); return; }
+    if (!isMediaDevicesSupported()) {
+      onErrorRef.current?.("Camera API unavailable.");
+      return;
+    }
     void startScannerForSelectionRef.current?.(CAMERA_SELECTIONS.AUTO_DEFAULT);
-    const handleDeviceChange = () => { void refreshCameraOptionsRef.current?.(); };
-    navigator.mediaDevices.addEventListener?.("devicechange", handleDeviceChange);
+    const handleDeviceChange = () => {
+      void refreshCameraOptionsRef.current?.();
+    };
+    navigator.mediaDevices.addEventListener?.(
+      "devicechange",
+      handleDeviceChange,
+    );
     return () => {
       requestIdRef.current += 1;
-      navigator.mediaDevices.removeEventListener?.("devicechange", handleDeviceChange);
+      navigator.mediaDevices.removeEventListener?.(
+        "devicechange",
+        handleDeviceChange,
+      );
       void destroyScanner();
     };
   }, []);
 
   const handleCameraChange = async (nextCameraId) => {
     if (!nextCameraId || loading) return;
-    if (nextCameraId === selectedCameraId && (!activeCameraId || !isAutomaticSelection(nextCameraId))) return;
+    if (
+      nextCameraId === selectedCameraId &&
+      (!activeCameraId || !isAutomaticSelection(nextCameraId))
+    )
+      return;
     setSelectedCameraId(nextCameraId);
     await destroyScanner();
     await startScannerForSelection(nextCameraId);
@@ -307,18 +464,24 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
     <Box
       sx={{
         position: "fixed",
-        top: 0, left: 0,
-        width: "100vw", height: "100vh",
+        top: 0,
+        left: 0,
+        width: "100vw",
+        height: "100vh",
         zIndex: 9999,
         backgroundColor: "#000",
-        display: "flex", alignItems: "center", justifyContent: "center",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
       <Tooltip title="Cancel scanning">
         <IconButton
           onClick={onCancel}
           sx={{
-            position: "absolute", top: 16, right: 16,
+            position: "absolute",
+            top: 16,
+            right: 16,
             color: "#fff",
             backgroundColor: "rgba(0,0,0,0.5)",
             "&:hover": { backgroundColor: "rgba(255,255,255,0.15)" },
@@ -330,18 +493,27 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
 
       <Box
         sx={{
-          width: "90vmin", height: "90vmin",
+          width: "90vmin",
+          height: "90vmin",
           position: "relative",
-          borderRadius: 2, overflow: "hidden",
-          boxShadow: 5, bgcolor: "#000",
+          borderRadius: 2,
+          overflow: "hidden",
+          boxShadow: 5,
+          bgcolor: "#000",
         }}
       >
         <Box
           id={scannerElementId}
           ref={scannerHostRef}
           sx={{
-            width: "100%", height: "100%",
-            "& video, & canvas": { width: "100%", height: "100%", objectFit: "cover", display: "block" },
+            width: "100%",
+            height: "100%",
+            "& video, & canvas": {
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            },
             "& > div": { width: "100%", height: "100%" },
           }}
         />
@@ -363,21 +535,48 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
         {!loading && (
           <Box
             sx={{
-              position: "absolute", inset: 0,
+              position: "absolute",
+              inset: 0,
               border: "2px dashed #00e676",
-              pointerEvents: "none", boxSizing: "border-box", zIndex: 1,
+              pointerEvents: "none",
+              boxSizing: "border-box",
+              zIndex: 1,
             }}
           />
         )}
 
         {cameraOptions.length > 0 && (
-          <Box sx={{ position: "absolute", left: 16, right: 16, bottom: 16, zIndex: 3 }}>
+          <Box
+            sx={{
+              position: "absolute",
+              left: 16,
+              right: 16,
+              bottom: 16,
+              zIndex: 3,
+            }}
+          >
             {switchError && (
-              <Typography variant="caption" sx={{ display: "block", mb: 1, color: "#ff8a80", textAlign: "center" }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  display: "block",
+                  mb: 1,
+                  color: "#ff8a80",
+                  textAlign: "center",
+                }}
+              >
                 {switchError}
               </Typography>
             )}
-            <Typography variant="caption" sx={{ display: "block", mb: 1, color: "rgba(255,255,255,0.85)", textAlign: "center" }}>
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mb: 1,
+                color: "rgba(255,255,255,0.85)",
+                textAlign: "center",
+              }}
+            >
               Choose camera
             </Typography>
             <Box sx={{ display: "flex", gap: 1, overflowX: "auto", pb: 0.5 }}>
@@ -390,15 +589,20 @@ export default function QrScanner({ onScanSuccess, onError, onCancel }) {
                     variant={isSelected ? "contained" : "outlined"}
                     startIcon={<ICONS.camera />}
                     disabled={loading}
-                    onClick={() => { void handleCameraChange(camera.id); }}
+                    onClick={() => {
+                      void handleCameraChange(camera.id);
+                    }}
                     sx={{
-                      flexShrink: 0, minWidth: 140,
+                      flexShrink: 0,
+                      minWidth: 140,
                       color: isSelected ? "#000" : "#fff",
                       backgroundColor: isSelected ? "#fff" : "rgba(0,0,0,0.65)",
                       borderColor: "rgba(255,255,255,0.35)",
                       "&:hover": {
                         borderColor: "#fff",
-                        backgroundColor: isSelected ? "#f2f2f2" : "rgba(255,255,255,0.12)",
+                        backgroundColor: isSelected
+                          ? "#f2f2f2"
+                          : "rgba(255,255,255,0.12)",
                       },
                     }}
                   >

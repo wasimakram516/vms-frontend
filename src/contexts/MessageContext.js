@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useState, useContext, useEffect } from "react";
-import { Snackbar, Alert } from "@mui/material";
+import { Snackbar, Alert } from "@mui/material";
 export const MessageContext = createContext();
 
 let globalShowMessage = null;
@@ -19,7 +19,7 @@ export const MessageProvider = ({ children }) => {
     setTimeout(() => setMessage(null), 5000);
   };
 
-  const handleClose = () => setMessage(null);
+  const handleClose = () => setMessage(null);
   useEffect(() => {
     globalShowMessage = showMessage;
   }, []);
@@ -40,6 +40,7 @@ export const MessageProvider = ({ children }) => {
             variant="filled"
             severity={message.severity}
             onClose={handleClose}
+            dir="ltr"
           >
             {message.text || "An error occurred"}
           </Alert>
@@ -47,5 +48,5 @@ export const MessageProvider = ({ children }) => {
       </Snackbar>
     </MessageContext.Provider>
   );
-};
+};
 export const useMessage = () => useContext(MessageContext);
