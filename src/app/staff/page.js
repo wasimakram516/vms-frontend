@@ -91,7 +91,6 @@ export default function StaffLoginPage() {
       <Box sx={{ mb: 4, textAlign: "center" }}>
         <Typography
           sx={{
-            fontFamily: "'Comfortaa', cursive",
             fontSize: "1.7rem",
             fontWeight: 800,
             color: "text.primary",

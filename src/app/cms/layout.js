@@ -66,7 +66,6 @@ export default function CmsLayout({ children }) {
           border: "1px solid rgba(0,0,0,0.23)",
           borderRadius: "12px",
           fontSize: "1rem",
-          fontFamily: "inherit",
           backgroundColor: "#fff",
           "&:hover": {
             borderColor: "rgba(0,0,0,0.87)",

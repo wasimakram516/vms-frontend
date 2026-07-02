@@ -47,7 +47,6 @@ export default function LanguageSwitcher() {
               color: "text.primary",
               fontSize: "0.7rem",
               lineHeight: 1,
-              fontFamily: code === "ar" ? "'Noto Sans Arabic', sans-serif" : "inherit",
             }}
           >
             {label}

@@ -218,7 +218,7 @@ export default function CmsDashboardPage() {
         >
           <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "flex-start" }}>
             <Box>
-              <Typography variant="h3" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", mb: 1 }}>
+              <Typography variant="h3" fontWeight={800} sx={{ mb: 1 }}>
                 {greeting}, {user?.name?.split(" ")[0] || "Admin"}
               </Typography>
               <Typography color="text.secondary" variant="body1">

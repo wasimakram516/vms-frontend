@@ -1,10 +1,18 @@
 :root {
-  --font-primary: "Comfortaa", "Segoe UI", Arial, sans-serif;
+  --font-latin-fallback: "Segoe UI", Arial, sans-serif;
+  --font-arabic-fallback: "Segoe UI", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, "Liberation Mono", monospace;
+  --font-primary: var(--font-latin);
+}
+
+/* Arabic uses Noto Kufi everywhere; driven by the html dir set from the language cookie */
+[dir="rtl"] {
+  --font-primary: var(--font-arabic);
 }
 
 html,
 body {
-  font-family: var(--font-primary);
+  font-family: var(--font-primary), var(--font-latin-fallback);
   margin: 0;
   padding: 0;
   height: 100%;
@@ -13,6 +21,11 @@ body {
   user-select: none;
   display: flex;
   flex-direction: column;
+}
+
+html[dir="rtl"],
+html[dir="rtl"] body {
+  font-family: var(--font-primary), var(--font-arabic-fallback);
 }
 
 input,

@@ -1,8 +1,23 @@
 import "../styles/globals.css";
 import { cookies } from "next/headers";
+import { Comfortaa, Noto_Kufi_Arabic } from "next/font/google";
 import ClientRoot from "./ClientRoot";
 import Navbar from "@/components/nav/Navbar";
 import { Box } from "@mui/material";
+
+const comfortaa = Comfortaa({
+  variable: "--font-latin",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700"],
+});
+
+const notoKufiArabic = Noto_Kufi_Arabic({
+  variable: "--font-arabic",
+  subsets: ["arabic"],
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
+});
 
 export const metadata = {
   title: "Sinan Sentry",
@@ -47,6 +62,7 @@ export default async function RootLayout({ children }) {
     <html
       lang={initialLang}
       dir={initialLang === "ar" ? "rtl" : "ltr"}
+      className={`${comfortaa.variable} ${notoKufiArabic.variable}`}
       suppressHydrationWarning
     >
       <head>
@@ -55,11 +71,8 @@ export default async function RootLayout({ children }) {
             __html: `try{var l=localStorage.getItem('sinan-lang');if(l==='ar'||l==='en')document.documentElement.setAttribute('dir',l==='ar'?'rtl':'ltr');}catch(e){}`
           }}
         />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       </head>
-      <body style={{ margin: 0, padding: 0, fontFamily: "var(--font-primary)" }}>
+      <body>
         <ClientRoot initialLang={initialLang}>
           <Navbar />
           <Box 

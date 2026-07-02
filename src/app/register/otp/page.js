@@ -137,7 +137,7 @@ export default function RegisterOtpPage() {
     <VisitorLayout justifyContent="center" mobileSubheading={t.otpHeading}>
       <Stack spacing={3}>
         <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
-          <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
+          <Typography variant="h5" fontWeight={800}>
             {t.otpHeading}
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>

@@ -557,7 +557,7 @@ export default function BookingPage() {
       >
         <Stack spacing={2}>
           <Box sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}>
-            <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
+            <Typography variant="h5" fontWeight={800}>
               {t.bookingHeading}
             </Typography>
             <Typography variant="body2" color="text.secondary" mt={1}>
@@ -1093,7 +1093,7 @@ export default function BookingPage() {
 
       <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
         <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Typography variant="h6" fontWeight={800} component="span" sx={{ fontFamily: "'Comfortaa', cursive" }}>
+          <Typography variant="h6" fontWeight={800} component="span">
             {(isRtl && translatedNda?.name) ? translatedNda.name : (ndaTemplate?.name || t.ndaTitle)}
           </Typography>
           <IconButton onClick={() => setNdaOpen(false)}>
