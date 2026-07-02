@@ -1,4 +1,5 @@
 import "../styles/globals.css";
+import { cookies } from "next/headers";
 import ClientRoot from "./ClientRoot";
 import Navbar from "@/components/nav/Navbar";
 import { Box } from "@mui/material";
@@ -37,13 +38,21 @@ export const metadata = {
   },
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const cookieStore = await cookies();
+  const saved = cookieStore.get("sinan-lang")?.value;
+  const initialLang = saved === "ar" ? "ar" : "en";
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang={initialLang}
+      dir={initialLang === "ar" ? "rtl" : "ltr"}
+      suppressHydrationWarning
+    >
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var l=localStorage.getItem('sinan-lang');if(l==='ar')document.documentElement.setAttribute('dir','rtl');}catch(e){}`
+            __html: `try{var l=localStorage.getItem('sinan-lang');if(l==='ar'||l==='en')document.documentElement.setAttribute('dir',l==='ar'?'rtl':'ltr');}catch(e){}`
           }}
         />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -51,7 +60,7 @@ export default function RootLayout({ children }) {
         <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body style={{ margin: 0, padding: 0, fontFamily: "var(--font-primary)" }}>
-        <ClientRoot>
+        <ClientRoot initialLang={initialLang}>
           <Navbar />
           <Box 
             component="main" 

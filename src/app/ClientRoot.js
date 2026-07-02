@@ -23,7 +23,7 @@ function LocalizedDateProvider({ children }) {
   );
 }
 
-export default function ClientRoot({ children }) {
+export default function ClientRoot({ children, initialLang = "en" }) {
   useEffect(() => {
     if (typeof window === "undefined") {
       return undefined;
@@ -141,7 +141,7 @@ export default function ClientRoot({ children }) {
 
   return (
     <>
-      <LanguageProvider>
+      <LanguageProvider initialLang={initialLang}>
       <MessageProvider>
         <SocketProvider>
           <ThemeRegistry>
