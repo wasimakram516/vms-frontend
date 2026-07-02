@@ -666,7 +666,6 @@ function KitchenDashboardContent({ canViewHistory }) {
                   sx={{
                     fontWeight: 900,
                     letterSpacing: "-0.5px",
-                    fontFamily: "'Comfortaa', cursive",
                     color: "text.primary",
                     lineHeight: 1.2,
                   }}

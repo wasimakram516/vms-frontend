@@ -210,7 +210,7 @@ function AnalyticsContent() {
               <Typography
                 variant="h3"
                 fontWeight={800}
-                sx={{ fontFamily: "'Comfortaa', cursive", mb: 0.5 }}
+                sx={{ mb: 0.5 }}
               >
                 Analytics
               </Typography>

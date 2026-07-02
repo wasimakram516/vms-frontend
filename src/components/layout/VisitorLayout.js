@@ -12,40 +12,6 @@ const bgPortrait  = "/bg-portrait.webp";
 const bgLandscape = "/bg-landscape.webp";
 const brandLogoSrc = "/logo-light.png";
 
-const fontStyles = (
-  <GlobalStyles
-    styles={`
-      @font-face {
-        font-family: 'DINNextLTArabic';
-        src: url('/DINNextLTArabic-Regular.ttf') format('truetype');
-        font-weight: normal;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      [dir="rtl"],
-      [dir="rtl"] .MuiTypography-root,
-      [dir="rtl"] .MuiInputBase-input,
-      [dir="rtl"] .MuiButton-root,
-      [dir="rtl"] .MuiMenuItem-root,
-      [dir="rtl"] .MuiInputLabel-root,
-      [dir="rtl"] .MuiFormHelperText-root,
-      [dir="rtl"] .MuiFormLabel-root,
-      [dir="rtl"] .MuiTab-root,
-      [dir="rtl"] .MuiSelect-select,
-      [dir="rtl"] .MuiTooltip-tooltip,
-      [dir="rtl"] .MuiAlert-message,
-      [dir="rtl"] .MuiChip-label {
-        font-family: 'DINNextLTArabic', sans-serif !important;
-      }
-
-      [dir="rtl"] .visitor-layout-brand-title {
-        font-family: 'Comfortaa', cursive !important;
-      }
-    `}
-  />
-);
-
 export default function VisitorLayout({
   children,
   title,
@@ -80,7 +46,6 @@ export default function VisitorLayout({
 
   return (
     <>
-      {fontStyles}
       {rtlInputStyles}
       <Box
         id="visitor-layout-root"
@@ -185,7 +150,6 @@ export default function VisitorLayout({
                     mb: { xs: 0.75, md: 2 },
                     lineHeight: 1.1,
                     opacity: { xs: 0.92, md: 1 },
-                    fontFamily: "'Comfortaa', cursive",
                   }}
                 >
                   {effectiveTitle}

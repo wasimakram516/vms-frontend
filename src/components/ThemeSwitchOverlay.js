@@ -367,7 +367,6 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
         <div style={{ textAlign: "center" }}>
           <p style={{
             margin: "0 0 7px",
-            fontFamily: "'Comfortaa', cursive, sans-serif",
             fontWeight: 800, fontSize: "1.15rem",
             background: p.titleGradient,
             WebkitBackgroundClip: "text",
@@ -378,7 +377,6 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
           </p>
           <p style={{
             margin: 0,
-            fontFamily: "'Comfortaa', cursive, sans-serif",
             fontSize: "0.85rem", color: p.textSub, lineHeight: 1.65,
           }}>
             {p.subtitle}
@@ -394,7 +392,7 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
             display: "inline-flex", alignItems: "center", gap: 6,
             padding: "4px 13px 4px 9px", borderRadius: 999,
             background: p.badgeBg, border: `1px solid ${p.badgeBorder}`,
-            fontSize: "0.7rem", fontFamily: "'Comfortaa', cursive, sans-serif",
+            fontSize: "0.7rem",
             fontWeight: 700, letterSpacing: "0.07em",
             color: p.badgeText,
           }}

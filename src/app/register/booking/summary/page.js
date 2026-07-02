@@ -393,7 +393,7 @@ export default function SummaryPage() {
 
           <Stack alignItems="center" spacing={0.75}>
             <ICONS.checkCircle sx={{ fontSize: 48, color: "success.main" }} />
-            <Typography variant="h6" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive", display: { xs: "none", md: "block" } }}>
+            <Typography variant="h6" fontWeight={800} sx={{ display: { xs: "none", md: "block" } }}>
               {t.summaryTitle}
             </Typography>
             <Typography variant="body2" color="text.secondary" align="center" sx={{ maxWidth: 360 }}>

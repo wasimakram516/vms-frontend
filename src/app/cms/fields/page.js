@@ -412,7 +412,7 @@ export default function CmsFieldsPage() {
                         <Typography variant="subtitle1" fontWeight={800} noWrap sx={{ lineHeight: 1.2 }}>
                           {field.label}
                         </Typography>
-                        <Typography variant="caption" fontFamily="monospace" color="text.secondary" sx={{ opacity: 0.7 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ opacity: 0.7, fontFamily: "var(--font-mono)" }}>
                           {field.fieldKey}
                         </Typography>
                       </Box>
@@ -749,7 +749,7 @@ export default function CmsFieldsPage() {
                                   <MenuItem key={f.id} value={f.id}>
                                     <Box>
                                       <Typography variant="body2">{f.label}</Typography>
-                                      <Typography variant="caption" color="text.secondary" fontFamily="monospace">
+                                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "var(--font-mono)" }}>
                                         {f.fieldKey}
                                       </Typography>
                                     </Box>

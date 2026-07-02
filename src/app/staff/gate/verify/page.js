@@ -1044,7 +1044,7 @@ export default function StaffVerifyPage() {
             gutterBottom
             textAlign="center"
             color="primary.main"
-            sx={{ fontFamily: "'Comfortaa', cursive" }}
+           
           >
             {t.gateTitle}
           </Typography>

@@ -353,7 +353,7 @@ export default function ReturningVisitorPage() {
     <VisitorLayout justifyContent="center" mobileSubheading={t.returningHeading}>
       <Stack spacing={3}>
         <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
-          <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
+          <Typography variant="h5" fontWeight={800}>
             {t.returningHeading}
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>

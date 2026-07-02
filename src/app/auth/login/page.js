@@ -122,7 +122,6 @@ export default function LoginPage() {
         <Box textAlign="center">
           <Typography
             sx={{
-              fontFamily: "'Comfortaa', cursive",
               fontSize: "1.6rem",
               fontWeight: 800,
               color: "text.primary",
