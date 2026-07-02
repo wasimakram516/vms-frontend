@@ -38,6 +38,8 @@ import ICONS from "@/utils/iconUtil";
 import LoadingState from "@/components/LoadingState";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import gateStaffTranslations from "@/locales/gateStaff";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessResource } from "@/utils/permissions";
 import { useSocket } from "@/contexts/SocketContext";
@@ -52,52 +54,54 @@ import {
 } from "@/services/registrationService";
 import { getWorkingHours } from "@/services/hostService";
 import { formatDate, formatTime } from "@/utils/dateUtils";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
+import getChipIconSpacing from "@/utils/getChipIconSpacing";
 import VipFastTrackModal from "./VipFastTrackModal";
 import GateTodayView from "@/components/staff/GateTodayView";
 
 const STATUS_CONFIG = {
   pending: {
-    label: "Pending",
+    labelKey: "statusPending",
     color: "warning",
     icon: <ICONS.time fontSize="small" />,
   },
   admin_approved: {
-    label: "Dept. Approved",
+    labelKey: "statusAdminApproved",
     color: "info",
     icon: <ICONS.checkCircleOutline fontSize="small" />,
   },
   approved: {
-    label: "Approved",
+    labelKey: "statusApproved",
     color: "success",
     icon: <ICONS.checkCircle fontSize="small" />,
   },
   rejected: {
-    label: "Rejected",
+    labelKey: "statusRejected",
     color: "error",
     icon: <ICONS.close fontSize="small" />,
   },
   checked_in: {
-    label: "Checked In",
+    labelKey: "statusCheckedIn",
     color: "info",
     icon: <ICONS.login fontSize="small" />,
   },
   checked_out: {
-    label: "Checked Out",
+    labelKey: "statusCheckedOut",
     color: "default",
     icon: <ICONS.logout fontSize="small" />,
   },
   visit_ended: {
-    label: "Visit Ended",
+    labelKey: "statusVisitEnded",
     color: "default",
     icon: <ICONS.stop fontSize="small" />,
   },
   cancelled: {
-    label: "Cancelled",
+    labelKey: "statusCancelled",
     color: "default",
     icon: <ICONS.cancel fontSize="small" />,
   },
   expired: {
-    label: "Expired",
+    labelKey: "statusExpired",
     color: "default",
     icon: <ICONS.history fontSize="small" />,
   },
@@ -108,6 +112,16 @@ export default function StaffVerifyPage() {
   const { user } = useAuth();
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
+  const { t, dir } = useI18nLayout(gateStaffTranslations);
+  // Backend-driven ID types ("Oman ID", "Passport", "ID") → localized display labels
+  const translateIdType = (type) =>
+    type === "Oman ID"
+      ? t.idTypeOmanId
+      : type === "Passport"
+        ? t.idTypePassport
+        : type === "ID"
+          ? t.idTypeId
+          : type;
   const canCheckin = canAccessResource(user, "verify", { action: "checkin" });
   const canCheckout = canAccessResource(user, "verify", { action: "checkout" });
   const canVipBypass = canAccessResource(user, "verify", { action: "vip-bypass" });
@@ -145,11 +159,13 @@ export default function StaffVerifyPage() {
   const [assemblyVisitors, setAssemblyVisitors] = useState([]);
   const [assemblyLoading, setAssemblyLoading] = useState(false);
   const [accountedIds, setAccountedIds] = useState(new Set());
+  const [assemblySearch, setAssemblySearch] = useState("");
 
   const enterAssemblyMode = async () => {
     setAssemblyMode(true);
     setAssemblyLoading(true);
     setAccountedIds(new Set());
+    setAssemblySearch("");
     try {
       const visitors = await getCurrentlyInside();
       setAssemblyVisitors(Array.isArray(visitors) ? visitors : []);
@@ -162,6 +178,7 @@ export default function StaffVerifyPage() {
     setAssemblyMode(false);
     setAssemblyVisitors([]);
     setAccountedIds(new Set());
+    setAssemblySearch("");
   };
 
   const toggleAccounted = (id) => {
@@ -232,12 +249,12 @@ export default function StaffVerifyPage() {
           setActivityLogs([]);
         }
       } else {
-        setError("Invalid or unknown token.");
+        setError(t.gateInvalidToken);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleIdSearch = async (e) => {
     if (e) e.preventDefault();
@@ -260,11 +277,11 @@ export default function StaffVerifyPage() {
           setSearchResults(res);
         }
       } else {
-        setError("No registration found with this ID.");
+        setError(t.gateNoRegistrationFound);
       }
     } catch (err) {
       console.error("ID search error:", err);
-      setError("An unexpected error occurred during search.");
+      setError(t.gateSearchError);
     } finally {
       setLoading(false);
       setIsSearchingById(false);
@@ -337,7 +354,7 @@ export default function StaffVerifyPage() {
         setResult(mapped);
         const logs = await getRegistrationActivityLogs(newReg.id);
         if (Array.isArray(logs)) setActivityLogs(logs);
-        showMessage("VIP visitor checked in successfully", "success");
+        showMessage(t.gateVipCheckedIn, "success");
       }
     } finally {
       setActionLoading(false);
@@ -377,7 +394,7 @@ export default function StaffVerifyPage() {
 
   const handlePrintBadge = async (registration) => {
     if (!registration?.qr_token) {
-      showMessage("No QR token available for this registration", "warning");
+      showMessage(t.gateNoQrToken, "warning");
       return;
     }
 
@@ -448,7 +465,7 @@ export default function StaffVerifyPage() {
       if (isMobile) {
         const printWindow = window.open(blobUrl, "_blank");
         if (!printWindow) {
-          showMessage("Please allow pop-ups to print the badge.", "warning");
+          showMessage(t.gateAllowPopups, "warning");
           return;
         }
         return;
@@ -466,7 +483,7 @@ export default function StaffVerifyPage() {
       );
 
       if (!printWindow) {
-        showMessage("Please allow pop-ups to print the badge.", "warning");
+        showMessage(t.gateAllowPopups, "warning");
         return;
       }
 
@@ -500,7 +517,7 @@ export default function StaffVerifyPage() {
       printWindow.document.close();
     } catch (err) {
       console.error("Print error:", err);
-      showMessage("Failed to generate print badge.", "error");
+      showMessage(t.gatePrintFailed, "error");
     }
   };
 
@@ -670,10 +687,7 @@ export default function StaffVerifyPage() {
       if (isSelfEcho) {
         selfInitiatedRef.current = null;
       } else if (statusActuallyChanged) {
-        showMessage(
-          "This visitor's status has been updated by another operator.",
-          "info",
-        );
+        showMessage(t.gateStatusUpdatedByOther, "info");
       }
     });
 
@@ -691,11 +705,12 @@ export default function StaffVerifyPage() {
       unsub?.();
       unsubOverstay?.();
     };
-  }, [on, showMessage]);
+  }, [on, showMessage, t]);
 
   const sc = result
-    ? STATUS_CONFIG[result.status] || { label: result.status, color: "default" }
+    ? STATUS_CONFIG[result.status] || { color: "default" }
     : null;
+  const scLabel = sc ? (sc.labelKey ? t[sc.labelKey] : result.status) : null;
 
   if (todayView) {
     return (
@@ -708,88 +723,113 @@ export default function StaffVerifyPage() {
   if (assemblyMode) {
     const total = assemblyVisitors.length;
     const accounted = accountedIds.size;
+    const remaining = total - accounted;
     const progress = total > 0 ? Math.round((accounted / total) * 100) : 0;
     const allAccounted = total > 0 && accounted === total;
 
+    const query = assemblySearch.trim().toLowerCase();
+    const matchesQuery = (v) => {
+      if (!query) return true;
+      const name = v.full_name || v.visitor?.fullName || "";
+      const company =
+        v.organisation || v.visitor?.organisation || v.visitor?.companyName || "";
+      const dept = v.department?.name || v.visitor?.department || "";
+      return `${name} ${company} ${dept}`.toLowerCase().includes(query);
+    };
+    // Unaccounted visitors first — they are the ones staff is looking for
+    const visibleVisitors = assemblyVisitors
+      .filter(matchesQuery)
+      .sort(
+        (a, b) => Number(accountedIds.has(a.id)) - Number(accountedIds.has(b.id)),
+      );
+
     return (
       <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
-        <Box
-          sx={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 1300,
-            bgcolor: "background.default",
-            overflow: "auto",
-            py: 3,
-            px: 3,
-          }}
-        >
-          {/* Header */}
+        <Box sx={{ px: { xs: 2, sm: 3 }, py: 3, ...getStartIconSpacing(dir) }}>
+          {/* Emergency header with exit action */}
           <Paper
             elevation={0}
             sx={{
-              p: 2,
-              mb: 3,
+              p: { xs: 2, sm: 2.5 },
+              mb: 2.5,
               borderRadius: 3,
               bgcolor: "error.main",
               color: "#fff",
-              textAlign: "center",
             }}
           >
             <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="center"
-              spacing={1}
-              mb={0.5}
+              direction={{ xs: "column", sm: "row" }}
+              alignItems={{ xs: "flex-start", sm: "center" }}
+              justifyContent="space-between"
+              spacing={1.5}
             >
-              <ICONS.warning sx={{ fontSize: 22 }} />
-              <Typography
-                variant="h6"
-                fontWeight={800}
-                sx={{ letterSpacing: 1 }}
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <ICONS.warning sx={{ fontSize: 28 }} />
+                <Box>
+                  <Typography variant="h6" fontWeight={800} sx={{ letterSpacing: 1, lineHeight: 1.2 }}>
+                    {t.assemblyTitle}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                    {t.assemblySubtitle}
+                  </Typography>
+                </Box>
+              </Stack>
+              <Button
+                variant="contained"
+                startIcon={<ICONS.close />}
+                onClick={exitAssemblyMode}
+                sx={{
+                  bgcolor: "#fff",
+                  color: "error.main",
+                  fontWeight: 700,
+                  borderRadius: 2,
+                  whiteSpace: "nowrap",
+                  alignSelf: { xs: "stretch", sm: "auto" },
+                  "&:hover": { bgcolor: "rgba(255,255,255,0.85)" },
+                }}
               >
-                ASSEMBLY MODE
-              </Typography>
+                {t.assemblyExit}
+              </Button>
             </Stack>
-            <Typography variant="caption" sx={{ opacity: 0.85 }}>
-              Evacuation Roll-Call — mark each visitor as accounted for
-            </Typography>
           </Paper>
 
-          {/* Counter */}
+          {/* Roll-call progress */}
           <Paper
             elevation={0}
             variant="frosted"
-            sx={{ p: 2.5, mb: 3, borderRadius: 3 }}
+            sx={{ p: 2.5, mb: 2.5, borderRadius: 3 }}
           >
-            <Stack
-              direction="row"
-              justifyContent="space-between"
-              alignItems="center"
-              mb={1.5}
-            >
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                fontWeight={600}
-              >
-                Accounted For
-              </Typography>
-              <Chip
-                label={`${accounted} / ${total}`}
-                color={
-                  allAccounted
-                    ? "success"
-                    : accounted > 0
-                      ? "warning"
-                      : "default"
-                }
-                sx={{ fontWeight: 800, fontSize: "0.95rem", px: 1 }}
-              />
+            <Stack direction="row" spacing={3} mb={1.5}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="h4" fontWeight={800} color="success.main">
+                  {accounted}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  {t.assemblyAccountedFor}
+                </Typography>
+              </Box>
+              <Divider orientation="vertical" flexItem />
+              <Box sx={{ flex: 1 }}>
+                <Typography
+                  variant="h4"
+                  fontWeight={800}
+                  color={remaining > 0 ? "warning.main" : "text.disabled"}
+                >
+                  {remaining}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  {t.assemblyRemaining}
+                </Typography>
+              </Box>
+              <Divider orientation="vertical" flexItem />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="h4" fontWeight={800}>
+                  {total}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  {t.todayTotal}
+                </Typography>
+              </Box>
             </Stack>
             <LinearProgress
               variant="determinate"
@@ -798,23 +838,21 @@ export default function StaffVerifyPage() {
               sx={{ borderRadius: 2, height: 8 }}
             />
             {allAccounted && (
-              <Typography
-                variant="caption"
-                color="success.main"
-                fontWeight={700}
-                sx={{ mt: 1, display: "block" }}
-              >
-                All visitors accounted for
-              </Typography>
+              <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 1.25 }}>
+                <ICONS.checkCircle sx={{ fontSize: 18, color: "success.main" }} />
+                <Typography variant="body2" color="success.main" fontWeight={700}>
+                  {t.assemblyAllAccounted}
+                </Typography>
+              </Stack>
             )}
           </Paper>
 
-          {/* Visitor list */}
+          {/* Visitor roll-call list */}
           {assemblyLoading ? (
             <Box sx={{ textAlign: "center", py: 6 }}>
               <CircularProgress color="error" />
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Loading checked-in visitors…
+                {t.assemblyLoading}
               </Typography>
             </Box>
           ) : total === 0 ? (
@@ -827,116 +865,153 @@ export default function StaffVerifyPage() {
                 sx={{ fontSize: 48, color: "success.main", mb: 1 }}
               />
               <Typography fontWeight={700} color="success.main">
-                No visitors currently inside
+                {t.assemblyNoneInside}
               </Typography>
               <Typography
                 variant="body2"
                 color="text.secondary"
                 sx={{ mt: 0.5 }}
               >
-                The facility is clear.
+                {t.assemblyFacilityClear}
               </Typography>
             </Paper>
           ) : (
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-                gap: 1.5,
-                mb: 3,
-              }}
-            >
-              {assemblyVisitors.map((v) => {
-                const isAccounted = accountedIds.has(v.id);
-                const name = v.full_name || v.visitor?.fullName || "Visitor";
-                const company =
-                  v.organisation ||
-                  v.visitor?.organisation ||
-                  v.visitor?.companyName ||
-                  null;
-                const dept =
-                  v.department?.name || v.visitor?.department || null;
-                const accessZones = v.access_levels?.length
-                  ? v.access_levels
-                      .map((al) => al.name)
+            <>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder={t.assemblySearchPlaceholder}
+                value={assemblySearch}
+                onChange={(e) => setAssemblySearch(e.target.value)}
+                sx={{
+                  mb: 2,
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: 3,
+                    bgcolor: isDark
+                      ? "rgba(255,255,255,0.03)"
+                      : "rgba(0,0,0,0.02)",
+                  },
+                }}
+              />
+              {visibleVisitors.length === 0 ? (
+                <Paper
+                  elevation={0}
+                  variant="frosted"
+                  sx={{ p: 3, borderRadius: 3, textAlign: "center" }}
+                >
+                  <Typography variant="body2" color="text.secondary">
+                    {t.assemblyNoMatches}
+                  </Typography>
+                </Paper>
+              ) : (
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: {
+                      xs: "1fr",
+                      sm: "repeat(auto-fill, minmax(280px, 1fr))",
+                    },
+                    gap: 1.5,
+                  }}
+                >
+                  {visibleVisitors.map((v) => {
+                    const isAccounted = accountedIds.has(v.id);
+                    const name =
+                      v.full_name || v.visitor?.fullName || t.gateVisitor;
+                    const company =
+                      v.organisation ||
+                      v.visitor?.organisation ||
+                      v.visitor?.companyName ||
+                      null;
+                    const dept =
+                      v.department?.name || v.visitor?.department || null;
+                    const accessZones = v.access_levels?.length
+                      ? v.access_levels
+                          .map((al) => al.name)
+                          .filter(Boolean)
+                          .join(", ")
+                      : v.access_level?.name || v.visitor?.accessLevel || null;
+                    const subtitle = [company, dept, accessZones]
                       .filter(Boolean)
-                      .join(", ")
-                  : v.access_level?.name || v.visitor?.accessLevel || null;
-                const subtitle =
-                  [company, dept, accessZones].filter(Boolean).join(" · ") ||
-                  "No details";
+                      .join(" · ");
 
-                return (
-                  <Paper
-                    key={v.id}
-                    elevation={0}
-                    variant="frosted"
-                    sx={{
-                      p: 1.5,
-                      borderRadius: 3,
-                      border: "1px solid",
-                      borderColor: isAccounted
-                        ? "success.main"
-                        : isDark
-                          ? "rgba(255,255,255,0.07)"
-                          : "rgba(0,0,0,0.07)",
-                      bgcolor: isAccounted
-                        ? isDark
-                          ? "rgba(46,125,50,0.15)"
-                          : "rgba(46,125,50,0.06)"
-                        : "background.paper",
-                      transition: "all 0.2s",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 1,
-                    }}
-                  >
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography fontWeight={700} fontSize="0.875rem" noWrap>
-                        {name}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: "block", lineHeight: 1.4 }}
+                    return (
+                      <Paper
+                        key={v.id}
+                        elevation={0}
+                        variant="frosted"
+                        onClick={() => toggleAccounted(v.id)}
+                        sx={{
+                          p: 2,
+                          borderRadius: 3,
+                          border: "2px solid",
+                          borderColor: isAccounted
+                            ? "success.main"
+                            : "warning.main",
+                          bgcolor: isAccounted
+                            ? isDark
+                              ? "rgba(46,125,50,0.15)"
+                              : "rgba(46,125,50,0.06)"
+                            : "background.paper",
+                          cursor: "pointer",
+                          userSelect: "none",
+                          transition: "all 0.15s",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 2,
+                          "&:active": { transform: "scale(0.99)" },
+                        }}
                       >
-                        {subtitle}
-                      </Typography>
-                    </Box>
-                    <Button
-                      fullWidth
-                      variant={isAccounted ? "contained" : "outlined"}
-                      color={isAccounted ? "success" : "inherit"}
-                      size="small"
-                      startIcon={
-                        isAccounted ? (
-                          <ICONS.checkCircle />
-                        ) : (
-                          <ICONS.checkCircleOutline />
-                        )
-                      }
-                      onClick={() => toggleAccounted(v.id)}
-                      sx={{ borderRadius: 2, fontSize: "0.78rem", mt: "auto" }}
-                    >
-                      {isAccounted ? "Accounted" : "Mark Safe"}
-                    </Button>
-                  </Paper>
-                );
-              })}
-            </Box>
+                        <Box
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 1,
+                            flexShrink: 0,
+                            border: "2px solid",
+                            borderColor: isAccounted
+                              ? "success.main"
+                              : "warning.main",
+                            bgcolor: isAccounted ? "success.main" : "transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {isAccounted && (
+                            <ICONS.check sx={{ fontSize: 20, color: "#fff" }} />
+                          )}
+                        </Box>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography fontWeight={700} noWrap>
+                            {name}
+                          </Typography>
+                          {subtitle && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ display: "block", lineHeight: 1.4 }}
+                              noWrap
+                            >
+                              {subtitle}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Typography
+                          variant="caption"
+                          fontWeight={800}
+                          color={isAccounted ? "success.main" : "warning.main"}
+                          sx={{ flexShrink: 0 }}
+                        >
+                          {isAccounted ? t.assemblyAccounted : t.assemblyMarkSafe}
+                        </Typography>
+                      </Paper>
+                    );
+                  })}
+                </Box>
+              )}
+            </>
           )}
-
-          {/* Exit button */}
-          <Button
-            fullWidth
-            variant="outlined"
-            color="error"
-            startIcon={<ICONS.close />}
-            onClick={exitAssemblyMode}
-            sx={{ borderRadius: 3, py: 1.5, mt: 2 }}
-          >
-            Exit Assembly Mode
-          </Button>
         </Box>
       </RoleGuard>
     );
@@ -945,14 +1020,20 @@ export default function StaffVerifyPage() {
   return (
     <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
       <Container maxWidth="sm">
-        <Box sx={{ py: 4 }}>
+        <Box
+          sx={{
+            py: 4,
+            ...getStartIconSpacing(dir),
+            ...getChipIconSpacing(dir),
+          }}
+        >
           {!canRead ? (
             <Box sx={{ textAlign: "center", py: 8 }}>
               <Typography variant="h5" fontWeight={700} color="text.secondary">
-                Access Denied
+                {t.gateAccessDenied}
               </Typography>
               <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
-                You do not have permission to access this page.
+                {t.gateAccessDeniedDesc}
               </Typography>
             </Box>
           ) : (
@@ -965,10 +1046,10 @@ export default function StaffVerifyPage() {
             color="primary.main"
             sx={{ fontFamily: "'Comfortaa', cursive" }}
           >
-            Gate Check-in
+            {t.gateTitle}
           </Typography>
           <Typography color="text.secondary" textAlign="center" sx={{ mb: 4 }}>
-            Scan visitor QR or enter token manually to grant access.
+            {t.gateSubtitle}
           </Typography>
 
           {/* Offline banner */}
@@ -978,8 +1059,7 @@ export default function StaffVerifyPage() {
               icon={<ICONS.wifiOff />}
               sx={{ mb: 3, borderRadius: 2, fontWeight: 600 }}
             >
-              No internet connection — QR verification unavailable. Use ID
-              search or contact administration.
+              {t.gateOffline}
             </Alert>
           )}
 
@@ -991,14 +1071,14 @@ export default function StaffVerifyPage() {
                 onClose={() => setScannerFailed(false)}
                 sx={{ mb: 1.5, borderRadius: 2 }}
               >
-                Scanner unavailable — use ID number search below.
+                {t.gateScannerUnavailable}
               </Alert>
             )}
             <Stack direction="row" spacing={1}>
               <TextField
                 fullWidth
                 size="small"
-                placeholder="Search by ID Number"
+                placeholder={t.gateSearchPlaceholder}
                 value={idSearch}
                 onChange={(e) => setIdSearch(e.target.value)}
                 inputProps={{ inputMode: "text" }}
@@ -1022,7 +1102,7 @@ export default function StaffVerifyPage() {
                 {isSearchingById && loading ? (
                   <CircularProgress size={20} color="inherit" />
                 ) : (
-                  "Search"
+                  t.gateSearch
                 )}
               </Button>
             </Stack>
@@ -1044,15 +1124,14 @@ export default function StaffVerifyPage() {
               searchResults.length > 0 && (
                 <Box sx={{ width: "100%", mt: 2 }}>
                   <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                    Multiple Matches Found
+                    {t.gateMultipleMatches}
                   </Typography>
                   <Typography
                     variant="body2"
                     color="text.secondary"
                     sx={{ mb: 3 }}
                   >
-                    Multiple visitors share this ID number. Please select the
-                    correct person:
+                    {t.gateMultipleMatchesDesc}
                   </Typography>
                   <Stack spacing={2}>
                     {searchResults.map((visitor) => (
@@ -1088,7 +1167,7 @@ export default function StaffVerifyPage() {
                             <Typography sx={{ fontWeight: 600 }}>
                               {visitor.full_name && visitor.full_name !== "N/A"
                                 ? visitor.full_name
-                                : visitor.visitor?.fullName || "Visitor"}
+                                : visitor.visitor?.fullName || t.gateVisitor}
                             </Typography>
                             <Typography
                               variant="caption"
@@ -1099,18 +1178,19 @@ export default function StaffVerifyPage() {
                                 ? visitor.organisation
                                 : visitor.visitor?.organisation !== "N/A"
                                   ? visitor.visitor?.organisation
-                                  : "No Organization"}
+                                  : t.gateNoOrganization}
                               {" • "}
                               {visitor.department?.name ||
                                 visitor.visitor?.department ||
-                                "No Department"}
+                                t.gateNoDepartment}
                             </Typography>
                           </Box>
                           <Box sx={{ textAlign: "right" }}>
                             <Chip
                               label={
-                                STATUS_CONFIG[visitor.status]?.label ||
-                                visitor.status
+                                STATUS_CONFIG[visitor.status]
+                                  ? t[STATUS_CONFIG[visitor.status].labelKey]
+                                  : visitor.status
                               }
                               color={
                                 STATUS_CONFIG[visitor.status]?.color ||
@@ -1122,7 +1202,7 @@ export default function StaffVerifyPage() {
                             />
                             {visitor.overstay && (
                               <Chip
-                                label="Overstay"
+                                label={t.gateOverstay}
                                 color="error"
                                 size="small"
                                 sx={{
@@ -1143,7 +1223,7 @@ export default function StaffVerifyPage() {
                     sx={{ mt: 4, borderRadius: 3 }}
                     onClick={() => setSearchResults([])}
                   >
-                    Clear Results
+                    {t.gateClearResults}
                   </Button>
                 </Box>
               )}
@@ -1195,7 +1275,7 @@ export default function StaffVerifyPage() {
                       disabled={!isOnline}
                       sx={{ py: 1.8, borderRadius: 3, fontSize: "1.1rem" }}
                     >
-                      QR Check-in
+                      {t.gateQrCheckin}
                     </Button>
                     {canVipBypass && (
                       <Button
@@ -1205,7 +1285,7 @@ export default function StaffVerifyPage() {
                         onClick={() => setVipModalOpen(true)}
                         sx={{ py: 1.5, borderRadius: 3 }}
                       >
-                        VIP Fast Track
+                        {t.gateVipFastTrack}
                       </Button>
                     )}
                     {canTodayVisitors && (
@@ -1216,7 +1296,7 @@ export default function StaffVerifyPage() {
                         onClick={() => setTodayView(true)}
                         sx={{ py: 1.5, borderRadius: 3 }}
                       >
-                        Today&apos;s Visitors
+                        {t.gateTodaysVisitors}
                       </Button>
                     )}
                     <Button
@@ -1227,7 +1307,7 @@ export default function StaffVerifyPage() {
                       onClick={enterAssemblyMode}
                       sx={{ py: 1.5, borderRadius: 3 }}
                     >
-                      Assembly Mode
+                      {t.gateAssemblyMode}
                     </Button>
                   </Stack>
                 </Paper>
@@ -1294,14 +1374,14 @@ export default function StaffVerifyPage() {
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="h6" fontWeight={700}>
                       {result.status === "visit_ended"
-                        ? "Visit Concluded"
+                        ? t.gateVisitConcluded
                         : result.status === "rejected"
-                          ? "Visit Rejected"
+                          ? t.gateVisitRejected
                           : result.status === "cancelled"
-                            ? "Visit Cancelled"
+                            ? t.gateVisitCancelled
                             : result.status === "expired"
-                              ? "Visit Expired"
-                              : "Verification Success"}
+                              ? t.gateVisitExpired
+                              : t.gateVerificationSuccess}
                     </Typography>
                     <Stack
                       direction="row"
@@ -1311,7 +1391,7 @@ export default function StaffVerifyPage() {
                       useFlexGap
                     >
                       <Chip
-                        label={sc.label}
+                        label={scLabel}
                         color={sc.color}
                         size="small"
                         icon={sc.icon}
@@ -1320,7 +1400,7 @@ export default function StaffVerifyPage() {
                       {(result.is_vip_fast_track || result.isVipFastTrack) && (
                         <Chip
                           icon={<ICONS.star style={{ fontSize: 14 }} />}
-                          label="VIP Fast Track"
+                          label={t.gateVipFastTrack}
                           color="warning"
                           size="small"
                           sx={{ fontWeight: 800 }}
@@ -1328,7 +1408,7 @@ export default function StaffVerifyPage() {
                       )}
                       {result.overstay && (
                         <Chip
-                          label="Overstay Detected"
+                          label={t.gateOverstayDetected}
                           color="error"
                           size="small"
                           sx={{ fontWeight: 800 }}
@@ -1337,7 +1417,7 @@ export default function StaffVerifyPage() {
                       {(result.is_vip || result.isVip) && (
                         <Chip
                           icon={<ICONS.star style={{ fontSize: 14 }} />}
-                          label="VIP"
+                          label={t.gateVip}
                           size="small"
                           sx={{
                             fontWeight: 800,
@@ -1352,7 +1432,7 @@ export default function StaffVerifyPage() {
                       {(result.allow_parking || result.allowParking) && (
                         <Chip
                           icon={<ICONS.parking style={{ fontSize: 14 }} />}
-                          label="Parking Allowed"
+                          label={t.gateParkingAllowed}
                           size="small"
                           sx={{
                             fontWeight: 800,
@@ -1369,7 +1449,7 @@ export default function StaffVerifyPage() {
                         true) && (
                         <Chip
                           icon={<ICONS.security style={{ fontSize: 14 }} />}
-                          label="Escort Required"
+                          label={t.gateEscortRequired}
                           size="small"
                           sx={{
                             fontWeight: 800,
@@ -1387,7 +1467,7 @@ export default function StaffVerifyPage() {
                     "checked_in",
                     "checked_out",
                   ].includes(result.status) && (
-                    <Tooltip title="Print Badge">
+                    <Tooltip title={t.gatePrintBadge}>
                       <IconButton
                         onClick={() => handlePrintBadge(result)}
                         sx={{ color: "success.main" }}
@@ -1406,41 +1486,40 @@ export default function StaffVerifyPage() {
                     icon={<ICONS.time fontSize="small" />}
                     sx={{ mb: 2, borderRadius: 2, fontWeight: 600 }}
                   >
-                    This{" "}
                     {outsideHoursWarning === "check_in"
-                      ? "check-in"
-                      : "check-out"}{" "}
-                    was performed outside working hours and has been flagged for
-                    review.
+                      ? t.gateOutsideHoursCheckin
+                      : t.gateOutsideHoursCheckout}
                   </Alert>
                 )}
                 {result.status === "pending" && (
                   <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
-                    Not yet approved
+                    {t.gateNotYetApproved}
                   </Alert>
                 )}
                 {result.status === "visit_ended" &&
                   !(result.is_vip_fast_track || result.isVipFastTrack) && (
                     <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-                      This visit has already been concluded. No further actions
-                      available.
+                      {t.gateVisitConcludedInfo}
                     </Alert>
                   )}
                 {result.status === "rejected" && (
                   <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
                     {result.rejectionReason || result.rejection_reason
-                      ? `This registration was rejected for the following reason: ${result.rejectionReason || result.rejection_reason}`
-                      : "This registration was rejected."}
+                      ? t.gateRejectedReason.replace(
+                          "{{reason}}",
+                          result.rejectionReason || result.rejection_reason,
+                        )
+                      : t.gateRejectedInfo}
                   </Alert>
                 )}
                 {result.status === "cancelled" && (
                   <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
-                    This visit has been cancelled. No further actions available.
+                    {t.gateCancelledInfo}
                   </Alert>
                 )}
                 {result.status === "expired" && (
                   <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
-                    This registration has expired. No further actions available.
+                    {t.gateExpiredInfo}
                   </Alert>
                 )}
 
@@ -1707,168 +1786,183 @@ export default function StaffVerifyPage() {
 
                     // Visit Ended: full info + checkout time + visit end time
                     if (isEnded) {
-                      pushField("Name", visitorName, ICONS.person);
-                      pushField("Company", company, ICONS.business);
-                      pushField("Purpose", purpose, ICONS.info);
-                      pushField("Visiting Department", department, ICONS.business);
-                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(t.gateFieldName, visitorName, ICONS.person);
+                      pushField(t.gateFieldCompany, company, ICONS.business);
+                      pushField(t.gateFieldPurpose, purpose, ICONS.info);
+                      pushField(t.department, department, ICONS.business);
+                      pushField(t.gateFieldIdType, translateIdType(resolvedId?.type), ICONS.badge);
                       pushField(
                         resolvedId?.type
-                          ? `${resolvedId.type} Number`
-                          : "ID Number",
+                          ? t.gateFieldNumberOf.replace(
+                              "{{type}}",
+                              translateIdType(resolvedId.type),
+                            )
+                          : t.gateFieldIdNumber,
                         resolvedId?.value,
                         ICONS.vpnKey,
                       );
                       if (result.approved_from || result.approved_to) {
                         pushField(
-                          "Approved Date",
-                          `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                          t.gateFieldApprovedDate,
+                          `${result.approved_from ? formatDate(result.approved_from) : "—"} ${t.gateRangeTo} ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
                           ICONS.event,
                         );
                         pushField(
-                          "Approved Time",
-                          `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                          t.gateFieldApprovedTime,
+                          `${result.approved_from ? formatTime(result.approved_from) : "—"} ${t.gateRangeTo} ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
                           ICONS.time,
                         );
                       }
-                      pushField("Access Level", accessLevel, ICONS.security);
+                      pushField(t.gateFieldAccessLevel, accessLevel, ICONS.security);
                       if (checkOutTime)
                         pushField(
-                          "Checked Out At",
+                          t.gateFieldCheckedOutAt,
                           `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`,
                           ICONS.logout,
                         );
                       if (visitEndedAt)
                         pushField(
-                          "Visit Ended At",
+                          t.gateFieldVisitEndedAt,
                           `${formatDate(visitEndedAt)} ${formatTime(visitEndedAt)}`,
                           ICONS.logout,
                         );
                     }
                     // Rejected/Cancelled/Expired: full info + rejection reason if available
                     else if (isRejected || isCancelled || isExpired) {
-                      pushField("Name", visitorName, ICONS.person);
-                      pushField("Company", company, ICONS.business);
-                      pushField("Purpose", purpose, ICONS.info);
-                      pushField("Visiting Department", department, ICONS.business);
-                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(t.gateFieldName, visitorName, ICONS.person);
+                      pushField(t.gateFieldCompany, company, ICONS.business);
+                      pushField(t.gateFieldPurpose, purpose, ICONS.info);
+                      pushField(t.department, department, ICONS.business);
+                      pushField(t.gateFieldIdType, translateIdType(resolvedId?.type), ICONS.badge);
                       pushField(
                         resolvedId?.type
-                          ? `${resolvedId.type} Number`
-                          : "ID Number",
+                          ? t.gateFieldNumberOf.replace(
+                              "{{type}}",
+                              translateIdType(resolvedId.type),
+                            )
+                          : t.gateFieldIdNumber,
                         resolvedId?.value,
                         ICONS.vpnKey,
                       );
                       if (result.approved_from || result.approved_to) {
                         pushField(
-                          "Approved Date",
-                          `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                          t.gateFieldApprovedDate,
+                          `${result.approved_from ? formatDate(result.approved_from) : "—"} ${t.gateRangeTo} ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
                           ICONS.event,
                         );
                         pushField(
-                          "Approved Time",
-                          `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                          t.gateFieldApprovedTime,
+                          `${result.approved_from ? formatTime(result.approved_from) : "—"} ${t.gateRangeTo} ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
                           ICONS.time,
                         );
                       }
-                      pushField("Access Level", accessLevel, ICONS.security);
+                      pushField(t.gateFieldAccessLevel, accessLevel, ICONS.security);
                       if (isRejected) {
                         const reason =
                           result.rejectionReason || result.rejection_reason;
                         if (reason)
-                          pushField("Rejection Reason", reason, ICONS.info);
+                          pushField(t.gateFieldRejectionReason, reason, ICONS.info);
                       }
                     }
                     // Approved/CheckedOut: full approved details + checkout time for checked_out
                     else if (isApproved || isCheckedOut) {
-                      pushField("Name", visitorName, ICONS.person);
-                      pushField("Company", company, ICONS.business);
-                      pushField("Purpose", purpose, ICONS.info);
-                      pushField("Visiting Department", department, ICONS.business);
-                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(t.gateFieldName, visitorName, ICONS.person);
+                      pushField(t.gateFieldCompany, company, ICONS.business);
+                      pushField(t.gateFieldPurpose, purpose, ICONS.info);
+                      pushField(t.department, department, ICONS.business);
+                      pushField(t.gateFieldIdType, translateIdType(resolvedId?.type), ICONS.badge);
                       pushField(
                         resolvedId?.type
-                          ? `${resolvedId.type} Number`
-                          : "ID Number",
+                          ? t.gateFieldNumberOf.replace(
+                              "{{type}}",
+                              translateIdType(resolvedId.type),
+                            )
+                          : t.gateFieldIdNumber,
                         resolvedId?.value,
                         ICONS.vpnKey,
                       );
                       if (result.approved_from || result.approved_to) {
                         pushField(
-                          "Approved Date",
-                          `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                          t.gateFieldApprovedDate,
+                          `${result.approved_from ? formatDate(result.approved_from) : "—"} ${t.gateRangeTo} ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
                           ICONS.event,
                         );
                         pushField(
-                          "Approved Time",
-                          `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                          t.gateFieldApprovedTime,
+                          `${result.approved_from ? formatTime(result.approved_from) : "—"} ${t.gateRangeTo} ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
                           ICONS.time,
                         );
                       }
-                      pushField("Access Level", accessLevel, ICONS.security);
+                      pushField(t.gateFieldAccessLevel, accessLevel, ICONS.security);
                       if (isCheckedOut && checkOutTime)
                         pushField(
-                          "Checked Out At",
+                          t.gateFieldCheckedOutAt,
                           `${formatDate(checkOutTime)} ${formatTime(checkOutTime)}`,
                           ICONS.logout,
                         );
                     }
                     // Pending/AdminApproved: visitor name, purpose of visit, department
                     else if (isPending) {
-                      pushField("Name", visitorName, ICONS.person);
-                      pushField("Purpose", purpose, ICONS.info);
-                      pushField("Visiting Department", department, ICONS.business);
-                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(t.gateFieldName, visitorName, ICONS.person);
+                      pushField(t.gateFieldPurpose, purpose, ICONS.info);
+                      pushField(t.department, department, ICONS.business);
+                      pushField(t.gateFieldIdType, translateIdType(resolvedId?.type), ICONS.badge);
                       pushField(
                         resolvedId?.type
-                          ? `${resolvedId.type} Number`
-                          : "ID Number",
+                          ? t.gateFieldNumberOf.replace(
+                              "{{type}}",
+                              translateIdType(resolvedId.type),
+                            )
+                          : t.gateFieldIdNumber,
                         resolvedId?.value,
                         ICONS.vpnKey,
                       );
                     }
                     // CheckedIn: Show check-in timestamp, expected checkout time
                     else if (isCheckedIn) {
-                      pushField("Name", visitorName, ICONS.person);
-                      pushField("Company", company, ICONS.business);
-                      pushField("Purpose", purpose, ICONS.info);
-                      pushField("Visiting Department", department, ICONS.business);
-                      pushField("ID Type", resolvedId?.type, ICONS.badge);
+                      pushField(t.gateFieldName, visitorName, ICONS.person);
+                      pushField(t.gateFieldCompany, company, ICONS.business);
+                      pushField(t.gateFieldPurpose, purpose, ICONS.info);
+                      pushField(t.department, department, ICONS.business);
+                      pushField(t.gateFieldIdType, translateIdType(resolvedId?.type), ICONS.badge);
                       pushField(
                         resolvedId?.type
-                          ? `${resolvedId.type} Number`
-                          : "ID Number",
+                          ? t.gateFieldNumberOf.replace(
+                              "{{type}}",
+                              translateIdType(resolvedId.type),
+                            )
+                          : t.gateFieldIdNumber,
                         resolvedId?.value,
                         ICONS.vpnKey,
                       );
                       if (result.approved_from || result.approved_to) {
                         pushField(
-                          "Approved Date",
-                          `${result.approved_from ? formatDate(result.approved_from) : "—"} to ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
+                          t.gateFieldApprovedDate,
+                          `${result.approved_from ? formatDate(result.approved_from) : "—"} ${t.gateRangeTo} ${result.approved_to ? formatDate(result.approved_to) : "—"}`,
                           ICONS.event,
                         );
                         pushField(
-                          "Approved Time",
-                          `${result.approved_from ? formatTime(result.approved_from) : "—"} to ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
+                          t.gateFieldApprovedTime,
+                          `${result.approved_from ? formatTime(result.approved_from) : "—"} ${t.gateRangeTo} ${result.approved_to ? formatTime(result.approved_to) : "—"}`,
                           ICONS.time,
                         );
                       }
-                      pushField("Access Level", accessLevel, ICONS.security);
+                      pushField(t.gateFieldAccessLevel, accessLevel, ICONS.security);
                       if (checkInTime)
                         pushField(
-                          "Check-in Time",
+                          t.gateFieldCheckinTime,
                           `${formatDate(checkInTime)} ${formatTime(checkInTime)}`,
                           ICONS.login,
                         );
                       pushField(
-                        "Expected Checkout",
+                        t.gateFieldExpectedCheckout,
                         expectedCheckout,
                         ICONS.logout,
                       );
                     }
 
                     pushField(
-                      "Vehicle Plate",
+                      t.gateFieldVehiclePlate,
                       result.vehicle_plate || result.vehiclePlate,
                       ICONS.parking,
                     );
@@ -2096,14 +2190,14 @@ export default function StaffVerifyPage() {
                                   display="block"
                                 >
                                   {idVerified
-                                    ? "ID Verified"
-                                    : "ID Verification Required"}
+                                    ? t.gateIdVerified
+                                    : t.gateIdVerificationRequired}
                                 </Typography>
                                 <Typography
                                   variant="caption"
                                   color="text.secondary"
                                 >
-                                  {resolvedId.type}:{" "}
+                                  {translateIdType(resolvedId.type)}:{" "}
                                   <strong>{resolvedId.value}</strong>
                                 </Typography>
                               </Box>
@@ -2116,7 +2210,10 @@ export default function StaffVerifyPage() {
                             icon={<ICONS.time fontSize="small" />}
                             sx={{ borderRadius: 2, fontWeight: 600, mb: 1 }}
                           >
-                            Outside check-in window. Allowed: {fmtWindow()}
+                            {t.gateOutsideWindow.replace(
+                              "{{window}}",
+                              fmtWindow(),
+                            )}
                           </Alert>
                         )}
 
@@ -2127,8 +2224,21 @@ export default function StaffVerifyPage() {
                             sx={{ borderRadius: 2, fontWeight: 600, mb: 1 }}
                           >
                             {isMultiDay
-                              ? `Today is outside the approved visit window (${formatDate(result.approved_from)} – ${formatDate(result.approved_to)}).`
-                              : `Check-out must be on the same day as the appointment (${formatDate(result.approved_to || result.approved_from)}).`}
+                              ? t.gateOutsideVisitWindow
+                                  .replace(
+                                    "{{from}}",
+                                    formatDate(result.approved_from),
+                                  )
+                                  .replace(
+                                    "{{to}}",
+                                    formatDate(result.approved_to),
+                                  )
+                              : t.gateCheckoutSameDay.replace(
+                                  "{{date}}",
+                                  formatDate(
+                                    result.approved_to || result.approved_from,
+                                  ),
+                                )}
                           </Alert>
                         )}
 
@@ -2142,7 +2252,7 @@ export default function StaffVerifyPage() {
                             startIcon={<ICONS.close />}
                             onClick={reset}
                           >
-                            Close
+                            {t.close}
                           </Button>
 
                           {isPending && (
@@ -2162,7 +2272,7 @@ export default function StaffVerifyPage() {
                                 border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
                               }}
                             >
-                              Awaiting Approval
+                              {t.gateAwaitingApproval}
                             </Button>
                           )}
 
@@ -2185,7 +2295,7 @@ export default function StaffVerifyPage() {
                                 outsideWindow
                               }
                             >
-                              Check In
+                              {t.gateCheckIn}
                             </Button>
                           )}
 
@@ -2204,7 +2314,7 @@ export default function StaffVerifyPage() {
                               onClick={handleCheckOutAction}
                               disabled={actionLoading || outsideCheckoutDay}
                             >
-                              Check Out
+                              {t.gateCheckOut}
                             </Button>
                           )}
 
@@ -2226,7 +2336,7 @@ export default function StaffVerifyPage() {
                                 (Boolean(resolvedId) && !idVerified)
                               }
                             >
-                              Check In Again
+                              {t.gateCheckInAgain}
                             </Button>
                           )}
 
@@ -2245,7 +2355,7 @@ export default function StaffVerifyPage() {
                               onClick={handleVipRevisit}
                               disabled={actionLoading}
                             >
-                              VIP Check In
+                              {t.gateVipCheckIn}
                             </Button>
                           )}
                         </Stack>
@@ -2277,7 +2387,7 @@ export default function StaffVerifyPage() {
                   color="error.main"
                   gutterBottom
                 >
-                  Verification Failed
+                  {t.gateVerificationFailed}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" mb={3}>
                   {error}
@@ -2290,7 +2400,7 @@ export default function StaffVerifyPage() {
                   onClick={reset}
                   sx={{ borderRadius: 3 }}
                 >
-                  Retry
+                  {t.gateRetry}
                 </Button>
               </Paper>
             )}
@@ -2319,11 +2429,11 @@ export default function StaffVerifyPage() {
           }}
         >
           <ICONS.vpnKey sx={{ color: "warning.main" }} />
-          ID Verification Required
+          {t.gateIdVerificationRequired}
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" mb={2}>
-            Please verify the visitor's identity before checking in.
+            {t.gateVerifyIdentityPrompt}
           </Typography>
           {resolvedId && (
             <Box
@@ -2343,7 +2453,10 @@ export default function StaffVerifyPage() {
                 display="block"
                 mb={0.5}
               >
-                Expected {resolvedId.type}
+                {t.gateExpectedId.replace(
+                  "{{type}}",
+                  translateIdType(resolvedId.type),
+                )}
               </Typography>
               <Typography variant="h6" fontWeight={700}>
                 {resolvedId.value}
@@ -2360,6 +2473,7 @@ export default function StaffVerifyPage() {
             flexDirection: { xs: "column-reverse", sm: "row" },
             justifyContent: { xs: "flex-end", sm: "space-between" },
             width: "100%",
+            ...getStartIconSpacing(dir),
           }}
         >
           <Button
@@ -2369,7 +2483,7 @@ export default function StaffVerifyPage() {
             onClick={() => setShowIdVerifyDialog(false)}
             sx={{ borderRadius: 3, py: 1.5, whiteSpace: "nowrap" }}
           >
-            Cancel
+            {t.cancel}
           </Button>
           <Button
             fullWidth
@@ -2383,7 +2497,7 @@ export default function StaffVerifyPage() {
             }}
             sx={{ borderRadius: 3, py: 1.5, whiteSpace: "nowrap" }}
           >
-            Verify & Check In
+            {t.gateVerifyAndCheckIn}
           </Button>
         </DialogActions>
       </Dialog>

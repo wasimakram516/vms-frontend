@@ -33,10 +33,14 @@ import {
   ListItemText,
 } from "@mui/material";
 import ICONS from "@/utils/iconUtil";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
+import getChipIconSpacing from "@/utils/getChipIconSpacing";
 import CountryPicker from "@/components/CountryPicker";
 import { getVipFastTrackFields, createVipRegistration, updateStatus } from "@/services/registrationService";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import gateStaffTranslations from "@/locales/gateStaff";
 
 // ── Dependent field visibility (mirrors backend logic) ────────────────────────
 
@@ -212,6 +216,7 @@ function DynamicField({ field, value, error, isForcedRequired, onChange }) {
 export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
+  const { t, dir } = useI18nLayout(gateStaffTranslations);
   const isDark = mode === "dark";
 
   const [fields, setFields] = useState([]);
@@ -233,7 +238,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
     setRegistered(null);
     getVipFastTrackFields()
       .then((f) => setFields(Array.isArray(f) ? f : []))
-      .catch(() => showMessage("Failed to load VIP fields", "error"))
+      .catch(() => showMessage(t.vipLoadFieldsError, "error"))
       .finally(() => setLoadingFields(false));
   }, [open]);
 
@@ -289,7 +294,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
         const key = f.fieldKey || f.field_key;
         const val = fieldValues[key];
         const isEmpty = val == null || (typeof val === "string" && !val.trim()) || (Array.isArray(val) && !val.length);
-        if (isEmpty) newErrors[key] = `${f.label} is required`;
+        if (isEmpty) newErrors[key] = t.fieldRequired.replace("{{field}}", f.label);
       });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -322,7 +327,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
     setCheckingIn(true);
     try {
       await updateStatus(registered.id, { status: "checked_in" });
-      showMessage("VIP visitor checked in successfully", "success");
+      showMessage(t.gateVipCheckedIn, "success");
       if (onCheckedIn) onCheckedIn(registered);
       onClose();
     } finally {
@@ -341,10 +346,10 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
       onClose={handleClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{ sx: { borderRadius: 4 } }}
+      PaperProps={{ sx: { borderRadius: 4, ...getChipIconSpacing(dir) } }}
     >
       <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pb: 1 }}>
-        <Typography variant="h6" fontWeight={700} component="span">VIP Fast Track</Typography>
+        <Typography variant="h6" fontWeight={700} component="span">{t.gateVipFastTrack}</Typography>
         <IconButton onClick={handleClose} disabled={submitting || checkingIn} size="small">
           <ICONS.close />
         </IconButton>
@@ -359,7 +364,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
               </Box>
             ) : fields.length === 0 ? (
               <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                No VIP Fast Track fields configured. Please ask the admin to mark fields as VIP Fast Track in the CMS.
+                {t.vipNoFields}
               </Alert>
             ) : (
               <Stack spacing={2.5}>
@@ -393,11 +398,11 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
               </Box>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" fontWeight={700}>
-                  VIP Registered Successfully
+                  {t.vipRegisteredSuccess}
                 </Typography>
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap mt={0.5}>
-                  <Chip label="Approved" color="success" size="small" icon={<ICONS.checkCircle style={{ fontSize: 14 }} />} sx={{ fontWeight: 600, color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
-                  <Chip label="VIP Fast Track" color="warning" size="small" icon={<ICONS.star />} sx={{ fontWeight: 800 }} />
+                  <Chip label={t.statusApproved} color="success" size="small" icon={<ICONS.checkCircle style={{ fontSize: 14 }} />} sx={{ fontWeight: 600, color: isDark ? "#000" : "#fff", "& .MuiChip-icon": { color: isDark ? "#000" : "#fff" } }} />
+                  <Chip label={t.gateVipFastTrack} color="warning" size="small" icon={<ICONS.star />} sx={{ fontWeight: 800 }} />
                 </Stack>
               </Box>
             </Stack>
@@ -440,7 +445,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
               }}
             >
               <Typography variant="body1" fontWeight={700} sx={{ color: "#fff" }}>
-                Would you like to check this visitor in now?
+                {t.vipCheckInPrompt}
               </Typography>
             </Box>
           </Box>
@@ -448,11 +453,11 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
       </DialogContent>
 
       <Divider />
-      <DialogActions sx={{ px: 3, py: 2 }}>
+      <DialogActions sx={{ px: 3, py: 2, ...getStartIconSpacing(dir) }}>
         {!registered ? (
           <Stack direction={{ xs: "column-reverse", sm: "row" }} spacing={1} sx={{ width: "100%" }}>
             <Button variant="outlined" onClick={handleClose} disabled={submitting} startIcon={<ICONS.cancel />} sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}>
-              Cancel
+              {t.cancel}
             </Button>
             <Button
               variant="contained"
@@ -461,13 +466,13 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
               startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : <ICONS.register />}
               sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
             >
-              Register VIP
+              {t.vipRegister}
             </Button>
           </Stack>
         ) : (
           <Stack direction={{ xs: "column-reverse", sm: "row" }} spacing={1} sx={{ width: "100%" }}>
             <Button variant="outlined" onClick={handleClose} disabled={checkingIn} startIcon={<ICONS.close />} sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}>
-              Close
+              {t.close}
             </Button>
             <Button
               variant="contained"
@@ -477,7 +482,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
               startIcon={checkingIn ? <CircularProgress size={18} color="inherit" /> : <ICONS.checkCircle />}
               sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
             >
-              Check In
+              {t.gateCheckIn}
             </Button>
           </Stack>
         )}
