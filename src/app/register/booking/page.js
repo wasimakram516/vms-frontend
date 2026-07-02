@@ -39,7 +39,8 @@ import dayjs from "dayjs";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import registrationTranslations from "@/locales/registration";
 import { parse24To12, convert12To24, formatDate, formatTime } from "@/utils/dateUtils";
 import { translateBatch } from "@/services/translationService";
 import { ndaDocToHtml } from "@/utils/ndaDocUtils";
@@ -77,7 +78,7 @@ export default function BookingPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState, setFlowState } = useVisitor();
   const { mode } = useColorMode();
-  const { t, isRtl, lang } = useLanguage();
+  const { t, isArabic: isRtl, language: lang } = useI18nLayout(registrationTranslations);
   const isDark = mode === "dark";
   const dir = isRtl ? "rtl" : "ltr";
 
@@ -113,7 +114,7 @@ export default function BookingPage() {
   // Host working-hours/days config loaded on mount
   const [hostConfig, setHostConfig] = useState(null);
 
-  const DAY_LABELS = [t("daySun"), t("dayMon"), t("dayTue"), t("dayWed"), t("dayThu"), t("dayFri"), t("daySat")];
+  const DAY_LABELS = [t.daySun, t.dayMon, t.dayTue, t.dayWed, t.dayThu, t.dayFri, t.daySat];
 
   // ── Custom fields for purpose of visit (returning visitor flow) ───────────
   const [purposeCustomFields, setPurposeCustomFields] = useState([]);
@@ -345,7 +346,7 @@ export default function BookingPage() {
         </Typography>
         <Stack direction="row" sx={{ gap: 0.5 }}>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t("bookingHr")}</Typography>
+            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t.bookingHr}</Typography>
             <TextField
               select size="small"
               value={resolvedH24}
@@ -363,7 +364,7 @@ export default function BookingPage() {
             </TextField>
           </Box>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t("bookingMin")}</Typography>
+            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t.bookingMin}</Typography>
             <TextField
               select size="small"
               value={resolvedMinute}
@@ -374,7 +375,7 @@ export default function BookingPage() {
             </TextField>
           </Box>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t("bookingAmPm")}</Typography>
+            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t.bookingAmPm}</Typography>
             <TextField
               select size="small"
               value={resolvedAmPm}
@@ -407,8 +408,8 @@ export default function BookingPage() {
 
     if (isReturning) {
       const errs = {};
-      if (!visitorData.departmentId) errs.departmentId = t("departmentRequired");
-      if (showNdaCheckbox && !ndaAccepted) errs.nda = t("ndaMustAccept");
+      if (!visitorData.departmentId) errs.departmentId = t.departmentRequired;
+      if (showNdaCheckbox && !ndaAccepted) errs.nda = t.ndaMustAccept;
       if (Object.keys(errs).length) { setFieldErrors(errs); return; }
     }
 
@@ -549,18 +550,18 @@ export default function BookingPage() {
   return (
     <>
       <VisitorLayout
-        title={t("bookingLayoutTitle")}
-        subtitle={t("bookingLayoutSubtitle")}
-        mobileSubheading={t("bookingMobileSubheading")}
+        title={t.bookingLayoutTitle}
+        subtitle={t.bookingLayoutSubtitle}
+        mobileSubheading={t.bookingMobileSubheading}
         maxWidth={900}
       >
         <Stack spacing={2}>
           <Box sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}>
             <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-              {t("bookingHeading")}
+              {t.bookingHeading}
             </Typography>
             <Typography variant="body2" color="text.secondary" mt={1}>
-              {t("bookingSubheading")}
+              {t.bookingSubheading}
             </Typography>
           </Box>
 
@@ -570,8 +571,8 @@ export default function BookingPage() {
             <Box sx={{ p: 2, borderRadius: 3, bgcolor: "warning.main", color: "warning.contrastText", display: "flex", alignItems: "flex-start", gap: 1.5 }}>
               <ICONS.edit sx={{ mt: 0.2, fontSize: 20, flexShrink: 0 }} />
               <Box>
-                <Typography variant="body2" fontWeight={700}>{t("activeRequestTitle")}</Typography>
-                <Typography variant="caption">{t("activeRequestDesc")}</Typography>
+                <Typography variant="body2" fontWeight={700}>{t.activeRequestTitle}</Typography>
+                <Typography variant="caption">{t.activeRequestDesc}</Typography>
               </Box>
             </Box>
           )}
@@ -579,10 +580,10 @@ export default function BookingPage() {
           {isReturning && (
             <Stack spacing={2}>
               <FormControl fullWidth required error={Boolean(fieldErrors.departmentId)}>
-                <InputLabel>{t("department")}</InputLabel>
+                <InputLabel>{t.department}</InputLabel>
                 <Select
                   value={visitorData.departmentId || ""}
-                  label={t("department")}
+                  label={t.department}
                   onChange={(e) => {
                     setVisitorData((prev) => ({ ...prev, departmentId: e.target.value }));
                     if (fieldErrors.departmentId) setFieldErrors((p) => { const n = { ...p }; delete n.departmentId; return n; });
@@ -650,12 +651,12 @@ export default function BookingPage() {
                     }
                     label={
                       <Typography component="span" variant="body2" fontWeight={600}>
-                        {t("ndaAgreeLabel")}
+                        {t.ndaAgreeLabel}
                       </Typography>
                     }
                   />
                   <Typography variant="caption" color="text.secondary" sx={{ pl: 4 }}>
-                    {ndaAccepted ? t("ndaAcceptedHint") : t("ndaExpiredHint")}
+                    {ndaAccepted ? t.ndaAcceptedHint : t.ndaExpiredHint}
                   </Typography>
                   {fieldErrors.nda && (
                     <Typography variant="caption" color="error.main" sx={{ pl: 4 }}>
@@ -672,7 +673,7 @@ export default function BookingPage() {
           <Grid container spacing={3}>
             <Grid size={{ xs: 12, md: 6 }}>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, px: 2 }}>
-                {t("bookingSelectDate")}
+                {t.bookingSelectDate}
               </Typography>
               <Box
                 dir="ltr"
@@ -726,7 +727,7 @@ export default function BookingPage() {
 
             <Grid size={{ xs: 12, md: 6 }}>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-                {t("bookingSelectTime")}
+                {t.bookingSelectTime}
               </Typography>
               <Box sx={{ mt: 0 }}>
                 <Stack spacing={2}>
@@ -745,21 +746,21 @@ export default function BookingPage() {
                     variant="fullWidth"
                     sx={{ minHeight: 46, bgcolor: (theme) => alpha(theme.palette.text.primary, isDark ? 0.06 : 0.04), borderRadius: 999, p: 0.5, "& .MuiTabs-indicator": { display: "none" }, "& .MuiTab-iconWrapper": { marginRight: isRtl ? 0 : "8px", marginLeft: isRtl ? "8px" : 0 } }}
                   >
-                    <Tab value="custom" icon={<ICONS.time fontSize="small" />} iconPosition="start" label={t("bookingCustomTab")} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
-                    <Tab value="preset" icon={<ICONS.event fontSize="small" />} iconPosition="start" label={t("bookingPresetTab")} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
+                    <Tab value="custom" icon={<ICONS.time fontSize="small" />} iconPosition="start" label={t.bookingCustomTab} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
+                    <Tab value="preset" icon={<ICONS.event fontSize="small" />} iconPosition="start" label={t.bookingPresetTab} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
                   </Tabs>
 
                   {bookingType === "custom" && (
                     <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 320 }}>
                       <Stack spacing={2} sx={{ mb: 2 }}>
-                        {renderTimeDropdowns("timeFrom", t("bookingArrival"))}
-                        {renderTimeDropdowns("timeTo", t("bookingDeparture"))}
+                        {renderTimeDropdowns("timeFrom", t.bookingArrival)}
+                        {renderTimeDropdowns("timeTo", t.bookingDeparture)}
                       </Stack>
                       <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                         <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
                           <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
                           <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
-                            {t("bookingDuration").replace("{{min}}", dayjs(`2000-01-01 ${bookingData.timeTo}`).diff(dayjs(`2000-01-01 ${bookingData.timeFrom}`), "minute"))}
+                            {t.bookingDuration.replace("{{min}}", dayjs(`2000-01-01 ${bookingData.timeTo}`).diff(dayjs(`2000-01-01 ${bookingData.timeFrom}`), "minute"))}
                           </Typography>
                         </Stack>
                       </Box>
@@ -770,7 +771,7 @@ export default function BookingPage() {
                     <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 320 }}>
                       <Box sx={{ mb: 2.5 }}>
                         <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                          {t("bookingPresetType")}
+                          {t.bookingPresetType}
                         </Typography>
                         <TextField
                           fullWidth select size="small"
@@ -789,17 +790,17 @@ export default function BookingPage() {
                           }}
                           sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                         >
-                          <MenuItem value="fullDay">{t("bookingFullDay")}</MenuItem>
-                          <MenuItem value="fullWeek">{t("bookingFullWeek")}</MenuItem>
-                          <MenuItem value="fullMonth">{t("bookingFullMonth")}</MenuItem>
-                          <MenuItem value="specificDays">{t("bookingSpecificDays")}</MenuItem>
+                          <MenuItem value="fullDay">{t.bookingFullDay}</MenuItem>
+                          <MenuItem value="fullWeek">{t.bookingFullWeek}</MenuItem>
+                          <MenuItem value="fullMonth">{t.bookingFullMonth}</MenuItem>
+                          <MenuItem value="specificDays">{t.bookingSpecificDays}</MenuItem>
                         </TextField>
                       </Box>
 
                       {hasValidBookingDate && selectedPreset !== "specificDays" && (
                         <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider", mb: 2.5 }}>
                           <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                            {t("bookingDateRange")}
+                            {t.bookingDateRange}
                           </Typography>
                           <Typography variant="body2" fontWeight={600} color="text.primary">
                             {(() => {
@@ -833,7 +834,7 @@ export default function BookingPage() {
                       {(selectedPreset === "fullWeek" || selectedPreset === "fullMonth") && (
                         <Box sx={{ mb: 2 }}>
                           <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                            {t("bookingDayType")}
+                            {t.bookingDayType}
                           </Typography>
                           <Tabs
                             value={dayTypeTab}
@@ -844,8 +845,8 @@ export default function BookingPage() {
                             TabIndicatorProps={{ sx: { height: 3, borderRadius: 1 } }}
                             sx={{ minHeight: 32, "& .MuiTab-root": { minHeight: 32, py: 0.5, fontSize: "0.72rem", fontWeight: 700 } }}
                           >
-                            <Tab value="working" label={t("bookingWorkingDays")} />
-                            <Tab value="weekend" label={t("bookingWeekendDays")} />
+                            <Tab value="working" label={t.bookingWorkingDays} />
+                            <Tab value="weekend" label={t.bookingWeekendDays} />
                           </Tabs>
                         </Box>
                       )}
@@ -883,16 +884,16 @@ export default function BookingPage() {
                         return (
                           <Box sx={{ mb: 2.5 }}>
                             <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                              {t("bookingSelectDays")}
+                              {t.bookingSelectDays}
                             </Typography>
                             <Typography variant="caption" fontWeight={600} color="info.main" sx={{ display: "block", mb: 0.5, fontSize: "0.68rem" }}>
-                              {t("bookingWorkingDays")}
+                              {t.bookingWorkingDays}
                             </Typography>
                             <Stack direction="row" flexWrap="wrap" sx={{ gap: 1, mb: 1.5 }}>
                               {workSet.map((idx) => renderChip(idx, DAY_LABELS[idx]))}
                             </Stack>
                             <Typography variant="caption" fontWeight={600} color="warning.main" sx={{ display: "block", mb: 0.5, fontSize: "0.68rem" }}>
-                              {t("bookingWeekendDays")}
+                              {t.bookingWeekendDays}
                             </Typography>
                             <Stack direction="row" flexWrap="wrap" sx={{ gap: 1, mb: 1 }}>
                               {offSet.map((idx) => renderChip(idx, DAY_LABELS[idx]))}
@@ -902,7 +903,7 @@ export default function BookingPage() {
                             )}
 
                             <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mt: 2, mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                              {t("bookingPeriod")}
+                              {t.bookingPeriod}
                             </Typography>
                             <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
                               <Typography variant="caption" color="text.secondary" sx={{ minWidth: 36, fontWeight: 600 }}>From</Typography>
@@ -945,11 +946,11 @@ export default function BookingPage() {
                           if (activeDaySet.includes(cur.day())) days.push(cur);
                           cur = cur.add(1, "day");
                         }
-                        const label = dayTypeTab === "weekend" ? t("bookingWeekendDays") : t("bookingWorkingDays");
+                        const label = dayTypeTab === "weekend" ? t.bookingWeekendDays : t.bookingWorkingDays;
                         return (
                           <Box sx={{ mb: 2, p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                             <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.6rem" }}>
-                              {label} {t("bookingInBracket")}
+                              {label} {t.bookingInBracket}
                             </Typography>
                             <Stack direction="row" flexWrap="wrap" sx={{ gap: 0.5 }}>
                               {days.length > 0 ? days.map((d) => {
@@ -977,7 +978,7 @@ export default function BookingPage() {
                           <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
                             <ICONS.info sx={{ fontSize: 16, color: "info.main" }} />
                             <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
-                              {t("bookingFullDayWorkingHoursInfo")
+                              {t.bookingFullDayWorkingHoursInfo
                                 .replace("{{start}}", hostConfig
                                   ? `${String(hostConfig.start).padStart(2,"0")}:${String(hostConfig.startMinute??0).padStart(2,"0")}`
                                   : "08:00")
@@ -1001,17 +1002,17 @@ export default function BookingPage() {
                               const e = fmtH12(hostConfig.end, hostConfig.endMinute ?? 0);
                               return (
                                 <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
-                                  {t("bookingWorkingHoursInfo").replace("{{start}}", s).replace("{{end}}", e)}
+                                  {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                 </Typography>
                               );
                             })()}
                           </Box>
                           <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                            {t("bookingDailyVisitTime")}
+                            {t.bookingDailyVisitTime}
                           </Typography>
                           <Stack spacing={2}>
-                            {renderTimeDropdowns("timeFrom", t("bookingStartTime"))}
-                            {renderTimeDropdowns("timeTo", t("bookingEndTime"))}
+                            {renderTimeDropdowns("timeFrom", t.bookingStartTime)}
+                            {renderTimeDropdowns("timeTo", t.bookingEndTime)}
                           </Stack>
                           {(() => {
                             const mins = dayjs(`2000-01-01 ${bookingData.timeTo}`).diff(dayjs(`2000-01-01 ${bookingData.timeFrom}`), "minute");
@@ -1021,7 +1022,7 @@ export default function BookingPage() {
                                 <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
                                   <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
                                   <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
-                                    {t("bookingDuration").replace("{{min}}", mins)}
+                                    {t.bookingDuration.replace("{{min}}", mins)}
                                   </Typography>
                                 </Stack>
                               </Box>
@@ -1046,7 +1047,7 @@ export default function BookingPage() {
                                 <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
                                   <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
                                   <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
-                                    {t("bookingSelectedTimeOutside").replace("{{start}}", s).replace("{{end}}", e)}
+                                    {t.bookingSelectedTimeOutside.replace("{{start}}", s).replace("{{end}}", e)}
                                   </Typography>
                                 </Stack>
                               </Box>
@@ -1073,7 +1074,7 @@ export default function BookingPage() {
                 onClick={() => router.back()}
                 sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(dir) }}
               >
-                {t("back")}
+                {t.back}
               </Button>
             )}
             <Button
@@ -1084,7 +1085,7 @@ export default function BookingPage() {
               onClick={handleSubmit}
               sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(dir) }}
             >
-              {submitting ? t("bookingSending") : isEditMode ? t("bookingSaveChanges") : t("submit")}
+              {submitting ? t.bookingSending : isEditMode ? t.bookingSaveChanges : t.submit}
             </Button>
           </Stack>
         </Stack>
@@ -1093,7 +1094,7 @@ export default function BookingPage() {
       <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
         <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Typography variant="h6" fontWeight={800} component="span" sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            {(isRtl && translatedNda?.name) ? translatedNda.name : (ndaTemplate?.name || t("ndaTitle"))}
+            {(isRtl && translatedNda?.name) ? translatedNda.name : (ndaTemplate?.name || t.ndaTitle)}
           </Typography>
           <IconButton onClick={() => setNdaOpen(false)}>
             <ICONS.close />
@@ -1103,7 +1104,7 @@ export default function BookingPage() {
           {ndaLoading ? (
             <Stack spacing={2} alignItems="center" sx={{ py: 4 }}>
               <CircularProgress size={28} />
-              <Typography variant="body2" color="text.secondary">{t("ndaLoading")}</Typography>
+              <Typography variant="body2" color="text.secondary">{t.ndaLoading}</Typography>
             </Stack>
           ) : (
             <NdaTemplateContent template={(isRtl && translatedNda) ? translatedNda : ndaTemplate} />
@@ -1111,7 +1112,7 @@ export default function BookingPage() {
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>
           <Button variant="outlined" onClick={() => setNdaOpen(false)} sx={{ borderRadius: 30, ...getStartIconSpacing(dir) }}>
-            {t("close")}
+            {t.close}
           </Button>
           <Button
             variant="contained"
@@ -1125,7 +1126,7 @@ export default function BookingPage() {
             }}
             sx={{ borderRadius: 30, ...getStartIconSpacing(dir) }}
           >
-            {t("agree")}
+            {t.agree}
           </Button>
         </DialogActions>
       </Dialog>

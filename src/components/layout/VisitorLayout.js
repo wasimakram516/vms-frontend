@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Box, GlobalStyles, Typography } from "@mui/material";
 import { motion } from "framer-motion";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import commonTranslations from "@/locales/common";
 
 const transition = { duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] };
 const bgPortrait  = "/bg-portrait.webp";
@@ -54,10 +55,10 @@ export default function VisitorLayout({
   justifyContent = "flex-start",
 }) {
   const { mode } = useColorMode();
-  const { t } = useLanguage();
+  const { t } = useI18nLayout(commonTranslations);
   const isDark = mode === "dark";
-  const effectiveTitle = title ?? t("layoutBrandTitle");
-  const effectiveSubtitle = subtitle ?? t("layoutBrandSubtitle");
+  const effectiveTitle = title ?? t.layoutBrandTitle;
+  const effectiveSubtitle = subtitle ?? t.layoutBrandSubtitle;
   const [isMobileCardExpanded] = useState(true);
 
   const rtlInputStyles = (

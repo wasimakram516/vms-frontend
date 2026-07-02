@@ -17,28 +17,32 @@ import { useTheme } from "@mui/material/styles";
 import { getTodayVisitors, updateStatus } from "@/services/registrationService";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import gateStaffTranslations from "@/locales/gateStaff";
 import ICONS from "@/utils/iconUtil";
 import { formatDate, formatTime } from "@/utils/dateUtils";
+import getStartIconSpacing from "@/utils/getStartIconSpacing";
+import getChipIconSpacing from "@/utils/getChipIconSpacing";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 
 const STATUS_CONFIG = {
   pending: {
-    label: "Pending",
+    labelKey: "statusPending",
     color: "warning",
     icon: <ICONS.time fontSize="small" />,
   },
   admin_approved: {
-    label: "Dept. Approved",
+    labelKey: "statusAdminApproved",
     color: "info",
     icon: <ICONS.checkCircleOutline fontSize="small" />,
   },
   approved: {
-    label: "Approved",
+    labelKey: "statusApproved",
     color: "success",
     icon: <ICONS.checkCircle fontSize="small" />,
   },
   checked_in: {
-    label: "Checked In",
+    labelKey: "statusCheckedIn",
     color: "info",
     icon: <ICONS.login fontSize="small" />,
   },
@@ -48,6 +52,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
   const theme = useTheme();
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
+  const { t, dir, language: lang } = useI18nLayout(gateStaffTranslations);
   const isDark = mode === "dark";
 
   const [visitors, setVisitors] = useState([]);
@@ -79,7 +84,10 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
       });
       if (!updated?.error) {
         showMessage(
-          `${checkOutTarget.visitor?.fullName || "Visitor"} signed out`,
+          t.todaySignedOut.replace(
+            "{{name}}",
+            checkOutTarget.visitor?.fullName || t.gateVisitor,
+          ),
           "success",
         );
         setVisitors((prev) =>
@@ -94,7 +102,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
     }
   };
 
-  const todayStr = new Date().toLocaleDateString("en-GB", {
+  const todayStr = new Date().toLocaleDateString(lang === "ar" ? "ar" : "en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -118,26 +126,19 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
   return (
     <Box
       sx={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 1300,
-        bgcolor: "background.default",
-        overflow: "auto",
-        px: { xs: 1.5, sm: 3 },
-        py: { xs: 1.5, sm: 3 },
+        px: { xs: 2, sm: 3 },
+        py: 3,
+        ...getStartIconSpacing(dir),
+        ...getChipIconSpacing(dir),
       }}
     >
-      <Box sx={{ maxWidth: 1400, mx: "auto" }}>
         <Button
           variant="text"
           startIcon={<ICONS.back />}
           onClick={onBack}
           sx={{ mb: { xs: 1.5, sm: 2 }, borderRadius: 2 }}
         >
-          Back to Gate Check-in
+          {t.todayBackToGate}
         </Button>
 
         <Paper
@@ -163,7 +164,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                   fontSize="inherit"
                   sx={{ mr: 1, verticalAlign: "middle", opacity: 0.7 }}
                 />
-                Today&apos;s Visitors
+                {t.gateTodaysVisitors}
               </Typography>
               <Typography
                 variant="body2"
@@ -184,7 +185,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                   {onSite.length}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  On-Site
+                  {t.todayOnSite}
                 </Typography>
               </Box>
               <Divider orientation="vertical" flexItem sx={{ height: 40 }} />
@@ -197,7 +198,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                   {expected.length}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Expected
+                  {t.todayExpected}
                 </Typography>
               </Box>
               <Divider orientation="vertical" flexItem sx={{ height: 40 }} />
@@ -206,7 +207,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                   {filtered.length}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Total
+                  {t.todayTotal}
                 </Typography>
               </Box>
             </Stack>
@@ -217,7 +218,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
           <Box sx={{ textAlign: "center", py: 6 }}>
             <CircularProgress />
             <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Loading today&apos;s visitors…
+              {t.todayLoading}
             </Typography>
           </Box>
         ) : filtered.length === 0 ? (
@@ -236,30 +237,66 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
               sx={{ fontSize: 48, color: "success.main", mb: 1 }}
             />
             <Typography fontWeight={700} color="success.main">
-              No visitors expected today
+              {t.todayNoVisitors}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              All clear for {todayStr}
+              {t.todayAllClear.replace("{{date}}", todayStr)}
             </Typography>
           </Paper>
         ) : (
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: {
-                xs: "1fr",
-                sm: "repeat(auto-fill, minmax(260px, 1fr))",
+          <>
+            {[
+              {
+                key: "onsite",
+                items: onSite,
+                label: t.todayOnSite,
+                icon: <ICONS.login sx={{ fontSize: 18, color: "info.main" }} />,
               },
-              gap: { xs: 1.5, sm: 2 },
-            }}
-          >
-            {filtered.map((v) => {
+              {
+                key: "expected",
+                items: expected,
+                label: t.todayExpected,
+                icon: (
+                  <ICONS.time sx={{ fontSize: 18, color: "text.secondary" }} />
+                ),
+              },
+            ]
+              .filter((section) => section.items.length > 0)
+              .map((section) => (
+                <Box key={section.key} sx={{ mb: 3 }}>
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    spacing={1}
+                    sx={{ mb: 1.5 }}
+                  >
+                    {section.icon}
+                    <Typography variant="subtitle1" fontWeight={800}>
+                      {section.label}
+                    </Typography>
+                    <Chip
+                      label={section.items.length}
+                      size="small"
+                      sx={{ height: 20, fontWeight: 800 }}
+                    />
+                  </Stack>
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: {
+                        xs: "1fr",
+                        sm: "repeat(auto-fill, minmax(280px, 1fr))",
+                      },
+                      gap: { xs: 1.5, sm: 2 },
+                    }}
+                  >
+                    {section.items.map((v) => {
               const sc = STATUS_CONFIG[v.status] || {
-                label: v.status,
                 color: "default",
                 icon: null,
               };
-              const name = v.visitor?.fullName || "Visitor";
+              const scLabel = sc.labelKey ? t[sc.labelKey] : v.status;
+              const name = v.visitor?.fullName || t.gateVisitor;
               const company =
                 v.visitor?.organisation || v.visitor?.companyName || null;
               const dept = v.visitor?.department || v.department?.name || null;
@@ -295,15 +332,15 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                         sx={{
                           width: 40,
                           height: 40,
-                          bgcolor: isDark ? "#fff" : "#000",
-                          color: isDark ? "#000" : "#fff",
+                          bgcolor: isCheckedIn ? "info.main" : "action.selected",
+                          color: isCheckedIn ? "#fff" : "text.primary",
                           fontSize: "0.9rem",
                           fontWeight: 800,
                         }}
                       >
                         {name
                           .split(" ")
-                          .map((n) => n[0])
+                          .map((n) => n[0]?.toUpperCase())
                           .slice(0, 2)
                           .join("") || "?"}
                       </Avatar>
@@ -330,7 +367,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                       useFlexGap
                     >
                       <Chip
-                        label={sc.label}
+                        label={scLabel}
                         color={sc.color}
                         size="small"
                         icon={sc.icon}
@@ -338,7 +375,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                       />
                       {v.overstay && (
                         <Chip
-                          label="Overstay"
+                          label={t.gateOverstay}
                           color="error"
                           size="small"
                           sx={{
@@ -351,7 +388,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                       {(v.isVipFastTrack || v.is_vip_fast_track) && (
                         <Chip
                           icon={<ICONS.star style={{ fontSize: 14 }} />}
-                          label="VIP Fast Track"
+                          label={t.gateVipFastTrack}
                           color="warning"
                           size="small"
                           sx={{
@@ -364,7 +401,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                       {(v.isVip || v.is_vip) && (
                         <Chip
                           icon={<ICONS.star style={{ fontSize: 14 }} />}
-                          label="VIP"
+                          label={t.gateVip}
                           size="small"
                           sx={{
                             fontWeight: 800,
@@ -381,7 +418,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                       {(v.allowParking || v.allow_parking) && (
                         <Chip
                           icon={<ICONS.parking style={{ fontSize: 14 }} />}
-                          label="Parking"
+                          label={t.gateParking}
                           size="small"
                           sx={{
                             fontWeight: 800,
@@ -398,7 +435,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                       {(v.escort_required ?? v.escortRequired ?? true) && (
                         <Chip
                           icon={<ICONS.security style={{ fontSize: 14 }} />}
-                          label="Escort Required"
+                          label={t.gateEscortRequired}
                           size="small"
                           sx={{
                             fontWeight: 800,
@@ -444,24 +481,29 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                         onClick={() => setCheckOutTarget(v)}
                         sx={{ borderRadius: 2, mt: 0.5 }}
                       >
-                        Sign Out
+                        {t.todaySignOut}
                       </Button>
                     )}
                   </Stack>
                 </Paper>
               );
-            })}
-          </Box>
+                    })}
+                  </Box>
+                </Box>
+              ))}
+          </>
         )}
-      </Box>
 
       <ConfirmationDialog
         open={Boolean(checkOutTarget)}
         onClose={() => !signingOut && setCheckOutTarget(null)}
         onConfirm={handleSignOut}
-        title="Sign Out Visitor"
-        message={`Sign out ${checkOutTarget?.visitor?.fullName || "this visitor"}?`}
-        confirmButtonText={signingOut ? "Signing Out…" : "Sign Out"}
+        title={t.todaySignOutTitle}
+        message={t.todaySignOutMessage.replace(
+          "{{name}}",
+          checkOutTarget?.visitor?.fullName || t.gateVisitor,
+        )}
+        confirmButtonText={signingOut ? t.todaySigningOut : t.todaySignOut}
         confirmButtonIcon={
           signingOut ? (
             <CircularProgress size={16} color="inherit" />

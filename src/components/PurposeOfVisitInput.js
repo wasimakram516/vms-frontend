@@ -10,7 +10,8 @@ import {
   FormHelperText,
 } from "@mui/material";
 import { useEffect, useState } from "react";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import commonTranslations from "@/locales/common";
 
 export const PURPOSE_OPTIONS = [
   "Vendor Visit",
@@ -62,7 +63,7 @@ export default function PurposeOfVisitInput({
   rounded = false,
 }) {
   const radius = rounded ? 30 : 2;
-  const { t } = useLanguage();
+  const { t } = useI18nLayout(commonTranslations);
 
   const [select, setSelect] = useState(() => resolveSelect(value));
   const [custom, setCustom] = useState(() => resolveCustom(value));
@@ -93,17 +94,17 @@ export default function PurposeOfVisitInput({
   return (
     <Stack spacing={1.5}>
       <FormControl fullWidth required={required} error={selectError}>
-        <InputLabel>{t("purposeOfVisit")}</InputLabel>
+        <InputLabel>{t.purposeOfVisit}</InputLabel>
         <Select
           value={select}
-          label={t("purposeOfVisit")}
+          label={t.purposeOfVisit}
           onChange={(e) => handleSelectChange(e.target.value)}
           disabled={disabled}
           sx={{ borderRadius: radius }}
         >
           {PURPOSE_OPTIONS.map((opt) => (
             <MenuItem key={opt} value={opt}>
-              {t(PURPOSE_KEY_MAP[opt]) || opt}
+              {t[PURPOSE_KEY_MAP[opt]] || opt}
             </MenuItem>
           ))}
         </Select>
@@ -112,7 +113,7 @@ export default function PurposeOfVisitInput({
 
       {select === "Other" && (
         <TextField
-          label={t("pleaseSpecify")}
+          label={t.pleaseSpecify}
           fullWidth
           required={required}
           value={custom}

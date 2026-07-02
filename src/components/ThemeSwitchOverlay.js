@@ -3,7 +3,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { DarkMode as DarkModeIcon, LightMode as LightModeIcon } from "@mui/icons-material";
 import { useEffect, useRef, useState } from "react";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import commonTranslations from "@/locales/common";
 
 const PALETTE = {
   dark: {
@@ -234,7 +235,7 @@ function NightScene() {
 
 // ─── OverlayInner ─────────────────────────────────────────────────────────────
 function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
-  const { t } = useLanguage();
+  const { t } = useI18nLayout(commonTranslations);
   const onMidpointRef    = useRef(onMidpoint);
   const onRequestExitRef = useRef(onRequestExit);
   useEffect(() => { onMidpointRef.current    = onMidpoint;    }, [onMidpoint]);
@@ -254,8 +255,8 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
   const isDark = targetMode === "dark";
   const p = {
     ...(PALETTE[targetMode] ?? PALETTE.dark),
-    title: isDark ? t("switchingToDark") : t("switchingToLight"),
-    subtitle: isDark ? t("dimmingLights") : t("brighteningUp"),
+    title: isDark ? t.switchingToDark : t.switchingToLight,
+    subtitle: isDark ? t.dimmingLights : t.brighteningUp,
   };
   const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width:600px)").matches;
 
@@ -404,7 +405,7 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
             boxShadow: `0 0 7px ${p.badgeDot}`,
             animation: "ts-pulse 2s ease-in-out infinite",
           }} />
-          {isDark ? t("darkMode") : t("lightMode")}
+          {isDark ? t.darkMode : t.lightMode}
         </motion.div>
       </motion.div>
     </motion.div>

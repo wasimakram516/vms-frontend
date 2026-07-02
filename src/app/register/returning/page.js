@@ -23,7 +23,8 @@ import {
   checkNdaValidity,
 } from "@/services/registrationService";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import useI18nLayout from "@/hooks/useI18nLayout";
+import registrationTranslations from "@/locales/registration";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import DynamicCustomField from "@/components/DynamicCustomField";
@@ -52,7 +53,7 @@ export default function ReturningVisitorPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, setFlowState } = useVisitor();
   const { mode } = useColorMode();
-  const { t, isRtl } = useLanguage();
+  const { t, isArabic: isRtl } = useI18nLayout(registrationTranslations);
   const dir = isRtl ? "rtl" : "ltr";
   const isDark = mode === "dark";
   const lang = isRtl ? "ar" : "en";
@@ -246,7 +247,7 @@ export default function ReturningVisitorPage() {
         setFlowState((prev) => ({ ...prev, isReturning: true, currentStep: "otp" }));
         router.push("/register/otp");
       } else {
-        setOtpRequestError(res.message || t("returningOtpError"));
+        setOtpRequestError(res.message || t.returningOtpError);
       }
     } finally {
       setLoading(false);
@@ -281,7 +282,7 @@ export default function ReturningVisitorPage() {
       const val = idFieldValues[key];
 
       if (isRequired && !val) {
-        errs[key] = t("fieldRequired").replace("{{field}}", f.label);
+        errs[key] = t.fieldRequired.replace("{{field}}", f.label);
       } else if (inputType === "phone" && val) {
         const iso = phoneIsoCodes[key] || DEFAULT_ISO_CODE;
         const phoneErr = validatePhone(val, iso);
@@ -294,7 +295,7 @@ export default function ReturningVisitorPage() {
       const phoneKey = phoneField.fieldKey || phoneField.field_key;
       const phoneVal = idFieldValues[phoneKey];
       if (!phoneVal) {
-        errs[phoneKey] = t("fieldRequired").replace("{{field}}", phoneField.label);
+        errs[phoneKey] = t.fieldRequired.replace("{{field}}", phoneField.label);
       } else {
         const iso = phoneIsoCodes[phoneKey] || DEFAULT_ISO_CODE;
         const phoneErr = validatePhone(phoneVal, iso);
@@ -302,7 +303,7 @@ export default function ReturningVisitorPage() {
       }
     } else {
       if (!standalonePhone.trim()) {
-        errs.__standalonePhone = t("fieldRequired").replace("{{field}}", t("returningIdPhoneLabel"));
+        errs.__standalonePhone = t.fieldRequired.replace("{{field}}", t.returningIdPhoneLabel);
       } else {
         const phoneErr = validatePhone(standalonePhone, standalonePhoneIso);
         if (phoneErr) errs.__standalonePhone = phoneErr;
@@ -349,14 +350,14 @@ export default function ReturningVisitorPage() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <VisitorLayout justifyContent="center" mobileSubheading={t("returningHeading")}>
+    <VisitorLayout justifyContent="center" mobileSubheading={t.returningHeading}>
       <Stack spacing={3}>
         <Box sx={{ textAlign: "center", mb: 2, display: { xs: "none", md: "block" } }}>
           <Typography variant="h5" fontWeight={800} sx={{ fontFamily: "'Comfortaa', cursive" }}>
-            {t("returningHeading")}
+            {t.returningHeading}
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={1}>
-            {t("returningSubtitle")}
+            {t.returningSubtitle}
           </Typography>
         </Box>
 
@@ -378,7 +379,7 @@ export default function ReturningVisitorPage() {
             value="email"
             icon={<ICONS.email fontSize="small" />}
             iconPosition="start"
-            label={t("returningEmailTab")}
+            label={t.returningEmailTab}
             sx={{
               minHeight: 38,
               borderRadius: 999,
@@ -399,7 +400,7 @@ export default function ReturningVisitorPage() {
             value="id"
             icon={<ICONS.badge fontSize="small" />}
             iconPosition="start"
-            label={t("returningIdTab")}
+            label={t.returningIdTab}
             sx={{
               minHeight: 38,
               borderRadius: 999,
@@ -428,7 +429,7 @@ export default function ReturningVisitorPage() {
             <TextField
               fullWidth
               autoFocus
-              label={t("returningEmailLabel")}
+              label={t.returningEmailLabel}
               type="email"
               placeholder="name@example.com"
               value={email}
@@ -451,7 +452,7 @@ export default function ReturningVisitorPage() {
               startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <ICONS.email />}
               sx={{ py: 1.8, borderRadius: 30, fontWeight: 700, ...getStartIconSpacing(dir) }}
             >
-              {loading ? t("returningSendingOtp") : t("returningSendOtp")}
+              {loading ? t.returningSendingOtp : t.returningSendOtp}
             </Button>
           </Stack>
         ) : (
@@ -463,16 +464,16 @@ export default function ReturningVisitorPage() {
             ) : fieldsError ? (
               <Stack spacing={1.5} alignItems="center">
                 <Alert severity="error" sx={{ borderRadius: 2, width: "100%" }}>
-                  {t("returningIdFieldsError")}
+                  {t.returningIdFieldsError}
                 </Alert>
                 <Button variant="outlined" size="small" onClick={loadFields}>
-                  {t("retry") || "Retry"}
+                  {t.retry || "Retry"}
                 </Button>
               </Stack>
             ) : idSubtreeFields.length === 0 ? (
               fieldsLoadedOnce ? (
                 <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                  {t("returningIdNoFields")}
+                  {t.returningIdNoFields}
                 </Alert>
               ) : (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
@@ -545,7 +546,7 @@ export default function ReturningVisitorPage() {
                 ) : (
                   <TextField
                     fullWidth
-                    label={t("returningIdPhoneLabel")}
+                    label={t.returningIdPhoneLabel}
                     type="tel"
                     value={standalonePhone}
                     error={Boolean(standalonePhoneError)}
@@ -576,7 +577,7 @@ export default function ReturningVisitorPage() {
                   startIcon={idLoading ? <CircularProgress size={24} color="inherit" /> : <ICONS.badge />}
                   sx={{ py: 1.8, borderRadius: 30, fontWeight: 700, ...getStartIconSpacing(dir) }}
                 >
-                  {idLoading ? t("returningIdVerifying") : t("returningIdSubmit")}
+                  {idLoading ? t.returningIdVerifying : t.returningIdSubmit}
                 </Button>
               </>
             )}
@@ -590,7 +591,7 @@ export default function ReturningVisitorPage() {
           onClick={() => router.push("/")}
           sx={{ color: "text.disabled", textTransform: "none", ...getStartIconSpacing(dir) }}
         >
-          {t("back")}
+          {t.back}
         </Button>
       </Stack>
     </VisitorLayout>
