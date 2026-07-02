@@ -4,21 +4,22 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 
 const LanguageContext = createContext();
 
-export const LanguageProvider = ({ children }) => {
-  // Always "en" on the server and first client render to avoid a hydration
-  // mismatch; the saved language is applied in a mount effect below.
-  const [lang, setLangState] = useState("en");
+export const LanguageProvider = ({ children, initialLang = "en" }) => {
+  // Seeded from the sinan-lang cookie by the server layout so SSR (including
+  // route loaders) renders in the saved language and hydration matches.
+  const [lang, setLangState] = useState(initialLang);
 
   const isRtl = lang === "ar";
 
   useEffect(() => {
+    // Legacy fallback: honor localStorage for users who set a language before
+    // the cookie existed, and mirror it into the cookie for future SSR.
     const saved = localStorage.getItem("sinan-lang");
     if (saved === "en" || saved === "ar") {
-      setLangState(saved);
-      // Keep the cookie in sync so server-rendered UI (e.g. route loaders) can
-      // read the saved language.
+      if (saved !== lang) setLangState(saved);
       document.cookie = `sinan-lang=${saved}; path=/; max-age=31536000; SameSite=Lax`;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

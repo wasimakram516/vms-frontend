@@ -17,9 +17,8 @@ export default function SinanLoader({
   showSkeletons = true,
   sx = {},
   cardSx = {},
-  forcedLanguage = null,
 }) {
-  const { t } = useI18nLayout(commonTranslations, forcedLanguage);
+  const { t } = useI18nLayout(commonTranslations);
   const resolvedTitle = title ?? t.loaderTitle;
   const resolvedDescription = description ?? t.loaderDescription;
   const theme = useTheme();
