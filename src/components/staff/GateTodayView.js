@@ -108,18 +108,11 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
     year: "numeric",
   });
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
-  const filtered = visitors.filter((v) => {
-    if (v.status === "checked_in") return true;
-    const from = new Date(v.approved_from || v.approvedFrom);
-    const to = new Date(v.approved_to || v.approvedTo);
-    if (isNaN(from.getTime()) || isNaN(to.getTime())) return false;
-    return from <= todayEnd && to >= todayStart;
-  });
+  // The backend (/registrations/today) already scopes the list to today's
+  // relevant visitors — checked-in visitors plus pending/approved whose window
+  // overlaps today, respecting recurring days — so trust that set directly
+  // rather than re-filtering here (the gate payload has no approved window).
+  const filtered = visitors;
   const onSite = filtered.filter((v) => v.status === "checked_in");
   const expected = filtered.filter((v) => v.status !== "checked_in");
 

@@ -204,13 +204,8 @@ export default function SummaryPage() {
     clone.style.minWidth = `${CARD_WIDTH}px`;
     document.body.appendChild(clone);
 
-    // Ensure custom fonts (DINNextLTArabic, Comfortaa) are fully loaded before capture
+    // Ensure the in-use fonts (loaded via next/font) are ready before capture
     await document.fonts.ready;
-    await Promise.allSettled([
-      document.fonts.load("700 16px DINNextLTArabic"),
-      document.fonts.load("400 16px DINNextLTArabic"),
-      document.fonts.load("700 16px Comfortaa"),
-    ]);
 
     const canvas = await html2canvas(clone, {
       backgroundColor: null,
