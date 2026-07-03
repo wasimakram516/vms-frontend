@@ -122,6 +122,10 @@ const gateStaff = {
     todaySignOutMessage: "Sign out {{name}}?",
     todaySigningOut: "Signing Out…",
     todaySignedOut: "{{name}} signed out",
+    todayCheckInTitle: "Check In Visitor",
+    todayCheckInMessage: "Check in {{name}} now?",
+    todayCheckingIn: "Checking In…",
+    todayCheckedIn: "{{name}} checked in",
 
     // VIP fast track modal
     vipLoadFieldsError: "Failed to load VIP fields",
@@ -249,6 +253,10 @@ const gateStaff = {
     todaySignOutMessage: "تسجيل خروج {{name}}؟",
     todaySigningOut: "جارٍ تسجيل الخروج…",
     todaySignedOut: "تم تسجيل خروج {{name}}",
+    todayCheckInTitle: "تسجيل دخول الزائر",
+    todayCheckInMessage: "تسجيل دخول {{name}} الآن؟",
+    todayCheckingIn: "جارٍ تسجيل الدخول…",
+    todayCheckedIn: "تم تسجيل دخول {{name}}",
 
     // VIP fast track modal
     vipLoadFieldsError: "فشل تحميل حقول VIP",

@@ -715,7 +715,11 @@ export default function StaffVerifyPage() {
   if (todayView) {
     return (
       <RoleGuard allowedRoles={["staff"]} allowedStaffTypes={["gate"]}>
-        <GateTodayView onBack={() => setTodayView(false)} canCheckout={canCheckout} />
+        <GateTodayView
+          onBack={() => setTodayView(false)}
+          canCheckin={canCheckin}
+          canCheckout={canCheckout}
+        />
       </RoleGuard>
     );
   }
