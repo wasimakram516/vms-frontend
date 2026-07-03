@@ -48,7 +48,11 @@ const STATUS_CONFIG = {
   },
 };
 
-export default function GateTodayView({ onBack, canCheckout = true }) {
+export default function GateTodayView({
+  onBack,
+  canCheckin = false,
+  canCheckout = true,
+}) {
   const theme = useTheme();
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
@@ -59,6 +63,8 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
   const [loading, setLoading] = useState(true);
   const [checkOutTarget, setCheckOutTarget] = useState(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [checkInTarget, setCheckInTarget] = useState(null);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -99,6 +105,36 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
     } finally {
       setSigningOut(false);
       setCheckOutTarget(null);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    if (!checkInTarget) return;
+    setCheckingIn(true);
+    try {
+      const updated = await updateStatus(checkInTarget.id, {
+        status: "checked_in",
+        clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      // withApiHandler surfaces backend errors (e.g. outside the approved
+      // window) as a toast; only handle the success path here.
+      if (!updated?.error) {
+        showMessage(
+          t.todayCheckedIn.replace(
+            "{{name}}",
+            checkInTarget.visitor?.fullName || t.gateVisitor,
+          ),
+          "success",
+        );
+        setVisitors((prev) =>
+          prev.map((v) =>
+            v.id === checkInTarget.id ? { ...v, status: "checked_in" } : v,
+          ),
+        );
+      }
+    } finally {
+      setCheckingIn(false);
+      setCheckInTarget(null);
     }
   };
 
@@ -296,6 +332,7 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
               const subtitle =
                 [company, dept].filter(Boolean).join("  ·  ") || null;
               const isCheckedIn = v.status === "checked_in";
+              const isApproved = v.status === "approved";
 
               return (
                 <Paper
@@ -464,6 +501,20 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
                       );
                     })()}
 
+                    {isApproved && canCheckin && (
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        color="primary"
+                        size="small"
+                        startIcon={<ICONS.login />}
+                        onClick={() => setCheckInTarget(v)}
+                        sx={{ borderRadius: 2, mt: 0.5 }}
+                      >
+                        {t.gateCheckIn}
+                      </Button>
+                    )}
+
                     {isCheckedIn && canCheckout && (
                       <Button
                         fullWidth
@@ -486,6 +537,25 @@ export default function GateTodayView({ onBack, canCheckout = true }) {
               ))}
           </>
         )}
+
+      <ConfirmationDialog
+        open={Boolean(checkInTarget)}
+        onClose={() => !checkingIn && setCheckInTarget(null)}
+        onConfirm={handleCheckIn}
+        title={t.todayCheckInTitle}
+        message={t.todayCheckInMessage.replace(
+          "{{name}}",
+          checkInTarget?.visitor?.fullName || t.gateVisitor,
+        )}
+        confirmButtonText={checkingIn ? t.todayCheckingIn : t.gateCheckIn}
+        confirmButtonIcon={
+          checkingIn ? (
+            <CircularProgress size={16} color="inherit" />
+          ) : (
+            <ICONS.login fontSize="small" />
+          )
+        }
+      />
 
       <ConfirmationDialog
         open={Boolean(checkOutTarget)}
