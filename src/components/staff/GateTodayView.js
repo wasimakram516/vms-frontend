@@ -505,7 +505,7 @@ export default function GateTodayView({
                       <Button
                         fullWidth
                         variant="contained"
-                        color="primary"
+                        color="success"
                         size="small"
                         startIcon={<ICONS.login />}
                         onClick={() => setCheckInTarget(v)}
@@ -547,6 +547,7 @@ export default function GateTodayView({
           "{{name}}",
           checkInTarget?.visitor?.fullName || t.gateVisitor,
         )}
+        confirmButtonColor="success"
         confirmButtonText={checkingIn ? t.todayCheckingIn : t.gateCheckIn}
         confirmButtonIcon={
           checkingIn ? (
@@ -566,6 +567,7 @@ export default function GateTodayView({
           "{{name}}",
           checkOutTarget?.visitor?.fullName || t.gateVisitor,
         )}
+        confirmButtonColor="error"
         confirmButtonText={signingOut ? t.todaySigningOut : t.todaySignOut}
         confirmButtonIcon={
           signingOut ? (
