@@ -74,6 +74,13 @@ const getAllowedHours12 = () => buildAllHours();
 /** Return all minutes (no filtering — backend flags outside hours). */
 const getAllowedMinutes = () => MINUTES;
 
+/** Format a working-hours boundary as a readable 12-hour AM/PM string (e.g. "8:00 AM"). */
+const fmtHour12 = (h24, min = 0) => {
+  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  const ampm = h24 < 12 ? "AM" : "PM";
+  return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+};
+
 export default function BookingPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState, setFlowState } = useVisitor();
@@ -980,11 +987,11 @@ export default function BookingPage() {
                             <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
                               {t.bookingFullDayWorkingHoursInfo
                                 .replace("{{start}}", hostConfig
-                                  ? `${String(hostConfig.start).padStart(2,"0")}:${String(hostConfig.startMinute??0).padStart(2,"0")}`
-                                  : "08:00")
+                                  ? fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0)
+                                  : "8:00 AM")
                                 .replace("{{end}}", hostConfig
-                                  ? `${String(hostConfig.end).padStart(2,"0")}:${String(hostConfig.endMinute??0).padStart(2,"0")}`
-                                  : "17:00")}
+                                  ? fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0)
+                                  : "5:00 PM")}
                             </Typography>
                           </Stack>
                         </Box>
