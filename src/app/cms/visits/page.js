@@ -718,7 +718,7 @@ export default function CmsVisitsPage() {
   const [scheduledDate, setScheduledDate] = useState(null);
   const [scheduledFrom, setScheduledFrom] = useState("");
   const [scheduledTo, setScheduledTo] = useState("");
-  const [scheduleType, setScheduleType] = useState("preset");
+  const [scheduleType, setScheduleType] = useState("custom");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
   const [dayTypeTab, setDayTypeTab] = useState("working");
   const [specificDays, setSpecificDays] = useState([]);
@@ -1322,6 +1322,110 @@ export default function CmsVisitsPage() {
     return toMinutes - fromMinutes;
   };
 
+  // Format a working-hours boundary as a readable 12-hour AM/PM string (e.g. "8:00 AM").
+  const fmtHour12 = (h24, min = 0) => {
+    const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+    const ampm = h24 < 12 ? "AM" : "PM";
+    return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+  };
+
+  // Mirror the backend's outside-working-hours / outside-working-days flags for the
+  // schedule currently selected in the dialog, so the CMS warns the same way the
+  // public booking page respects the host's working window and working days.
+  const getScheduleOutsideInfo = () => {
+    const startH = hostConfig?.start ?? 8;
+    const startM = hostConfig?.startMinute ?? 0;
+    const endH = hostConfig?.end ?? 17;
+    const endM = hostConfig?.endMinute ?? 0;
+    const startMoD = startH * 60 + startM;
+    const endMoD = endH * 60 + endM;
+    const workingDays = hostConfig?.workingDays ?? [0, 1, 2, 3, 4];
+    const weekendDays = hostConfig?.weekendDays ?? [5, 6];
+    const parseMoD = (val) => {
+      const [h, m] = (val || "00:00").split(":").map(Number);
+      return h * 60 + m;
+    };
+
+    // Effective time window. Full Day always snaps to the exact working window.
+    let fromMoD;
+    let toMoD;
+    if (scheduleType === "preset" && selectedPreset === "fullDay") {
+      fromMoD = startMoD;
+      toMoD = endMoD;
+    } else {
+      fromMoD = parseMoD(scheduledFrom);
+      toMoD = parseMoD(scheduledTo);
+    }
+    const outsideHours = fromMoD < startMoD || toMoD > endMoD;
+
+    // Effective day(s) this schedule targets.
+    let outsideDays = false;
+    let offDays = [];
+    if (
+      scheduleType === "preset" &&
+      (selectedPreset === "fullWeek" || selectedPreset === "fullMonth")
+    ) {
+      const days = dayTypeTab === "working" ? workingDays : weekendDays;
+      offDays = days.filter((d) => weekendDays.includes(d));
+      outsideDays = offDays.length > 0;
+    } else if (scheduleType === "preset" && selectedPreset === "specificDays") {
+      offDays = specificDays.filter((d) => weekendDays.includes(d));
+      outsideDays = offDays.length > 0;
+    } else if (scheduledDate) {
+      // custom or fullDay → single calendar day
+      const dow = scheduledDate.day();
+      if (!workingDays.includes(dow)) {
+        outsideDays = true;
+        offDays = [dow];
+      }
+    }
+
+    return {
+      outsideHours,
+      outsideDays,
+      offDays,
+      startH,
+      startM,
+      endH,
+      endM,
+    };
+  };
+
+  const renderScheduleOutsideWarning = () => {
+    const info = getScheduleOutsideInfo();
+    if (!info.outsideHours && !info.outsideDays) return null;
+    const parts = [];
+    if (info.outsideDays) {
+      parts.push(
+        info.offDays.length
+          ? `outside working days (${info.offDays.map((d) => DAY_LABELS[d]).join(", ")})`
+          : "outside working days",
+      );
+    }
+    if (info.outsideHours) {
+      parts.push(
+        `outside working hours (${fmtHour12(info.startH, info.startM)} – ${fmtHour12(info.endH, info.endM)})`,
+      );
+    }
+    return (
+      <Box sx={{ mt: 1.5, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <ICONS.warning
+            sx={{ fontSize: 14, color: "warning.contrastText" }}
+          />
+          <Typography
+            variant="caption"
+            fontWeight={700}
+            color="warning.contrastText"
+            sx={{ fontSize: 11 }}
+          >
+            This visit falls {parts.join(" and ")}.
+          </Typography>
+        </Stack>
+      </Box>
+    );
+  };
+
   // ── Approve flow ──
   const openApprove = async (row, pendingStatus, isOverrideAction = false) => {
     setFetchingProfile(true);
@@ -1345,6 +1449,12 @@ export default function CmsVisitsPage() {
       if (rType === "specific_days") {
         detectedType = "preset";
         detectedPreset = "specificDays";
+      } else if (rType === "full_week") {
+        detectedType = "preset";
+        detectedPreset = "fullWeek";
+      } else if (rType === "full_month") {
+        detectedType = "preset";
+        detectedPreset = "fullMonth";
       } else if (scheduleFrom && scheduleTo) {
         const dateFrom = getLocalDate(scheduleFrom);
         const dateTo = getLocalDate(scheduleTo);
@@ -1356,7 +1466,15 @@ export default function CmsVisitsPage() {
           const d2 = dayjs(dateTo);
           const daysDiff = d2.diff(d1, "days");
 
-          if ((daysDiff === 0 || daysDiff === 1) && timeFrom === timeTo) {
+          // Full Day = same calendar day spanning exactly the host working window
+          const startStr = hostConfig
+            ? `${String(hostConfig.start).padStart(2, "0")}:${String(hostConfig.startMinute ?? 0).padStart(2, "0")}`
+            : "08:00";
+          const endStr = hostConfig
+            ? `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`
+            : "17:00";
+
+          if (daysDiff === 0 && timeFrom === startStr && timeTo === endStr) {
             detectedType = "preset";
             detectedPreset = "fullDay";
           } else if (daysDiff === 6) {
@@ -1497,12 +1615,13 @@ export default function CmsVisitsPage() {
           const endM = hostConfig?.endMinute ?? 0;
           fromTime = `${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}`;
           toTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+          // Full Day = same calendar day, working-hours window (mirrors public booking page)
           from = from.hour(startH).minute(startM);
-          to = to.add(1, "day").hour(endH).minute(endM);
+          to = to.hour(endH).minute(endM);
         } else if (selectedPreset === "fullWeek") {
           to = from.clone().add(6, "days");
         } else if (selectedPreset === "fullMonth") {
-          to = from.clone().add(30, "days");
+          to = from.clone().endOf("month");
         } else if (selectedPreset === "specificDays") {
           to = specificEndDate
             ? specificEndDate.clone()
@@ -1536,7 +1655,8 @@ export default function CmsVisitsPage() {
               ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
               : (hostConfig?.weekendDays ?? [5, 6]);
           return {
-            recurringType: "specific_days",
+            recurringType:
+              selectedPreset === "fullWeek" ? "full_week" : "full_month",
             recurringDays: days,
             recurringTimeFrom: scheduledFrom,
             recurringTimeTo: scheduledTo,
@@ -1698,7 +1818,7 @@ export default function CmsVisitsPage() {
         ? `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`
         : "18:00",
     );
-    setScheduleType("preset");
+    setScheduleType("custom");
     setSelectedPreset("fullDay");
     setDayTypeTab("working");
     setSpecificDays([]);
@@ -1786,12 +1906,13 @@ export default function CmsVisitsPage() {
         const endM = hostConfig?.endMinute ?? 0;
         fromTime = `${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}`;
         toTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+        // Full Day = same calendar day, working-hours window (mirrors public booking page)
         from = from.hour(startH).minute(startM);
-        to = to.add(1, "day").hour(endH).minute(endM);
+        to = to.hour(endH).minute(endM);
       } else if (selectedPreset === "fullWeek") {
         to = from.clone().add(6, "days");
       } else if (selectedPreset === "fullMonth") {
-        to = from.clone().add(30, "days");
+        to = from.clone().endOf("month");
       } else if (selectedPreset === "specificDays") {
         to = specificEndDate
           ? specificEndDate.clone()
@@ -1827,7 +1948,8 @@ export default function CmsVisitsPage() {
             ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
             : (hostConfig?.weekendDays ?? [5, 6]);
         return {
-          recurringType: "specific_days",
+          recurringType:
+            selectedPreset === "fullWeek" ? "full_week" : "full_month",
           recurringDays: days,
           recurringTimeFrom: scheduledFrom,
           recurringTimeTo: scheduledTo,
@@ -1919,7 +2041,7 @@ export default function CmsVisitsPage() {
         ? `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`
         : "18:00",
     );
-    setScheduleType("preset");
+    setScheduleType("custom");
     setSelectedPreset("fullDay");
     setDayTypeTab("working");
     setSpecificDays([]);
@@ -2023,12 +2145,13 @@ export default function CmsVisitsPage() {
           const endM = hostConfig?.endMinute ?? 0;
           fromTime = `${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}`;
           toTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+          // Full Day = same calendar day, working-hours window (mirrors public booking page)
           from = from.hour(startH).minute(startM);
-          to = to.add(1, "day").hour(endH).minute(endM);
+          to = to.hour(endH).minute(endM);
         } else if (selectedPreset === "fullWeek") {
           to = from.clone().add(6, "days");
         } else if (selectedPreset === "fullMonth") {
-          to = from.clone().add(30, "days");
+          to = from.clone().endOf("month");
         } else if (selectedPreset === "specificDays") {
           to = specificEndDate
             ? specificEndDate.clone()
@@ -2060,6 +2183,18 @@ export default function CmsVisitsPage() {
       ) {
         sharedPayload.recurringType = "specific_days";
         sharedPayload.recurringDays = specificDays;
+        sharedPayload.recurringTimeFrom = scheduledFrom;
+        sharedPayload.recurringTimeTo = scheduledTo;
+      } else if (
+        scheduleType === "preset" &&
+        (selectedPreset === "fullWeek" || selectedPreset === "fullMonth")
+      ) {
+        sharedPayload.recurringType =
+          selectedPreset === "fullWeek" ? "full_week" : "full_month";
+        sharedPayload.recurringDays =
+          dayTypeTab === "working"
+            ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+            : (hostConfig?.weekendDays ?? [5, 6]);
         sharedPayload.recurringTimeFrom = scheduledFrom;
         sharedPayload.recurringTimeTo = scheduledTo;
       }
@@ -3661,10 +3796,10 @@ export default function CmsVisitsPage() {
                             }}
                           >
                             <Tab
-                              value="preset"
-                              icon={<ICONS.event fontSize="small" />}
+                              value="custom"
+                              icon={<ICONS.time fontSize="small" />}
                               iconPosition="start"
-                              label="Preset"
+                              label="Custom"
                               sx={{
                                 minHeight: 38,
                                 borderRadius: 999,
@@ -3678,10 +3813,10 @@ export default function CmsVisitsPage() {
                               }}
                             />
                             <Tab
-                              value="custom"
-                              icon={<ICONS.time fontSize="small" />}
+                              value="preset"
+                              icon={<ICONS.event fontSize="small" />}
                               iconPosition="start"
-                              label="Custom"
+                              label="Preset"
                               sx={{
                                 minHeight: 38,
                                 borderRadius: 999,
@@ -3838,17 +3973,21 @@ export default function CmsVisitsPage() {
                                           const date = scheduledDate;
                                           let from = date.clone();
                                           let to = date.clone();
-                                          if (selectedPreset === "fullDay")
-                                            to = to.add(1, "day");
-                                          else if (
-                                            selectedPreset === "fullWeek"
-                                          )
-                                            to = to.add(6, "days");
-                                          else if (
-                                            selectedPreset === "fullMonth"
-                                          )
-                                            to = to.add(30, "days");
-                                          return `${from.format("DD MMMM YYYY")} to ${to.format("DD MMMM YYYY")}`;
+                                          if (selectedPreset === "fullDay") {
+                                            const startH = hostConfig?.start ?? 8;
+                                            const startM = hostConfig?.startMinute ?? 0;
+                                            const endH = hostConfig?.end ?? 17;
+                                            const endM = hostConfig?.endMinute ?? 0;
+                                            from = from.startOf("day").hour(startH).minute(startM);
+                                            to = date.clone().startOf("day").hour(endH).minute(endM);
+                                          } else if (selectedPreset === "fullWeek") {
+                                            from = from.startOf("day");
+                                            to = from.add(6, "days").endOf("day");
+                                          } else if (selectedPreset === "fullMonth") {
+                                            from = from.startOf("day");
+                                            to = from.endOf("month");
+                                          }
+                                          return `${from.format("DD MMMM YYYY, hh:mm A")} → ${to.format("DD MMMM YYYY, hh:mm A")}`;
                                         })()}
                                   </Typography>
                                 </Box>
@@ -4169,15 +4308,15 @@ export default function CmsVisitsPage() {
                                         ? t.bookingFullDayWorkingHoursInfo
                                             .replace(
                                               "{{start}}",
-                                              `${String(hostConfig.start).padStart(2, "0")}:${String(hostConfig.startMinute ?? 0).padStart(2, "0")}`,
+                                              fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0),
                                             )
                                             .replace(
                                               "{{end}}",
-                                              `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`,
+                                              fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0),
                                             )
                                         : t.bookingFullDayWorkingHoursInfo
-                                            .replace("{{start}}", "08:00")
-                                            .replace("{{end}}", "17:00")}
+                                            .replace("{{start}}", "8:00 AM")
+                                            .replace("{{end}}", "5:00 PM")}
                                     </Typography>
                                   </Stack>
                                 </Box>
@@ -4216,36 +4355,11 @@ export default function CmsVisitsPage() {
                                         </Box>
                                       );
                                     })()}
-                                    {hostConfig &&
-                                      (() => {
-                                        const parseMoD = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-                                        const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-                                        const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
-                                        const fromMoD = parseMoD(scheduledFrom || "08:00");
-                                        const toMoD = parseMoD(scheduledTo || "17:00");
-                                        if (fromMoD >= startMoD && toMoD <= endMoD) return null;
-                                        const fmt = (h24, min) => {
-                                          const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-                                          const ampm = h24 < 12 ? "AM" : "PM";
-                                          return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
-                                        };
-                                        const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
-                                        const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
-                                        return (
-                                          <Box sx={{ mt: 1, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
-                                            <Stack direction="row" spacing={1} alignItems="center">
-                                              <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
-                                              <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
-                                                {t.bookingSelectedTimeOutside.replace("{{start}}", s).replace("{{end}}", e)}
-                                              </Typography>
-                                            </Stack>
-                                          </Box>
-                                        );
-                                      })()}
                                   </>
                                 )}
                             </Box>
                           )}
+                          {renderScheduleOutsideWarning()}
                         </Stack>
                       </Grid>
                     </Grid>
@@ -5946,10 +6060,10 @@ export default function CmsVisitsPage() {
                       }}
                     >
                       <Tab
-                        value="preset"
-                        icon={<ICONS.event fontSize="small" />}
+                        value="custom"
+                        icon={<ICONS.time fontSize="small" />}
                         iconPosition="start"
-                        label="Preset"
+                        label="Custom"
                         sx={{
                           minHeight: 38,
                           borderRadius: 999,
@@ -5963,10 +6077,10 @@ export default function CmsVisitsPage() {
                         }}
                       />
                       <Tab
-                        value="custom"
-                        icon={<ICONS.time fontSize="small" />}
+                        value="preset"
+                        icon={<ICONS.event fontSize="small" />}
                         iconPosition="start"
-                        label="Custom"
+                        label="Preset"
                         sx={{
                           minHeight: 38,
                           borderRadius: 999,
@@ -6122,13 +6236,20 @@ export default function CmsVisitsPage() {
                                     let from = date.clone();
                                     let to = date.clone();
                                     if (selectedPreset === "fullDay") {
-                                      to = to.add(1, "day");
+                                      const startH = hostConfig?.start ?? 8;
+                                      const startM = hostConfig?.startMinute ?? 0;
+                                      const endH = hostConfig?.end ?? 17;
+                                      const endM = hostConfig?.endMinute ?? 0;
+                                      from = from.startOf("day").hour(startH).minute(startM);
+                                      to = date.clone().startOf("day").hour(endH).minute(endM);
                                     } else if (selectedPreset === "fullWeek") {
-                                      to = to.add(6, "days");
+                                      from = from.startOf("day");
+                                      to = from.add(6, "days").endOf("day");
                                     } else if (selectedPreset === "fullMonth") {
-                                      to = to.add(30, "days");
+                                      from = from.startOf("day");
+                                      to = from.endOf("month");
                                     }
-                                    return `${from.format("DD MMMM YYYY")} to ${to.format("DD MMMM YYYY")}`;
+                                    return `${from.format("DD MMMM YYYY, hh:mm A")} → ${to.format("DD MMMM YYYY, hh:mm A")}`;
                                   })()}
                             </Typography>
                           </Box>
@@ -6435,15 +6556,15 @@ export default function CmsVisitsPage() {
                                   ? t.bookingFullDayWorkingHoursInfo
                                       .replace(
                                         "{{start}}",
-                                        `${String(hostConfig.start).padStart(2, "0")}:${String(hostConfig.startMinute ?? 0).padStart(2, "0")}`,
+                                        fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0),
                                       )
                                       .replace(
                                         "{{end}}",
-                                        `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`,
+                                        fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0),
                                       )
                                   : t.bookingFullDayWorkingHoursInfo
-                                      .replace("{{start}}", "08:00")
-                                      .replace("{{end}}", "17:00")}
+                                      .replace("{{start}}", "8:00 AM")
+                                      .replace("{{end}}", "5:00 PM")}
                               </Typography>
                             </Stack>
                           </Box>
@@ -6482,36 +6603,11 @@ export default function CmsVisitsPage() {
                                 </Box>
                               );
                             })()}
-                            {hostConfig &&
-                              (() => {
-                                const parseMoD = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-                                const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-                                const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
-                                const fromMoD = parseMoD(scheduledFrom || "08:00");
-                                const toMoD = parseMoD(scheduledTo || "17:00");
-                                if (fromMoD >= startMoD && toMoD <= endMoD) return null;
-                                const fmt = (h24, min) => {
-                                  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-                                  const ampm = h24 < 12 ? "AM" : "PM";
-                                  return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
-                                };
-                                const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
-                                const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
-                                return (
-                                  <Box sx={{ mt: 1, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
-                                    <Stack direction="row" spacing={1} alignItems="center">
-                                      <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
-                                      <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
-                                        {t.bookingSelectedTimeOutside.replace("{{start}}", s).replace("{{end}}", e)}
-                                      </Typography>
-                                    </Stack>
-                                  </Box>
-                                );
-                              })()}
                           </>
                         )}
                       </Box>
                     )}
+                    {renderScheduleOutsideWarning()}
                   </Stack>
                 </Grid>
               </Grid>
@@ -7239,10 +7335,10 @@ export default function CmsVisitsPage() {
                           }}
                         >
                           <Tab
-                            value="preset"
-                            icon={<ICONS.event fontSize="small" />}
+                            value="custom"
+                            icon={<ICONS.time fontSize="small" />}
                             iconPosition="start"
-                            label="Preset"
+                            label="Custom"
                             sx={{
                               minHeight: 38,
                               borderRadius: 999,
@@ -7256,10 +7352,10 @@ export default function CmsVisitsPage() {
                             }}
                           />
                           <Tab
-                            value="custom"
-                            icon={<ICONS.time fontSize="small" />}
+                            value="preset"
+                            icon={<ICONS.event fontSize="small" />}
                             iconPosition="start"
-                            label="Custom"
+                            label="Preset"
                             sx={{
                               minHeight: 38,
                               borderRadius: 999,
@@ -7411,13 +7507,21 @@ export default function CmsVisitsPage() {
                                         const date = scheduledDate;
                                         let from = date.clone();
                                         let to = date.clone();
-                                        if (selectedPreset === "fullDay")
-                                          to = to.add(1, "day");
-                                        else if (selectedPreset === "fullWeek")
-                                          to = to.add(6, "days");
-                                        else if (selectedPreset === "fullMonth")
-                                          to = to.add(30, "days");
-                                        return `${from.format("DD MMMM YYYY")} to ${to.format("DD MMMM YYYY")}`;
+                                        if (selectedPreset === "fullDay") {
+                                          const startH = hostConfig?.start ?? 8;
+                                          const startM = hostConfig?.startMinute ?? 0;
+                                          const endH = hostConfig?.end ?? 17;
+                                          const endM = hostConfig?.endMinute ?? 0;
+                                          from = from.startOf("day").hour(startH).minute(startM);
+                                          to = date.clone().startOf("day").hour(endH).minute(endM);
+                                        } else if (selectedPreset === "fullWeek") {
+                                          from = from.startOf("day");
+                                          to = from.add(6, "days").endOf("day");
+                                        } else if (selectedPreset === "fullMonth") {
+                                          from = from.startOf("day");
+                                          to = from.endOf("month");
+                                        }
+                                        return `${from.format("DD MMMM YYYY, hh:mm A")} → ${to.format("DD MMMM YYYY, hh:mm A")}`;
                                       })()}
                                 </Typography>
                               </Box>
@@ -7726,15 +7830,15 @@ export default function CmsVisitsPage() {
                                       ? t.bookingFullDayWorkingHoursInfo
                                           .replace(
                                             "{{start}}",
-                                            `${String(hostConfig.start).padStart(2, "0")}:${String(hostConfig.startMinute ?? 0).padStart(2, "0")}`,
+                                            fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0),
                                           )
                                           .replace(
                                             "{{end}}",
-                                            `${String(hostConfig.end).padStart(2, "0")}:${String(hostConfig.endMinute ?? 0).padStart(2, "0")}`,
+                                            fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0),
                                           )
                                       : t.bookingFullDayWorkingHoursInfo
-                                          .replace("{{start}}", "08:00")
-                                          .replace("{{end}}", "17:00")}
+                                          .replace("{{start}}", "8:00 AM")
+                                          .replace("{{end}}", "5:00 PM")}
                                   </Typography>
                                 </Stack>
                               </Box>
@@ -7769,36 +7873,11 @@ export default function CmsVisitsPage() {
                                     </Stack>
                                   </Box>
                                 )}
-                                {hostConfig &&
-                                  (() => {
-                                    const parseMoD = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-                                    const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-                                    const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
-                                    const fromMoD = parseMoD(scheduledFrom || "08:00");
-                                    const toMoD = parseMoD(scheduledTo || "17:00");
-                                    if (fromMoD >= startMoD && toMoD <= endMoD) return null;
-                                    const fmt = (h24, min) => {
-                                      const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-                                      const ampm = h24 < 12 ? "AM" : "PM";
-                                      return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
-                                    };
-                                    const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
-                                    const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
-                                    return (
-                                      <Box sx={{ mt: 1, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                          <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
-                                          <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
-                                            {t.bookingSelectedTimeOutside.replace("{{start}}", s).replace("{{end}}", e)}
-                                          </Typography>
-                                        </Stack>
-                                      </Box>
-                                    );
-                                  })()}
                               </>
                             )}
                           </Box>
                         )}
+                        {renderScheduleOutsideWarning()}
                       </Stack>
                     </Grid>
                   </Grid>
