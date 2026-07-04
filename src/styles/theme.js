@@ -11,6 +11,10 @@ export const getTheme = (mode, direction = "ltr") => {
     ? "var(--font-arabic), var(--font-arabic-fallback)"
     : "var(--font-latin), var(--font-latin-fallback)";
 
+  // Themed scrollbars — replace the default browser scrollbar everywhere.
+  const scrollbarThumb = isDark ? "rgba(255, 255, 255, 0.22)" : "rgba(0, 0, 0, 0.22)";
+  const scrollbarThumbHover = isDark ? "rgba(255, 255, 255, 0.4)" : "rgba(0, 0, 0, 0.4)";
+
   return createTheme({
     direction,
     palette: {
@@ -50,6 +54,32 @@ export const getTheme = (mode, direction = "ltr") => {
     components: {
       MuiCssBaseline: {
         styleOverrides: {
+          // Firefox — thin themed scrollbar for every scrollable element
+          "*": {
+            scrollbarWidth: "thin",
+            scrollbarColor: `${scrollbarThumb} transparent`,
+          },
+          // WebKit / Chromium / Edge — hide the default chrome and draw a
+          // rounded, theme-tinted thumb on a transparent track
+          "*::-webkit-scrollbar": {
+            width: 10,
+            height: 10,
+          },
+          "*::-webkit-scrollbar-track": {
+            backgroundColor: "transparent",
+          },
+          "*::-webkit-scrollbar-thumb": {
+            backgroundColor: scrollbarThumb,
+            borderRadius: 999,
+            border: "2px solid transparent",
+            backgroundClip: "padding-box",
+          },
+          "*::-webkit-scrollbar-thumb:hover": {
+            backgroundColor: scrollbarThumbHover,
+          },
+          "*::-webkit-scrollbar-corner": {
+            backgroundColor: "transparent",
+          },
           body: {
             transition: "background-color 0.3s ease, color 0.3s ease",
             backgroundColor: isDark ? darkBackground : "#f8f9fa",
