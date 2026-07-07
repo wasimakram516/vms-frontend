@@ -92,6 +92,7 @@ const gateStaff = {
     gateCheckOut: "Check Out",
     gateCheckInAgain: "Check In Again",
     gateVipCheckIn: "VIP Check In",
+    gateMultiCheckinAllowed: "Multi Check-in Allowed",
 
     // Assembly mode
     assemblyTitle: "ASSEMBLY MODE",
@@ -223,6 +224,7 @@ const gateStaff = {
     gateCheckOut: "تسجيل الخروج",
     gateCheckInAgain: "تسجيل الدخول مرة أخرى",
     gateVipCheckIn: "تسجيل دخول VIP",
+    gateMultiCheckinAllowed: "يُسمح بتسجيل الدخول المتعدد",
 
     // Assembly mode
     assemblyTitle: "وضع التجمع",
