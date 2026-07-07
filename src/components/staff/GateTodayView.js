@@ -7,6 +7,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Paper,
   Stack,
@@ -107,6 +111,11 @@ export default function GateTodayView({
       setCheckOutTarget(null);
     }
   };
+
+  // Registered ID/passport number for the visitor pending check-in, if any —
+  // gates the confirmation dialog into an explicit ID-verification step,
+  // matching the scanner flow's behavior.
+  const checkInIdNumber = checkInTarget?.visitor?.idNumber || null;
 
   const handleCheckIn = async () => {
     if (!checkInTarget) return;
@@ -333,6 +342,12 @@ export default function GateTodayView({
                 [company, dept].filter(Boolean).join("  ·  ") || null;
               const isCheckedIn = v.status === "checked_in";
               const isApproved = v.status === "approved";
+              const multiCheckinAllowed =
+                v.allowMultiCheckin ?? v.allow_multi_checkin ?? false;
+              // Multi-checkin visitors can be checked in again after being
+              // checked out — mirrors the scanner flow's re-check-in support.
+              const canReCheckIn =
+                v.status === "checked_out" && multiCheckinAllowed;
 
               return (
                 <Paper
@@ -477,6 +492,15 @@ export default function GateTodayView({
                           }}
                         />
                       )}
+                      {canReCheckIn && (
+                        <Chip
+                          icon={<ICONS.login style={{ fontSize: 14 }} />}
+                          label={t.gateMultiCheckinAllowed}
+                          color="info"
+                          size="small"
+                          sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }}
+                        />
+                      )}
                     </Stack>
 
                     {(() => {
@@ -501,7 +525,7 @@ export default function GateTodayView({
                       );
                     })()}
 
-                    {isApproved && canCheckin && (
+                    {(isApproved || canReCheckIn) && canCheckin && (
                       <Button
                         fullWidth
                         variant="contained"
@@ -511,7 +535,7 @@ export default function GateTodayView({
                         onClick={() => setCheckInTarget(v)}
                         sx={{ borderRadius: 2, mt: 0.5 }}
                       >
-                        {t.gateCheckIn}
+                        {canReCheckIn ? t.gateCheckInAgain : t.gateCheckIn}
                       </Button>
                     )}
 
@@ -538,25 +562,108 @@ export default function GateTodayView({
           </>
         )}
 
-      <ConfirmationDialog
+      {/* Check-in confirmation — mirrors the scanner's ID verification step:
+          when the visitor has a registered ID/passport on file, the gate
+          staff must see it and explicitly confirm it before checking in. */}
+      <Dialog
         open={Boolean(checkInTarget)}
         onClose={() => !checkingIn && setCheckInTarget(null)}
-        onConfirm={handleCheckIn}
-        title={t.todayCheckInTitle}
-        message={t.todayCheckInMessage.replace(
-          "{{name}}",
-          checkInTarget?.visitor?.fullName || t.gateVisitor,
-        )}
-        confirmButtonColor="success"
-        confirmButtonText={checkingIn ? t.todayCheckingIn : t.gateCheckIn}
-        confirmButtonIcon={
-          checkingIn ? (
-            <CircularProgress size={16} color="inherit" />
-          ) : (
-            <ICONS.login fontSize="small" />
-          )
-        }
-      />
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 4, p: 1 } }}
+      >
+        <DialogTitle
+          sx={{ display: "flex", alignItems: "center", gap: 1, fontWeight: 700 }}
+        >
+          {checkInIdNumber && (
+            <ICONS.vpnKey sx={{ color: "warning.main" }} />
+          )}
+          {checkInIdNumber ? t.gateIdVerificationRequired : t.todayCheckInTitle}
+        </DialogTitle>
+        <DialogContent>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mb: checkInIdNumber ? 2 : 0 }}
+          >
+            {checkInIdNumber
+              ? t.gateVerifyIdentityPrompt
+              : t.todayCheckInMessage.replace(
+                  "{{name}}",
+                  checkInTarget?.visitor?.fullName || t.gateVisitor,
+                )}
+          </Typography>
+          {checkInIdNumber && (
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: "warning.main",
+                bgcolor: isDark ? "rgba(237,108,2,0.08)" : "rgba(237,108,2,0.04)",
+              }}
+            >
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                display="block"
+                mb={0.5}
+              >
+                {t.gateFieldIdNumber}
+              </Typography>
+              <Typography variant="h6" fontWeight={700}>
+                {checkInIdNumber}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 2,
+            gap: 1,
+            display: "flex",
+            flexDirection: { xs: "column-reverse", sm: "row" },
+            justifyContent: { xs: "flex-end", sm: "space-between" },
+            width: "100%",
+            ...getStartIconSpacing(dir),
+          }}
+        >
+          <Button
+            fullWidth
+            variant="outlined"
+            color="inherit"
+            disabled={checkingIn}
+            onClick={() => setCheckInTarget(null)}
+            sx={{ borderRadius: 3, py: 1.5, whiteSpace: "nowrap" }}
+          >
+            {t.cancel}
+          </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            color="success"
+            disabled={checkingIn}
+            startIcon={
+              checkingIn ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : checkInIdNumber ? (
+                <ICONS.check />
+              ) : (
+                <ICONS.login fontSize="small" />
+              )
+            }
+            onClick={handleCheckIn}
+            sx={{ borderRadius: 3, py: 1.5, whiteSpace: "nowrap" }}
+          >
+            {checkingIn
+              ? t.todayCheckingIn
+              : checkInIdNumber
+                ? t.gateVerifyAndCheckIn
+                : t.gateCheckIn}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ConfirmationDialog
         open={Boolean(checkOutTarget)}
