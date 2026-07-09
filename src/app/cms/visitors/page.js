@@ -211,6 +211,23 @@ function getVisibleFieldValues(registration) {
   return map;
 }
 
+// Merge field values across a visitor's full registration history — the
+// most recent registration wins, but an older registration can still fill
+// in a field (e.g. ID Number) that a later, leaner follow-up visit never
+// re-collected. `registrations` is assumed newest-first (regs[0] latest).
+function mergeFieldValuesAcrossHistory(registrations) {
+  const merged = {};
+  [...(registrations || [])].reverse().forEach((reg) => {
+    const visible = getVisibleFieldValues(reg);
+    Object.entries(visible).forEach(([key, val]) => {
+      if (val != null && String(val).trim() !== "") {
+        merged[key] = val;
+      }
+    });
+  });
+  return merged;
+}
+
 export default function VisitorsPage() {
   const theme = useTheme();
   const { mode } = useColorMode();
@@ -258,48 +275,52 @@ export default function VisitorsPage() {
         visitors.map(async (v) => {
           try {
             const regs = await getRegistrations(null, {}, v.id);
-            if (Array.isArray(regs) && regs.length > 0) {
-              const latest = regs[0];
-              if (Array.isArray(latest.fieldValues)) {
-                latest.fieldValues.forEach((fv) => {
-                  const key =
-                    fv.customField?.fieldKey || fv.customField?.field_key;
-                  const label = fv.customField?.label || "";
-                  const k = (key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                  const isId = [
-                    "civilid",
-                    "omanid",
-                    "omanidnumber",
-                    "idnumber",
-                    "idnumberoman",
-                    "passport",
-                    "passportnumber",
-                    "nationalid",
-                    "nationalidnumber",
-                    "eid",
-                    "idcard",
-                    "idcardnumber",
-                    "identificationnumber",
-                    "documentnumber",
-                  ].includes(k);
-                  if (isId && fv.value) {
-                    v._idValue = fv.value;
-                    v._idLabel = label;
-                  }
-                  const isCompany = [
-                    "company",
-                    "companyname",
-                    "company_name",
-                    "organization",
-                    "organisation",
-                    "employer",
-                  ].includes(k);
-                  if (isCompany && fv.value && !v.companyName) {
-                    v.companyName = fv.value;
-                  }
-                });
-              }
-            }
+            const list = Array.isArray(regs) ? regs : [];
+            // Walk oldest → newest so the most recent registration's value
+            // wins, but an older registration can still supply a field
+            // (e.g. ID Number) that a later, leaner follow-up visit never
+            // re-collected — keeps list cards consistent with the Details
+            // and Edit dialogs, which already merge across full history.
+            [...list].reverse().forEach((reg) => {
+              if (!Array.isArray(reg.fieldValues)) return;
+              reg.fieldValues.forEach((fv) => {
+                const key =
+                  fv.customField?.fieldKey || fv.customField?.field_key;
+                const label = fv.customField?.label || "";
+                const k = (key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const isId = [
+                  "civilid",
+                  "omanid",
+                  "omanidnumber",
+                  "idnumber",
+                  "idnumberoman",
+                  "passport",
+                  "passportnumber",
+                  "nationalid",
+                  "nationalidnumber",
+                  "eid",
+                  "idcard",
+                  "idcardnumber",
+                  "identificationnumber",
+                  "documentnumber",
+                ].includes(k);
+                if (isId && fv.value) {
+                  v._idValue = fv.value;
+                  v._idLabel = label;
+                }
+                const isCompany = [
+                  "company",
+                  "companyname",
+                  "company_name",
+                  "organization",
+                  "organisation",
+                  "employer",
+                ].includes(k);
+                if (isCompany && fv.value) {
+                  v.companyName = fv.value;
+                }
+              });
+            });
           } catch {}
           return v;
         }),
@@ -526,20 +547,26 @@ export default function VisitorsPage() {
   const closeProfileDialog = () => setSelected(null);
 
   const handleEdit = async (visitor) => {
-    const fvMap = {};
+    let fvMap = {};
     let latestRegId = null;
     try {
       const regs = await getRegistrations(null, {}, visitor.id);
-      const latest = Array.isArray(regs) && regs.length > 0 ? regs[0] : null;
-      if (latest) {
-        latestRegId = latest.id;
-        if (Array.isArray(latest.fieldValues)) {
-          latest.fieldValues.forEach((fv) => {
-            const key = fv.customField?.fieldKey || fv.customField?.field_key;
-            if (key) fvMap[key] = fv.value;
-          });
-        }
-      }
+      const list = Array.isArray(regs) ? regs : [];
+      const latest = list.length > 0 ? list[0] : null;
+      if (latest) latestRegId = latest.id;
+
+      // Merge across the visitor's full registration history — a field like
+      // ID Number might only have been captured on an older registration,
+      // not the latest one, if a later follow-up visit didn't re-collect it.
+      // Mirrors handleOpenDetail's merge so Edit and View stay consistent.
+      fvMap = mergeFieldValuesAcrossHistory(list);
+
+      // Final fallback to the shared visitor profile for the base identity
+      // fields, in case no registration in history carries them at all.
+      if (!fvMap.full_name && visitor.fullName) fvMap.full_name = visitor.fullName;
+      if (!fvMap.email && visitor.email) fvMap.email = visitor.email;
+      if (!fvMap.phone && visitor.phone) fvMap.phone = visitor.phone;
+
       setEditCountryIsoCodes(
         buildEditCountryIsoCodes(latest || {}, activeCustomFields),
       );
