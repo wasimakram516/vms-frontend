@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import dayjs from "dayjs";
 import {
   Box,
@@ -52,7 +52,19 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import RecordMetadata from "@/components/RecordMetadata";
-import { getVisitorUsers, getVisitorUserById, updateVisitorUser } from "@/services/userService";
+import DynamicCustomField from "@/components/DynamicCustomField";
+import {
+  ID_ALIASES,
+  ID_TYPE_ALIASES,
+  findFieldByAliases,
+  collectSubtreeIds,
+  computeVisibleFieldIds,
+  getChildFieldIds,
+  pickId,
+  pickIdType,
+  pickCountry,
+} from "@/utils/customFieldUtils";
+import { getVisitorUsers, getVisitorUserById, updateVisitorUser, createVisitorUser, mapUserToFrontend } from "@/services/userService";
 import {
   getRegistrations,
   getRegistrationActivityLogs,
@@ -64,7 +76,9 @@ import { formatDate, formatDateTimeWithLocale } from "@/utils/dateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
-import { validatePhone, isRequiredField } from "@/utils/validationUtils";
+import { validatePhone } from "@/utils/validationUtils";
+import { visitorMatchesQuery } from "@/utils/visitorSearch";
+import { formatActorLabel } from "@/utils/actorLabel";
 
 const STATUS_CONFIG = {
   pending: {
@@ -229,7 +243,6 @@ function mergeFieldValuesAcrossHistory(registrations) {
 }
 
 export default function VisitorsPage() {
-  const theme = useTheme();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const { showMessage } = useMessage();
@@ -237,14 +250,20 @@ export default function VisitorsPage() {
   const { user } = useAuth();
   const isKitchenAdmin =
     user?.role === "admin" && user?.adminType === "kitchen";
+  const canCreateVisitor = canAccessResource(user, "visitors", {
+    hardcodeAllowed: true,
+    action: "create",
+  });
 
-  const [rows, setRows] = useState([]);
+  const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isListRefreshing, setIsListRefreshing] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(12);
+  const [totalCount, setTotalCount] = useState(0);
 
   const [selected, setSelected] = useState(null);
   const [fetchingProfile, setFetchingProfile] = useState(false);
@@ -264,68 +283,64 @@ export default function VisitorsPage() {
   });
   const [timelineLogs, setTimelineLogs] = useState([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [memberDialog, setMemberDialog] = useState({ open: false, member: null });
+
+  const [createModal, setCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    phoneIsoCode: DEFAULT_ISO_CODE,
+  });
+  const [createErrors, setCreateErrors] = useState({});
+  const [createIdValues, setCreateIdValues] = useState({});
+  const [createIdErrors, setCreateIdErrors] = useState({});
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+
+  // ── Dynamic ID fields (from custom fields, dependent visibility like /register) ──
+  const createIdSubtreeFields = useMemo(() => {
+    if (!activeCustomFields.length) return [];
+    const idTypeParent = findFieldByAliases(activeCustomFields, ID_TYPE_ALIASES);
+    let subtreeIds;
+    if (idTypeParent) {
+      subtreeIds = collectSubtreeIds(idTypeParent, activeCustomFields);
+    } else {
+      const standalone = findFieldByAliases(activeCustomFields, ID_ALIASES);
+      subtreeIds = standalone ? new Set([standalone.id]) : new Set();
+    }
+    if (!subtreeIds.size) return [];
+    const visibleIds = computeVisibleFieldIds(activeCustomFields, createIdValues);
+    return activeCustomFields.filter(
+      (f) => subtreeIds.has(f.id) && visibleIds.has(f.id),
+    );
+  }, [activeCustomFields, createIdValues]);
+
+  const createForcedRequiredIds = useMemo(() => {
+    const forced = new Set();
+    if (!activeCustomFields.length) return forced;
+    const visibleIds = computeVisibleFieldIds(activeCustomFields, createIdValues);
+    activeCustomFields.filter((f) => visibleIds.has(f.id)).forEach((parent) => {
+      const deps = parent.dependentsJson || parent.dependents_json;
+      if (!deps) return;
+      const val = createIdValues[parent.fieldKey || parent.field_key];
+      if (val && deps[val]?.areAllRequired) {
+        getChildFieldIds(deps[val]).forEach((id) => forced.add(id));
+      }
+    });
+    return forced;
+  }, [activeCustomFields, createIdValues]);
 
   const fetchVisitors = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     else setIsListRefreshing(true);
     try {
-      const data = await getVisitorUsers();
-      const visitors = Array.isArray(data) ? data : [];
-      const enriched = await Promise.all(
-        visitors.map(async (v) => {
-          try {
-            const regs = await getRegistrations(null, {}, v.id);
-            const list = Array.isArray(regs) ? regs : [];
-            // Walk oldest → newest so the most recent registration's value
-            // wins, but an older registration can still supply a field
-            // (e.g. ID Number) that a later, leaner follow-up visit never
-            // re-collected — keeps list cards consistent with the Details
-            // and Edit dialogs, which already merge across full history.
-            [...list].reverse().forEach((reg) => {
-              if (!Array.isArray(reg.fieldValues)) return;
-              reg.fieldValues.forEach((fv) => {
-                const key =
-                  fv.customField?.fieldKey || fv.customField?.field_key;
-                const label = fv.customField?.label || "";
-                const k = (key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                const isId = [
-                  "civilid",
-                  "omanid",
-                  "omanidnumber",
-                  "idnumber",
-                  "idnumberoman",
-                  "passport",
-                  "passportnumber",
-                  "nationalid",
-                  "nationalidnumber",
-                  "eid",
-                  "idcard",
-                  "idcardnumber",
-                  "identificationnumber",
-                  "documentnumber",
-                ].includes(k);
-                if (isId && fv.value) {
-                  v._idValue = fv.value;
-                  v._idLabel = label;
-                }
-                const isCompany = [
-                  "company",
-                  "companyname",
-                  "company_name",
-                  "organization",
-                  "organisation",
-                  "employer",
-                ].includes(k);
-                if (isCompany && fv.value) {
-                  v.companyName = fv.value;
-                }
-              });
-            });
-          } catch {}
-          return v;
-        }),
-      );
-      setRows(enriched);
+      const BATCH_SIZE = 50;
+      const result = await getVisitorUsers({ page: 1, limit: BATCH_SIZE });
+      setAllRows(result.data || []);
+      setTotalCount(result.total || 0);
+      if (result.total > BATCH_SIZE) {
+        setIsStreaming(true);
+      }
       if (!quiet) setHasLoadedOnce(true);
     } catch {
       if (!quiet) setHasLoadedOnce(true);
@@ -461,13 +476,32 @@ export default function VisitorsPage() {
 
   // ── Socket listeners for visitor create/update ──
   const { on } = useSocket();
+
+  // ── Socket progressive loading ──
+  useEffect(() => {
+    const unsub = on("visitors:progress", (payload) => {
+      if (payload.data?.length) {
+        const mapped = payload.data.map(mapUserToFrontend);
+        setAllRows((prev) => {
+          const existing = new Set(prev.map((v) => v.id));
+          const fresh = mapped.filter((v) => !existing.has(v.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      }
+      if (payload.loaded >= payload.total) {
+        setIsStreaming(false);
+      }
+    });
+    return unsub;
+  }, [on]);
+
   useEffect(() => {
     const unsubNew = on("visitor:new", (newVisitor) => {
       if (!newVisitor?.id) {
         fetchVisitors({ silent: true });
         return;
       }
-      setRows((prev) => {
+      setAllRows((prev) => {
         const exists = prev.some((v) => v.id === newVisitor.id);
         if (exists) return prev;
         return [newVisitor, ...prev];
@@ -476,7 +510,7 @@ export default function VisitorsPage() {
 
     const unsubUpdated = on("visitor:updated", (updatedVisitor) => {
       if (!updatedVisitor?.id) return;
-      setRows((prev) =>
+      setAllRows((prev) =>
         prev.map((v) =>
           v.id === updatedVisitor.id ? { ...v, ...updatedVisitor } : v,
         ),
@@ -492,19 +526,13 @@ export default function VisitorsPage() {
     };
   }, [on, fetchVisitors, selected?.id]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return rows;
-    const q = search.toLowerCase();
-    return rows.filter(
-      (v) =>
-        (v.fullName || "").toLowerCase().includes(q) ||
-        (v.email || "").toLowerCase().includes(q) ||
-        (v.phone || "").toLowerCase().includes(q),
-    );
-  }, [rows, search]);
+  const filtered = useMemo(
+    () => allRows.filter((v) => visitorMatchesQuery(v, search)),
+    [allRows, search],
+  );
 
   const pagedRows = useMemo(() => {
-    const start = page * rowsPerPage;
+    const start = (page - 1) * rowsPerPage;
     return filtered.slice(start, start + rowsPerPage);
   }, [filtered, page, rowsPerPage]);
 
@@ -535,8 +563,8 @@ export default function VisitorsPage() {
         });
       });
       full.fields = Object.keys(mergedFields).length ? mergedFields : {};
-      full._idValue = visitor._idValue;
-      full._idLabel = visitor._idLabel;
+      full._idValue = visitor.idNo;
+      full._idLabel = visitor.idType || "ID";
       setSelected(full);
     } catch {
     } finally {
@@ -641,7 +669,7 @@ export default function VisitorsPage() {
 
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    setPage(1);
   };
 
   const openTimeline = async (visitId, visitorName) => {
@@ -654,6 +682,112 @@ export default function VisitorsPage() {
       setTimelineLogs([]);
     } finally {
       setTimelineLoading(false);
+    }
+  };
+
+  const openMemberInfo = (member) => {
+    setMemberDialog({ open: true, member });
+  };
+
+  const openCreateDialog = () => {
+    setCreateForm({
+      full_name: "",
+      email: "",
+      phone: "",
+      phoneIsoCode: DEFAULT_ISO_CODE,
+    });
+    setCreateErrors({});
+    setCreateIdValues({});
+    setCreateIdErrors({});
+    setCreateModal(true);
+  };
+
+  const handleCreateChange = (key, value) => {
+    setCreateForm((prev) => ({ ...prev, [key]: value }));
+    if (createErrors[key]) {
+      setCreateErrors((prev) => ({ ...prev, [key]: null }));
+    }
+  };
+
+  const handleCreateIdChange = (key, value) => {
+    setCreateIdValues((prev) => {
+      const updated = { ...prev, [key]: value };
+      const field = activeCustomFields.find(
+        (f) => (f.fieldKey || f.field_key) === key,
+      );
+      if (field) clearHiddenChildren(field, value, updated, activeCustomFields);
+      return updated;
+    });
+    if (createIdErrors[key]) {
+      setCreateIdErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const handleSubmitCreate = async () => {
+    const errors = {};
+    const fullName = createForm.full_name.trim();
+    const email = createForm.email.trim();
+    const phone = createForm.phone.trim();
+    const isoCode = createForm.phoneIsoCode || DEFAULT_ISO_CODE;
+
+    if (!fullName) errors.full_name = "Full name is required";
+    if (!email && !phone) {
+    } else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = "Invalid email address";
+    }
+
+    if (phone) {
+      const phoneErr = validatePhone(phone, isoCode);
+      if (phoneErr) errors.phone = phoneErr;
+    }
+
+    const idErrors = {};
+    createIdSubtreeFields.forEach((f) => {
+      const key = f.fieldKey || f.field_key;
+      const isRequired =
+        f.isRequired || f.is_required || createForcedRequiredIds.has(f.id);
+      const val = createIdValues[key];
+      const empty =
+        val == null ||
+        (typeof val === "string" && !val.trim()) ||
+        (Array.isArray(val) && val.length === 0);
+      if (isRequired && empty) idErrors[key] = `${f.label} is required`;
+    });
+
+    if (Object.keys(errors).length > 0 || Object.keys(idErrors).length > 0) {
+      setCreateErrors(errors);
+      setCreateIdErrors(idErrors);
+      const bothIdentityMissing = !email && !phone;
+      showMessage(
+        bothIdentityMissing
+          ? "Email or phone is required"
+          : "Please fill in the required fields.",
+        "warning",
+      );
+      return;
+    }
+
+    setCreateSubmitting(true);
+    try {
+      const result = await createVisitorUser({
+        full_name: fullName,
+        email,
+        phone: phone || undefined,
+        phoneIsoCode: isoCode || undefined,
+        idNo: pickId(createIdValues) || undefined,
+        idType: pickIdType(createIdValues) || undefined,
+        idCountry: pickCountry(createIdValues) || undefined,
+      });
+      if (result?.error) return;
+      showMessage("Visitor created", "success");
+      setCreateModal(false);
+      fetchVisitors(true);
+    } finally {
+      setCreateSubmitting(false);
     }
   };
 
@@ -673,15 +807,15 @@ export default function VisitorsPage() {
         <Box
           sx={{
             display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
             justifyContent: "space-between",
             alignItems: { xs: "stretch", sm: "center" },
             mt: 2,
             mb: 1,
             gap: 2,
-            flexWrap: "wrap",
           }}
         >
-          <Box sx={{ flex: 1 }}>
+          <Box>
             <Typography variant="h5" fontWeight="bold">
               Visitors
             </Typography>
@@ -693,30 +827,47 @@ export default function VisitorsPage() {
               Manage and view all visitor profiles across your system.
             </Typography>
           </Box>
+          {canCreateVisitor && (
+            <Button
+              variant="contained"
+              startIcon={<ICONS.add />}
+              onClick={openCreateDialog}
+              sx={{
+                whiteSpace: "nowrap",
+                height: 40,
+                borderRadius: 30,
+                fontWeight: 700,
+                px: 2.5,
+                width: { xs: "100%", sm: "auto" },
+              }}
+            >
+              Create
+            </Button>
+          )}
         </Box>
 
         <Divider sx={{ mb: 3 }} />
 
         <ListToolbar
           showingCount={pagedRows.length}
-          totalCount={filtered.length}
+          totalCount={totalCount || filtered.length}
           searchSlot={
             <TextField
               fullWidth
               size="small"
               variant="outlined"
-              placeholder="Search by name, email or phone..."
+              placeholder="Search by name, email, phone or ID card..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
-                setPage(0);
+                setPage(1);
               }}
               InputProps={{
                 startAdornment: (
                   <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} />
                 ),
               }}
-              sx={{ maxWidth: { md: 380 } }}
+              sx={{ maxWidth: { md: 600 } }}
             />
           }
           actionsSlot={
@@ -796,7 +947,7 @@ export default function VisitorsPage() {
                   },
                 }}
               >
-                {visitor._idValue && (
+                {(visitor.idNo) && (
                   <Box
                     sx={{
                       display: "flex",
@@ -815,7 +966,7 @@ export default function VisitorsPage() {
                       }}
                     >
                       <ICONS.key fontSize="small" sx={{ opacity: 0.6 }} />{" "}
-                      {visitor._idLabel || "ID"}
+                      {visitor.idType || "ID"}
                     </Typography>
                     <Typography
                       variant="body2"
@@ -827,7 +978,7 @@ export default function VisitorsPage() {
                         color: "text.primary",
                       }}
                     >
-                      {visitor._idValue}
+                      {visitor.idNo}
                     </Typography>
                   </Box>
                 )}
@@ -1015,8 +1166,8 @@ export default function VisitorsPage() {
           <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
             <Pagination
               count={totalPages}
-              page={page + 1}
-              onChange={(_, p) => setPage(p - 1)}
+              page={page}
+              onChange={(_, p) => setPage(p)}
               color="primary"
               size="small"
             />
@@ -1273,6 +1424,7 @@ export default function VisitorsPage() {
                             visitorName={selected.fullName}
                             isDark={isDark}
                             onViewTimeline={openTimeline}
+                            onOpenMember={openMemberInfo}
                           />
                         ))
                       )}
@@ -1280,6 +1432,145 @@ export default function VisitorsPage() {
                   )}
                 </Stack>
               ))()}
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Member Info Dialog ── */}
+        <Dialog
+          open={memberDialog.open}
+          onClose={() => setMemberDialog({ open: false, member: null })}
+          maxWidth="xs"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
+        >
+          <DialogHeader
+            title="Member Details"
+            onClose={() => setMemberDialog({ open: false, member: null })}
+          />
+          <Divider />
+          <DialogContent sx={{ p: 2.5 }}>
+            {memberDialog.member && (
+              <Stack spacing={2}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.5,
+                    p: 1.5,
+                    borderRadius: 2,
+                    bgcolor: (theme) =>
+                      alpha(theme.palette.primary.main, 0.06),
+                  }}
+                >
+                  <Avatar
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      bgcolor: isDark ? "#fff" : "#000",
+                      color: isDark ? "#000" : "#fff",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {(memberDialog.member.fullName || "")
+                      .split(" ")
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase() || "?"}
+                  </Avatar>
+                  <Typography variant="subtitle1" fontWeight={800}>
+                    {memberDialog.member.fullName}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    bgcolor: isDark
+                      ? "rgba(255,255,255,0.02)"
+                      : "rgba(0,0,0,0.015)",
+                  }}
+                >
+                  {[
+                    {
+                      label: "Email",
+                      value: memberDialog.member.email,
+                      icon: <ICONS.emailOutline fontSize="small" />,
+                    },
+                    {
+                      label: "Phone",
+                      value: memberDialog.member.phone
+                        ? formatPhoneNumberForDisplay(
+                            memberDialog.member.phone,
+                            memberDialog.member.iso_code,
+                          )
+                        : null,
+                      icon: <ICONS.phone fontSize="small" />,
+                    },
+                    {
+                      label: memberDialog.member.idType || "ID Number",
+                      value: memberDialog.member.idNo,
+                      icon: <ICONS.key fontSize="small" />,
+                    },
+                    {
+                      label: "Company",
+                      value: memberDialog.member.companyName,
+                      icon: <ICONS.business fontSize="small" />,
+                    },
+                  ]
+                    .filter((r) => r.value)
+                    .map((r, idx, arr) => (
+                      <Box
+                        key={r.label}
+                        sx={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 1.5,
+                          px: 1.75,
+                          py: 1.25,
+                          borderBottom:
+                            idx < arr.length - 1 ? "1px solid" : "none",
+                          borderColor: "divider",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            color: "text.secondary",
+                            display: "flex",
+                            alignItems: "center",
+                            mt: 0.2,
+                            minWidth: 22,
+                          }}
+                        >
+                          {r.icon}
+                        </Box>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                              fontSize: "0.6rem",
+                            }}
+                          >
+                            {r.label}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            fontWeight={600}
+                            sx={{ wordBreak: "break-all", mt: 0.15 }}
+                          >
+                            {r.value}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    ))}
+                </Box>
+              </Stack>
+            )}
           </DialogContent>
         </Dialog>
 
@@ -1381,6 +1672,34 @@ export default function VisitorsPage() {
                               log.createdAt,
                           )}
                         </Typography>
+                        {(() => {
+                          const actor = formatActorLabel(log);
+                          if (!actor) return null;
+                          const displayName = actor.name || "System";
+                          return (
+                            <Box sx={{ mt: 0.25 }}>
+                              {actor.roleLabel ? (
+                                <Chip
+                                  size="small"
+                                  label={`${displayName} · ${actor.roleLabel}`}
+                                  variant="outlined"
+                                  sx={{
+                                    fontWeight: 600,
+                                    fontSize: "0.62rem",
+                                    height: 18,
+                                  }}
+                                />
+                              ) : (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  by {displayName}
+                                </Typography>
+                              )}
+                            </Box>
+                          );
+                        })()}
                         {log.notes && (
                           <Typography
                             variant="body2"
@@ -1575,6 +1894,7 @@ export default function VisitorsPage() {
           >
             <Button
               variant="outlined"
+              startIcon={<ICONS.cancel />}
               onClick={() => setEditModal(null)}
               disabled={submitting}
               sx={{
@@ -1598,7 +1918,130 @@ export default function VisitorsPage() {
               }
               sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
             >
-              Save Changes
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ── Create Visitor Dialog ── */}
+        <Dialog
+          open={createModal}
+          onClose={() => setCreateModal(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
+        >
+          <DialogHeader title="Add Visitor" onClose={() => setCreateModal(false)} />
+          <Divider />
+          <DialogContent sx={{ p: 2.5 }}>
+            <Stack spacing={2.5}>
+              <TextField
+                label="Full name"
+                fullWidth
+                value={createForm.full_name}
+                onChange={(e) => handleCreateChange("full_name", e.target.value)}
+                error={!!createErrors.full_name}
+                helperText={createErrors.full_name || ""}
+                InputProps={{ sx: { borderRadius: 2 } }}
+              />
+              <TextField
+                label="Email"
+                fullWidth
+                type="email"
+                value={createForm.email}
+                onChange={(e) => handleCreateChange("email", e.target.value)}
+                error={!!createErrors.email}
+                helperText={createErrors.email || ""}
+                InputProps={{ sx: { borderRadius: 2 } }}
+              />
+              <TextField
+                label="Phone"
+                fullWidth
+                type="tel"
+                value={createForm.phone}
+                onChange={(e) => {
+                  const digitsOnly = e.target.value.replace(/\D/g, "");
+                  handleCreateChange("phone", digitsOnly);
+                  if (createErrors.phone) {
+                    setCreateErrors((prev) => ({ ...prev, phone: null }));
+                  }
+                }}
+                error={!!createErrors.phone}
+                helperText={createErrors.phone || ""}
+                InputProps={{
+                  sx: { borderRadius: 2 },
+                  startAdornment: (
+                    <CountryCodeSelector
+                      value={createForm.phoneIsoCode}
+                      onChange={(iso) =>
+                        handleCreateChange("phoneIsoCode", iso)
+                      }
+                      lang={lang}
+                      dir="ltr"
+                    />
+                  ),
+                }}
+              />
+              {createIdSubtreeFields.length > 0 && (
+                <Stack spacing={2.5}>
+                  {createIdSubtreeFields.map((f) => {
+                    const key = f.fieldKey || f.field_key;
+                    const isRequired =
+                      f.isRequired ||
+                      f.is_required ||
+                      createForcedRequiredIds.has(f.id);
+                    return (
+                      <DynamicCustomField
+                        key={f.id || key}
+                        field={f}
+                        value={
+                          createIdValues[key] !== undefined
+                            ? createIdValues[key]
+                            : ""
+                        }
+                        error={createIdErrors[key] || ""}
+                        isRequired={isRequired}
+                        onChange={handleCreateIdChange}
+                        phoneIsoCode={DEFAULT_ISO_CODE}
+                        lang={lang}
+                      />
+                    );
+                  })}
+                </Stack>
+              )}
+            </Stack>
+          </DialogContent>
+          <Divider />
+          <DialogActions
+            sx={{ p: 2.5, gap: 1, flexDirection: { xs: "column", sm: "row" } }}
+          >
+            <Button
+              variant="outlined"
+              onClick={() => setCreateModal(false)}
+              disabled={createSubmitting}
+              startIcon={<ICONS.cancel />}
+              sx={{
+                borderRadius: 30,
+                width: { xs: "100%", sm: "auto" },
+                order: { xs: 2, sm: 0 },
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSubmitCreate}
+              disabled={createSubmitting}
+              startIcon={
+                createSubmitting ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : (
+                  <ICONS.add />
+                )
+              }
+              sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
+            >
+              Create
             </Button>
           </DialogActions>
         </Dialog>
@@ -1607,24 +2050,25 @@ export default function VisitorsPage() {
   );
 }
 
-function HistoryVisitCard({ visit, visitorName, isDark, onViewTimeline }) {
+function HistoryVisitCard({ visit, visitorName, isDark, onViewTimeline, onOpenMember }) {
   const visitFieldValues = getVisibleFieldValues(visit);
   const sc = STATUS_CONFIG[visit.status] || {
     label: toTitleCase(visit.status),
     color: "default",
     icon: <ICONS.history fontSize="small" />,
   };
+  const isGroupMeeting = Array.isArray(visit.participants) && visit.participants.length > 1;
   const departmentName =
     typeof visit.department === "object" && visit.department
       ? visit.department.name
       : visit.department || "";
   const accessLevelName =
-    (typeof visit.accessLevel === "object" && visit.accessLevel
-      ? visit.accessLevel.name
-      : visit.accessLevel) ||
     (Array.isArray(visit.accessLevels) && visit.accessLevels.length
       ? visit.accessLevels.map((a) => a.name).join(", ")
-      : "");
+      : typeof visit.accessLevel === "object" && visit.accessLevel
+        ? visit.accessLevel.name
+        : visit.accessLevel) ||
+    "";
   const allowMultiCheckin = visit.allowMultiCheckin ?? false;
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -1669,7 +2113,16 @@ function HistoryVisitCard({ visit, visitorName, isDark, onViewTimeline }) {
             Submitted {formatDateTimeWithLocale(visit.createdAt)}
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap", rowGap: 1 }}>
+          {isGroupMeeting && (
+            <Chip
+              label="Group Meeting"
+              color="secondary"
+              size="small"
+              icon={<ICONS.group fontSize="small" />}
+              sx={{ fontWeight: 700, borderRadius: 2, height: 26 }}
+            />
+          )}
           <Chip
             label={sc.label}
             color={sc.color}
@@ -1679,6 +2132,32 @@ function HistoryVisitCard({ visit, visitorName, isDark, onViewTimeline }) {
           />
         </Stack>
       </Stack>
+
+      {isGroupMeeting && (
+        <Box sx={{ mb: 2 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 800, textTransform: "uppercase", fontSize: "0.62rem", mb: 0.5, display: "block" }}
+          >
+            Members ({visit.participants.length})
+          </Typography>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ rowGap: 0.75 }}>
+            {visit.participants.map((member) => (
+              <Chip
+                key={member.id}
+                label={member.fullName}
+                size="small"
+                variant="outlined"
+                clickable
+                icon={<ICONS.person fontSize="small" />}
+                onClick={() => onOpenMember?.(member)}
+                sx={{ fontWeight: 600 }}
+              />
+            ))}
+          </Stack>
+        </Box>
+      )}
 
       <Box
         sx={{

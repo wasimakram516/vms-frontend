@@ -584,6 +584,16 @@ export default function BookingPage() {
             </Box>
           )}
 
+          {isEditMode && activeRegistration?.isGroupMeeting && (
+            <Box sx={{ p: 2, borderRadius: 3, bgcolor: "info.main", color: "info.contrastText", display: "flex", alignItems: "flex-start", gap: 1.5 }}>
+              <ICONS.group sx={{ mt: 0.2, fontSize: 20, flexShrink: 0 }} />
+              <Box>
+                <Typography variant="body2" fontWeight={700}>{t.groupMeetingEditTitle}</Typography>
+                <Typography variant="caption">{t.groupMeetingEditDesc}</Typography>
+              </Box>
+            </Box>
+          )}
+
           {isReturning && (
             <Stack spacing={2}>
               <FormControl fullWidth required error={Boolean(fieldErrors.departmentId)}>

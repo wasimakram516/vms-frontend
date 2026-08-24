@@ -30,6 +30,7 @@ import {
   Switch,
   FormControlLabel,
   useTheme,
+  useMediaQuery,
   alpha,
   Grid,
   Autocomplete,
@@ -47,7 +48,7 @@ import { useSocket } from "@/contexts/SocketContext";
 import { useAuth } from "@/contexts/AuthContext";
 import useI18nLayout from "@/hooks/useI18nLayout";
 import registrationTranslations from "@/locales/registration";
-import { pdf } from "@react-pdf/renderer";
+import { pdf, Document } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import { exportAllBadges } from "@/utils/exportBadges";
 import ICONS from "@/utils/iconUtil";
@@ -85,6 +86,9 @@ import {
 } from "@/utils/dateUtils";
 import { getKitchenOrdersForRegistration as getKitchenOrders } from "@/services/kitchenService";
 import { validateRequired } from "@/utils/validationUtils";
+import { countPastVisits, resolvePastVisitBreakdown } from "@/utils/visitCount";
+import { formatActorLabel } from "@/utils/actorLabel";
+import { getRegistrationDisplayName, getRegistrationDisplayInitial } from "@/utils/registrationDisplay";
 
 import AppCard from "@/components/cards/AppCard";
 import DialogHeader from "@/components/modals/DialogHeader";
@@ -218,22 +222,29 @@ const canEditRegistration = (row, isSuperAdmin = false, userRole = null) => {
   return !terminal;
 };
 
-function getAllowedTransitions(currentStatus, role, allowMultiCheckin) {
+function getAllowedTransitions(currentStatus, role, allowMultiCheckin, adminType) {
   if (TERMINAL_STATUSES.has(currentStatus)) return [];
   const isSA = role === "superadmin";
   const isAdmin = role === "admin" || isSA;
   const isStaff = role === "staff" || isAdmin;
+  // Department heads get a plain Approve as a primary action (dept-level only).
+  const isDeptHead =
+    role === "admin" && (adminType === "departmental" || !adminType);
 
   switch (currentStatus) {
     case "pending":
-      return [...(isAdmin ? ["rejected", "cancelled"] : [])];
-    case "admin_approved":
-      return [...(isAdmin ? ["rejected", "cancelled"] : [])];
-    case "approved":
       return [
-        ...(isStaff ? ["checked_in"] : []),
-        ...(isAdmin ? ["cancelled"] : []),
+        ...(isSA ? ["approved"] : []),
+        ...(isDeptHead ? ["admin_approved"] : []),
+        ...(isAdmin ? ["rejected"] : []),
       ];
+    case "admin_approved":
+      return [
+        ...(isSA ? ["approved"] : []),
+        ...(isAdmin ? ["rejected"] : []),
+      ];
+    case "approved":
+      return [...(isStaff ? ["checked_in"] : [])];
     case "checked_in":
       return [...(isStaff ? ["checked_out"] : [])];
     case "checked_out":
@@ -258,6 +269,11 @@ function getOverrideTargets(currentStatus, role, normalAllowed, canOverride) {
   // the override dropdown item bypasses it (and logs as Status Override).
   if (normalAllowed.includes("checked_in") && !targets.includes("checked_in")) {
     targets.push("checked_in");
+  }
+  // Always expose Cancel in the override dropdown so an override can cancel a
+  // visit from any non-terminal status (it bypasses the flow guards).
+  if (currentStatus !== "cancelled" && !targets.includes("cancelled")) {
+    targets.push("cancelled");
   }
   // Only SuperAdmin may override to the final "approved" status
   return role === "superadmin"
@@ -630,6 +646,7 @@ export default function CmsVisitsPage() {
     t.daySat,
   ];
   const theme = useTheme();
+  const isMobileActions = useMediaQuery(theme.breakpoints.down("sm"));
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const { showMessage } = useMessage();
@@ -661,10 +678,13 @@ export default function CmsVisitsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
   // ── Filters ──
   const [statusFilter, setStatusFilter] = useState("all");
   const [vipFastTrackOnly, setVipFastTrackOnly] = useState(false);
+  const [groupMeetingOnly, setGroupMeetingOnly] = useState(false);
   const [datePreset, setDatePreset] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -700,6 +720,8 @@ export default function CmsVisitsPage() {
   const [customTimestamp, setCustomTimestamp] = useState(null);
   const customTimestampRef = useRef(null);
   const batchTimestampRef = useRef(null);
+  const [memberDialog, setMemberDialog] = useState({ open: false, member: null });
+  const [actionsExpanded, setActionsExpanded] = useState(true);
   const [timelineModal, setTimelineModal] = useState({
     open: false,
     visitId: null,
@@ -707,12 +729,20 @@ export default function CmsVisitsPage() {
   });
   const [timelineLogs, setTimelineLogs] = useState([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const timelineVisitIdRef = useRef(null);
+  // Keep ref in sync with modal state
+  useEffect(() => {
+    timelineVisitIdRef.current = timelineModal.open ? timelineModal.visitId : null;
+  }, [timelineModal.open, timelineModal.visitId]);
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
 
   // ── Approve dialog state (from approvals page) ──
   const [approveTarget, setApproveTarget] = useState(null);
-  const [approveVisitCount, setApproveVisitCount] = useState(null);
+  const [approvePastVisits, setApprovePastVisits] = useState(null);
+  const [pastVisitsOpen, setPastVisitsOpen] = useState(false);
+  const [detailPastVisits, setDetailPastVisits] = useState(null);
+  const [detailPastVisitsOpen, setDetailPastVisitsOpen] = useState(false);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [scheduledDate, setScheduledDate] = useState(null);
@@ -752,6 +782,7 @@ export default function CmsVisitsPage() {
   const [newPurpose, setNewPurpose] = useState("");
   const [newPurposeOther, setNewPurposeOther] = useState("");
   const [newNdaAccepted, setNewNdaAccepted] = useState(false);
+  const [newGroupMeeting, setNewGroupMeeting] = useState(false);
   // Map: visitorId → true (NDA needed) | false (NDA valid)
   const [ndaStatusMap, setNdaStatusMap] = useState({});
   const [newVisitSubmitting, setNewVisitSubmitting] = useState(false);
@@ -780,8 +811,13 @@ export default function CmsVisitsPage() {
     if (!quiet) setLoading(true);
     else setIsListRefreshing(true);
     try {
-      const data = await getRegistrations();
-      setRows(Array.isArray(data) ? data : []);
+      const BATCH_SIZE = 50;
+      const result = await getRegistrations(null, {}, undefined, { page: 1, limit: BATCH_SIZE });
+      setRows(result.data || []);
+      setTotalCount(result.total || 0);
+      if (result.total > BATCH_SIZE) {
+        setIsStreaming(true);
+      }
       if (!quiet) setHasLoadedOnce(true);
     } catch {
       if (!quiet) setHasLoadedOnce(true);
@@ -823,7 +859,7 @@ export default function CmsVisitsPage() {
   useEffect(() => {
     const unsubNew = on("registration:new", (newReg) => {
       if (!newReg?.id) {
-        fetchVisits({ silent: true });
+        fetchVisits(true);
         return;
       }
       const mapped = mapRegistration(newReg);
@@ -842,6 +878,12 @@ export default function CmsVisitsPage() {
       );
       if (selected?.id === mapped.id) {
         setSelected((prev) => (prev ? { ...prev, ...mapped } : prev));
+      }
+      // Refresh activity logs if the timeline modal is open for this registration
+      if (timelineVisitIdRef.current === mapped.id) {
+        getRegistrationActivityLogs(mapped.id).then((logs) => {
+          setTimelineLogs(Array.isArray(logs) ? logs : []);
+        });
       }
     });
 
@@ -862,10 +904,25 @@ export default function CmsVisitsPage() {
       }
     });
 
+    const unsubProgress = on("registrations:progress", (payload) => {
+      if (payload.data?.length) {
+        const mapped = payload.data.map(mapRegistration);
+        setRows((prev) => {
+          const existing = new Set(prev.map((r) => r.id));
+          const fresh = mapped.filter((r) => !existing.has(r.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      }
+      if (payload.loaded >= payload.total) {
+        setIsStreaming(false);
+      }
+    });
+
     return () => {
       unsubNew?.();
       unsubUpdated?.();
       unsubOverstay?.();
+      unsubProgress?.();
     };
   }, [on, fetchVisits, selected?.id]);
 
@@ -911,7 +968,23 @@ export default function CmsVisitsPage() {
             const fvText = Array.isArray(r.fieldValues)
               ? r.fieldValues.map((fv) => fv.value || "").join(" ")
               : "";
-            const match = [r.id, r.full_name, r.email, r.purpose_of_visit, fvText]
+            const participantsText = Array.isArray(r.participants)
+              ? r.participants
+                  .map((p) =>
+                    [p.fullName, p.email, p.phone, p.companyName]
+                      .filter(Boolean)
+                      .join(" "),
+                  )
+                  .join(" ")
+              : "";
+            const match = [
+              r.id,
+              r.full_name,
+              r.email,
+              r.purpose_of_visit,
+              fvText,
+              participantsText,
+            ]
               .join(" ")
               .toLowerCase()
               .includes(q);
@@ -919,6 +992,11 @@ export default function CmsVisitsPage() {
           }
           if (statusFilter !== "all" && r.status !== statusFilter) return false;
           if (vipFastTrackOnly && !r.is_vip_fast_track) return false;
+          if (
+            groupMeetingOnly &&
+            !(Array.isArray(r.participants) && r.participants.length > 1)
+          )
+            return false;
           if (from || to) {
             const createdAt = r.created_at || r.createdAt;
             if (createdAt) {
@@ -999,6 +1077,7 @@ export default function CmsVisitsPage() {
     search,
     statusFilter,
     vipFastTrackOnly,
+    groupMeetingOnly,
     datePreset,
     customFrom,
     customTo,
@@ -1019,6 +1098,7 @@ export default function CmsVisitsPage() {
   const activeFiltersCount =
     (statusFilter !== "all" ? 1 : 0) +
     (vipFastTrackOnly ? 1 : 0) +
+    (groupMeetingOnly ? 1 : 0) +
     (datePreset !== "all" ? 1 : 0) +
     (requestDateFrom || requestDateTo ? 1 : 0) +
     (requestTimeFilter.enabled ? 1 : 0) +
@@ -1039,12 +1119,24 @@ export default function CmsVisitsPage() {
   const handleOpenProfile = async (row) => {
     setFetchingProfile(true);
     setSelected(row);
+    setDetailPastVisits(null);
+    setDetailPastVisitsOpen(false);
     setDetailTab(0);
     setOrders([]);
     setOrdersLoading(true);
     try {
       const full = await getRegistrationById(row.id);
       if (full) setSelected(full);
+      // Past-visit breakdown for the detail header — the visit being viewed is
+      // excluded from every member's count. Group meetings show each member's
+      // history separately.
+      try {
+        setDetailPastVisits(
+          await resolvePastVisitBreakdown(full ?? row, getRegistrations),
+        );
+      } catch {
+        setDetailPastVisits(null);
+      }
       getKitchenOrders(row.id)
         .then((res) => setOrders(Array.isArray(res) ? res : []))
         .catch(() => {})
@@ -1054,6 +1146,10 @@ export default function CmsVisitsPage() {
     } finally {
       setFetchingProfile(false);
     }
+  };
+
+  const openMemberInfo = (member) => {
+    setMemberDialog({ open: true, member });
   };
 
   // ── Status transition ──
@@ -1403,8 +1499,16 @@ export default function CmsVisitsPage() {
       );
     }
     if (info.outsideHours) {
+      const timeRange = (
+        <Box component="span" dir="ltr" sx={{ whiteSpace: "nowrap" }}>
+          {fmtHour12(info.startH, info.startM)} – {fmtHour12(info.endH, info.endM)}
+        </Box>
+      );
+      parts.push(t.outsideWorkingHours.replace('{{time}}', timeRange));
+    }
+    if (info.outsideDays) {
       parts.push(
-        `outside working hours (${fmtHour12(info.startH, info.startM)} – ${fmtHour12(info.endH, info.endM)})`,
+        t.outsideWorkingDays.replace('{{days}}', info.offDays.length > 1 ? `${info.offDays.length} days` : `${info.offDays.length} day`),
       );
     }
     return (
@@ -1561,16 +1665,16 @@ export default function CmsVisitsPage() {
       setAccessLevelError("");
 
       setApproveTarget({ ...fullReg, _pendingStatus: pendingStatus, _override: isOverrideAction });
-      // Fetch visit count for returning visitor badge
+      // Fetch past-visit breakdown for returning visitor badge. The registration
+      // being approved is excluded from every member's count. Group meetings
+      // show each member's history separately, never a summed number.
       try {
-        const allRegs = await getRegistrations(
-          null,
-          {},
-          fullReg.user_id || fullReg.userId,
+        setApprovePastVisits(
+          await resolvePastVisitBreakdown(fullReg, getRegistrations),
         );
-        setApproveVisitCount(Array.isArray(allRegs) ? allRegs.length : 0);
+        setPastVisitsOpen(false);
       } catch {
-        setApproveVisitCount(null);
+        setApprovePastVisits(null);
       }
     } catch {
     } finally {
@@ -1689,7 +1793,7 @@ export default function CmsVisitsPage() {
         "success",
       );
       setApproveTarget(null);
-      setApproveVisitCount(null);
+      setApprovePastVisits(null);
       setEscortRequired(true);
       setSelected(null);
       fetchVisits(true);
@@ -1794,6 +1898,7 @@ export default function CmsVisitsPage() {
     setNewPurpose("");
     setNewPurposeOther("");
     setNewNdaAccepted(false);
+    setNewGroupMeeting(false);
     setNdaStatusMap({});
     setNewVisitAccessLevelError("");
     setSelectedAccessLevelIds([]);
@@ -1960,6 +2065,7 @@ export default function CmsVisitsPage() {
 
     const payload = {
       userIds: selectedVisitors.map((v) => v.id),
+      groupAsMeeting: newGroupMeeting || undefined,
       departmentId: newDepartmentId,
       purposeOfVisit: purposeOfVisit || undefined,
       ndaAccepted: newNdaAccepted || undefined,
@@ -1980,7 +2086,14 @@ export default function CmsVisitsPage() {
       if (result?.error) return;
       const createdCount = result?.created?.length ?? 0;
       const skippedCount = result?.skipped?.length ?? 0;
-      if (skippedCount > 0) {
+      if (newGroupMeeting) {
+        showMessage(
+          skippedCount > 0
+            ? "Group meeting could not be created. Some member may already have an active visit."
+            : "Group meeting created successfully",
+          skippedCount > 0 ? "error" : "success",
+        );
+      } else if (skippedCount > 0) {
         showMessage(
           `${createdCount} visit(s) created. ${skippedCount} skipped (e.g. visitor already has an active visit).`,
           "warning",
@@ -2068,7 +2181,9 @@ export default function CmsVisitsPage() {
         }
         try {
           const allRegs = await getRegistrations(null, {}, userId);
-          counts[id] = Array.isArray(allRegs) ? allRegs.length : 0;
+          // Exclude the registrations currently being approved — they belong
+          // to these visitors but are not past visits (single or co-selected).
+          counts[id] = countPastVisits(allRegs, [...selectedRowIds]);
         } catch {
           counts[id] = 0;
         }
@@ -2219,6 +2334,7 @@ export default function CmsVisitsPage() {
         card.status,
         userRole,
         card.allow_multi_checkin ?? card.allowMultiCheckin,
+        user?.adminType,
       );
       let isOverride = false;
       if (normalAllowed.includes(batchTargetStatus)) {
@@ -2314,15 +2430,24 @@ export default function CmsVisitsPage() {
           if (key) fieldValues[key] = fv.value;
         });
       }
-      const badgeData = {
-        fullName: fieldValues["full_name"] || row.full_name || "Unnamed",
+      const participants =
+        Array.isArray(row.participants) && row.participants.length > 1
+          ? row.participants
+          : null;
+      const badgeData = (member) => ({
+        fullName:
+          member?.fullName ||
+          fieldValues["full_name"] ||
+          row.full_name ||
+          "Unnamed",
         company:
+          member?.companyName ||
           fieldValues["company_name"] ||
           row.organisation ||
           row.companyName ||
           "",
-        email: fieldValues["email"] || row.email || "",
-        phone: fieldValues["phone"] || row.phone || "",
+        email: member?.email || fieldValues["email"] || row.email || "",
+        phone: member?.phone || fieldValues["phone"] || row.phone || "",
         purposeOfVisit: row.purpose_of_visit || "",
         requestedDate: getLocalDate(row.requested_from),
         requestedTimeFrom: getLocalTime(row.requested_from),
@@ -2331,10 +2456,22 @@ export default function CmsVisitsPage() {
         token: row.qr_token || "N/A",
         showQrOnBadge: true,
         fieldValues,
-      };
-      const doc = (
+      });
+      const doc = participants ? (
+        <Document>
+          {participants.map((m) => (
+            <BadgePDF
+              key={m.id}
+              data={badgeData(m)}
+              qrCodeDataUrl={qrCodeDataUrl}
+              customizations={badgeTemplate?.layoutJson}
+              single={false}
+            />
+          ))}
+        </Document>
+      ) : (
         <BadgePDF
-          data={badgeData}
+          data={badgeData(null)}
           qrCodeDataUrl={qrCodeDataUrl}
           customizations={badgeTemplate?.layoutJson}
         />
@@ -2377,12 +2514,14 @@ export default function CmsVisitsPage() {
         selected?.status,
         userRole,
         selected?.allow_multi_checkin ?? selected?.allowMultiCheckin,
+        user?.adminType,
       ),
     [
       selected?.status,
       userRole,
       selected?.allow_multi_checkin,
       selected?.allowMultiCheckin,
+      user?.adminType,
     ],
   );
 
@@ -2467,7 +2606,11 @@ export default function CmsVisitsPage() {
             direction={{ xs: "column", sm: "row" }}
             alignItems="center"
             spacing={1}
-            sx={{ justifyContent: { sm: "flex-end" } }}
+            sx={{
+              justifyContent: { sm: "flex-end" },
+              flexWrap: selectMode ? "wrap" : "nowrap",
+              rowGap: 1,
+            }}
           >
             {canUpdate && selectMode && (
               <>
@@ -2480,7 +2623,7 @@ export default function CmsVisitsPage() {
                   sx={{
                     whiteSpace: "nowrap",
                     height: 40,
-                    borderRadius: 2,
+                    borderRadius: 30,
                     fontWeight: 700,
                     px: 2,
                     width: { xs: "100%", sm: "auto" },
@@ -2494,6 +2637,7 @@ export default function CmsVisitsPage() {
                   sx={{
                     whiteSpace: "nowrap",
                     height: 40,
+                    borderRadius: 30,
                     px: 2,
                     width: { xs: "100%", sm: "auto" },
                   }}
@@ -2506,6 +2650,7 @@ export default function CmsVisitsPage() {
                   sx={{
                     whiteSpace: "nowrap",
                     height: 40,
+                    borderRadius: 30,
                     px: 2,
                     width: { xs: "100%", sm: "auto" },
                   }}
@@ -2531,7 +2676,7 @@ export default function CmsVisitsPage() {
                 sx={{
                   whiteSpace: "nowrap",
                   height: 40,
-                  borderRadius: 2,
+                  borderRadius: 30,
                   fontWeight: 700,
                   px: 2,
                   width: { xs: "100%", sm: "auto" },
@@ -2558,7 +2703,7 @@ export default function CmsVisitsPage() {
                 sx={{
                   whiteSpace: "nowrap",
                   height: 40,
-                  borderRadius: 2,
+                  borderRadius: 30,
                   fontWeight: 700,
                   px: 2,
                   width: { xs: "100%", sm: "auto" },
@@ -2646,7 +2791,7 @@ export default function CmsVisitsPage() {
           fullWidth
           size="small"
           variant="outlined"
-          placeholder="Search name, email, purpose..."
+          placeholder="Search name, email, ID, purpose..."
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -2662,7 +2807,7 @@ export default function CmsVisitsPage() {
 
         <ListToolbar
           showingCount={pagedRows.length}
-          totalCount={filtered.length}
+          totalCount={totalCount || filtered.length}
           actionsSlot={
             <>
               <Button
@@ -2881,7 +3026,9 @@ export default function CmsVisitsPage() {
                             noWrap
                             sx={{ lineHeight: 1.2 }}
                           >
-                            {row.full_name}
+                            {row.participants?.length > 1
+                              ? `Group Meeting (${row.participants.length})`
+                              : row.full_name}
                           </Typography>
                         </Box>
                         {selectMode && (
@@ -2911,6 +3058,19 @@ export default function CmsVisitsPage() {
                         icon={config.icon}
                         sx={{ fontWeight: 800, borderRadius: 1.5, height: 24 }}
                       />
+                      {(row.participants?.length > 1) && (
+                        <Chip
+                          label="Group Meeting"
+                          color="primary"
+                          size="small"
+                          icon={<ICONS.group fontSize="small" />}
+                          sx={{
+                            fontWeight: 800,
+                            borderRadius: 1.5,
+                            height: 24,
+                          }}
+                        />
+                      )}
                       {row.overstay && (
                         <Chip
                           label="Overstay"
@@ -3007,6 +3167,49 @@ export default function CmsVisitsPage() {
                       },
                     }}
                   >
+                    {row.participants?.length > 1 && (
+                      <Box sx={{ py: 0.8 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.6,
+                            color: "text.secondary",
+                            mb: 0.6,
+                          }}
+                        >
+                          <ICONS.group fontSize="small" sx={{ opacity: 0.6 }} />{" "}
+                          Members
+                        </Typography>
+                        <Stack
+                          direction="row"
+                          flexWrap="wrap"
+                          useFlexGap
+                          spacing={0.6}
+                        >
+                          {row.participants.map((p) => (
+                            <Chip
+                              key={p.id}
+                              label={p.fullName}
+                              size="small"
+                              variant="outlined"
+                              clickable
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openMemberInfo(p);
+                              }}
+                              sx={{
+                                fontWeight: 600,
+                                fontSize: "0.68rem",
+                                height: 22,
+                                cursor: "pointer",
+                              }}
+                            />
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
                     {resolvedId && (
                       <Box
                         sx={{
@@ -4468,10 +4671,51 @@ export default function CmsVisitsPage() {
                       />
                     </Box>
                   )}
+
+                  {selectedVisitors.length > 1 && (
+                    <Box
+                      sx={{
+                        p: 2,
+                        borderRadius: 2,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        bgcolor: (theme) =>
+                          alpha(theme.palette.primary.main, 0.04),
+                      }}
+                    >
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={newGroupMeeting}
+                            onChange={(e) =>
+                              setNewGroupMeeting(e.target.checked)
+                            }
+                            color="primary"
+                          />
+                        }
+                        label={
+                          <Stack spacing={0.25}>
+                            <Typography variant="body2" fontWeight={700}>
+                              Group as a single meeting
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              All {selectedVisitors.length} visitors become one
+                              meeting with a single purpose, approval and
+                              check-in/out status.
+                            </Typography>
+                          </Stack>
+                        }
+                      />
+                    </Box>
+                  )}
                 </Stack>
               </DialogContent>
               <Divider />
               <DialogActions
+                disableSpacing
                 sx={{
                   p: 2.5,
                   gap: 1,
@@ -4520,12 +4764,153 @@ export default function CmsVisitsPage() {
                 >
                   {newVisitSubmitting
                     ? "Creating…"
-                    : `Create ${selectedVisitors.length > 1 ? `${selectedVisitors.length} Visits` : "Visit"}`}
+                    : newGroupMeeting
+                      ? "Create Meeting"
+                      : `Create ${selectedVisitors.length > 1 ? `${selectedVisitors.length} Visits` : "Visit"}`}
                 </Button>
               </DialogActions>
             </Dialog>
           );
         })()}
+
+        {/* ── Member Info Dialog ── */}
+        <Dialog
+          open={memberDialog.open}
+          onClose={() => setMemberDialog({ open: false, member: null })}
+          maxWidth="xs"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
+        >
+          <DialogHeader
+            title="Member Details"
+            onClose={() => setMemberDialog({ open: false, member: null })}
+          />
+          <Divider />
+          <DialogContent sx={{ p: 2.5 }}>
+            {memberDialog.member && (
+              <Stack spacing={2}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.5,
+                    p: 1.5,
+                    borderRadius: 2,
+                    bgcolor: (theme) =>
+                      alpha(theme.palette.primary.main, 0.06),
+                  }}
+                >
+                  <Avatar
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      bgcolor: isDark ? "#fff" : "#000",
+                      color: isDark ? "#000" : "#fff",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {(memberDialog.member.fullName || "")
+                      .split(" ")
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase() || "?"}
+                  </Avatar>
+                  <Typography variant="subtitle1" fontWeight={800}>
+                    {memberDialog.member.fullName}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    overflow: "hidden",
+                    bgcolor: isDark
+                      ? "rgba(255,255,255,0.02)"
+                      : "rgba(0,0,0,0.015)",
+                  }}
+                >
+                  {[
+                    {
+                      label: "Email",
+                      value: memberDialog.member.email,
+                      icon: <ICONS.emailOutline fontSize="small" />,
+                    },
+                    {
+                      label: "Phone",
+                      value: memberDialog.member.phone
+                        ? formatPhoneNumberForDisplay(
+                            memberDialog.member.phone,
+                            memberDialog.member.iso_code,
+                          )
+                        : null,
+                      icon: <ICONS.phone fontSize="small" />,
+                    },
+                    {
+                      label: memberDialog.member.idType || "ID Number",
+                      value: memberDialog.member.idNo,
+                      icon: <ICONS.key fontSize="small" />,
+                    },
+                    {
+                      label: "Company",
+                      value: memberDialog.member.companyName,
+                      icon: <ICONS.business fontSize="small" />,
+                    },
+                  ]
+                    .filter((r) => r.value)
+                    .map((r, idx, arr) => (
+                      <Box
+                        key={r.label}
+                        sx={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 1.5,
+                          px: 1.75,
+                          py: 1.25,
+                          borderBottom:
+                            idx < arr.length - 1 ? "1px solid" : "none",
+                          borderColor: "divider",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            color: "text.secondary",
+                            display: "flex",
+                            alignItems: "center",
+                            mt: 0.2,
+                            minWidth: 22,
+                          }}
+                        >
+                          {r.icon}
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              fontSize: "0.62rem",
+                            }}
+                          >
+                            {r.label}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            fontWeight={600}
+                            sx={{ wordBreak: "break-word" }}
+                          >
+                            {String(r.value)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    ))}
+                </Box>
+              </Stack>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* ── Filter Modal ── */}
         <FilterModal
@@ -4565,17 +4950,60 @@ export default function CmsVisitsPage() {
                 control={
                   <Switch
                     checked={vipFastTrackOnly}
+                    disabled={groupMeetingOnly}
                     onChange={(e) => {
                       setVipFastTrackOnly(e.target.checked);
+                      if (e.target.checked) setGroupMeetingOnly(false);
                       setPage(0);
                     }}
                     color="warning"
                   />
                 }
                 label={
-                  <Typography variant="subtitle2" fontWeight={700}>
-                    VIP Fast Track Only
-                  </Typography>
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      VIP Fast Track Only
+                    </Typography>
+                    {groupMeetingOnly && (
+                      <Tooltip title="Group Meeting filter is active — they cannot be combined">
+                        <ICONS.info
+                          fontSize="small"
+                          sx={{ color: "text.disabled" }}
+                        />
+                      </Tooltip>
+                    )}
+                  </Stack>
+                }
+              />
+            </Box>
+            <Box>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={groupMeetingOnly}
+                    disabled={vipFastTrackOnly}
+                    onChange={(e) => {
+                      setGroupMeetingOnly(e.target.checked);
+                      if (e.target.checked) setVipFastTrackOnly(false);
+                      setPage(0);
+                    }}
+                    color="info"
+                  />
+                }
+                label={
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Group Meeting Only
+                    </Typography>
+                    {vipFastTrackOnly && (
+                      <Tooltip title="VIP Fast Track filter is active — they cannot be combined">
+                        <ICONS.info
+                          fontSize="small"
+                          sx={{ color: "text.disabled" }}
+                        />
+                      </Tooltip>
+                    )}
+                  </Stack>
                 }
               />
             </Box>
@@ -4858,6 +5286,7 @@ export default function CmsVisitsPage() {
               onClick={() => {
                 setStatusFilter("all");
                 setVipFastTrackOnly(false);
+                setGroupMeetingOnly(false);
                 setDatePreset("all");
                 setCustomFrom("");
                 setCustomTo("");
@@ -4892,6 +5321,8 @@ export default function CmsVisitsPage() {
           open={!!selected}
           onClose={() => {
             setSelected(null);
+            setDetailPastVisits(null);
+            setDetailPastVisitsOpen(false);
             setOrders([]);
             setOrdersLoading(false);
           }}
@@ -4905,6 +5336,8 @@ export default function CmsVisitsPage() {
             title="Visit Details"
             onClose={() => {
               setSelected(null);
+              setDetailPastVisits(null);
+              setDetailPastVisitsOpen(false);
               setOrders([]);
               setOrdersLoading(false);
             }}
@@ -4965,13 +5398,75 @@ export default function CmsVisitsPage() {
                             .join("")}
                         </Avatar>
                         <Box sx={{ flex: 1, width: "100%" }}>
-                          <Typography
-                            variant="subtitle1"
-                            fontWeight={700}
-                            sx={{ textAlign: { xs: "center", sm: "left" } }}
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1}
+                            alignItems={{ xs: "center", sm: "center" }}
+                            justifyContent={{ xs: "center", sm: "space-between" }}
+                            sx={{ width: "100%" }}
                           >
-                            {selected.full_name}
-                          </Typography>
+                            <Typography
+                              variant="subtitle1"
+                              fontWeight={700}
+                              sx={{ textAlign: { xs: "center", sm: "left" } }}
+                            >
+                              {selected.participants?.length > 1
+                                ? `Group Meeting (${selected.participants.length})`
+                                : selected.full_name}
+                            </Typography>
+                            {detailPastVisits &&
+                              !detailPastVisits.isGroup &&
+                              detailPastVisits.breakdown[0] && (
+                                <Chip
+                                  size="small"
+                                  label={
+                                    detailPastVisits.breakdown[0].count > 0
+                                      ? `${detailPastVisits.breakdown[0].count} past visit${detailPastVisits.breakdown[0].count !== 1 ? "s" : ""}`
+                                      : "New"
+                                  }
+                                  color={
+                                    detailPastVisits.breakdown[0].count > 0
+                                      ? "info"
+                                      : "default"
+                                  }
+                                  sx={{
+                                    height: 22,
+                                    fontSize: "0.65rem",
+                                    fontWeight: 700,
+                                    flexShrink: 0,
+                                    display: { xs: "none", sm: "flex" },
+                                  }}
+                                />
+                              )}
+                          </Stack>
+                          {selected.participants?.length > 1 && (
+                            <Stack
+                              direction="row"
+                              spacing={0.6}
+                              flexWrap="wrap"
+                              useFlexGap
+                              sx={{ mt: 0.75, justifyContent: { xs: "center", sm: "flex-start" } }}
+                            >
+                              {selected.participants.map((p) => (
+                                <Chip
+                                  key={p.id}
+                                  label={p.fullName}
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                  clickable
+                                  onClick={() => openMemberInfo(p)}
+                                  icon={<ICONS.person fontSize="small" />}
+                                  sx={{
+                                    fontWeight: 600,
+                                    fontSize: "0.68rem",
+                                    height: 22,
+                                    cursor: "pointer",
+                                  }}
+                                />
+                              ))}
+                            </Stack>
+                          )}
                           <Stack
                             direction={{ xs: "column", sm: "row" }}
                             spacing={{ xs: 0.5, sm: 2 }}
@@ -5152,6 +5647,113 @@ export default function CmsVisitsPage() {
                               />
                             )}
                           </Stack>
+                          {detailPastVisits &&
+                            !detailPastVisits.isGroup &&
+                            detailPastVisits.breakdown[0] && (
+                              <Chip
+                                size="small"
+                                label={
+                                  detailPastVisits.breakdown[0].count > 0
+                                    ? `${detailPastVisits.breakdown[0].count} past visit${detailPastVisits.breakdown[0].count !== 1 ? "s" : ""}`
+                                    : "New"
+                                }
+                                color={
+                                  detailPastVisits.breakdown[0].count > 0
+                                    ? "info"
+                                    : "default"
+                                }
+                                sx={{
+                                  display: { xs: "flex", sm: "none" },
+                                  width: "100%",
+                                  height: 22,
+                                  fontSize: "0.65rem",
+                                  fontWeight: 700,
+                                  mt: 1.5,
+                                }}
+                              />
+                            )}
+                          {detailPastVisits && detailPastVisits.isGroup && (
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              sx={{
+                                mt: 1.5,
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                justifyContent: { xs: "center", sm: "flex-start" },
+                              }}
+                            >
+                              <Button
+                                size="small"
+                                onClick={() => setDetailPastVisitsOpen((v) => !v)}
+                                endIcon={
+                                  detailPastVisitsOpen ? (
+                                    <ICONS.expandLess sx={{ fontSize: 16 }} />
+                                  ) : (
+                                    <ICONS.expandMore sx={{ fontSize: 16 }} />
+                                  )
+                                }
+                                sx={{
+                                  textTransform: "none",
+                                  height: 26,
+                                  px: 1,
+                                  fontSize: "0.7rem",
+                                  fontWeight: 700,
+                                  color: "text.secondary",
+                                }}
+                              >
+                                Members' past visits
+                              </Button>
+                            </Stack>
+                          )}
+                          {detailPastVisitsOpen &&
+                            detailPastVisits?.isGroup && (
+                              <Stack spacing={1} sx={{ mt: 1.5 }}>
+                                {detailPastVisits.breakdown.map((m) => (
+                                  <Box
+                                    key={m.id}
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: 1,
+                                      p: 1,
+                                      borderRadius: 1,
+                                      bgcolor: (theme) =>
+                                        alpha(theme.palette.text.primary, 0.03),
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      fontWeight={600}
+                                      sx={{
+                                        minWidth: 0,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {m.fullName || "Member"}
+                                    </Typography>
+                                    <Chip
+                                      size="small"
+                                      label={
+                                        m.count > 0
+                                          ? `${m.count} past visit${m.count !== 1 ? "s" : ""}`
+                                          : "New"
+                                      }
+                                      color={m.count > 0 ? "info" : "default"}
+                                      sx={{
+                                        height: 22,
+                                        fontSize: "0.65rem",
+                                        fontWeight: 700,
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                  </Box>
+                                ))}
+                              </Stack>
+                            )}
                         </Box>
                       </Stack>
                     </Box>
@@ -5326,6 +5928,7 @@ export default function CmsVisitsPage() {
               sx={{
                 p: 2.5,
                 alignItems: "stretch",
+                flexWrap: "wrap",
                 bgcolor: (theme) =>
                   alpha(
                     theme.palette.common.black,
@@ -5333,6 +5936,40 @@ export default function CmsVisitsPage() {
                   ),
               }}
             >
+              {isMobileActions && (
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  sx={{ width: "100%", mb: 0.5 }}
+                >
+                  <Tooltip
+                    title={
+                      actionsExpanded
+                        ? "Collapse actions"
+                        : "Expand actions"
+                    }
+                  >
+                    <IconButton
+                      size="small"
+                      onClick={() => setActionsExpanded((prev) => !prev)}
+                      sx={{ color: "text.secondary" }}
+                    >
+                      {actionsExpanded ? <ICONS.expandLess /> : <ICONS.down />}
+                    </IconButton>
+                  </Tooltip>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 700, textTransform: "uppercase" }}
+                  >
+                    Actions
+                  </Typography>
+                </Stack>
+              )}
+              <Collapse
+                in={isMobileActions ? actionsExpanded : true}
+                sx={{ width: "100%" }}
+              >
               <Stack
                 direction={{ xs: "column", sm: "row" }}
                 spacing={1}
@@ -5366,6 +6003,8 @@ export default function CmsVisitsPage() {
                         <Button
                           key={targetStatus}
                           variant={
+                            targetStatus === "approved" ||
+                            targetStatus === "admin_approved" ||
                             targetStatus === "visit_ended"
                               ? "contained"
                               : "outlined"
@@ -5441,6 +6080,7 @@ export default function CmsVisitsPage() {
                   </>
                 )}
               </Stack>
+              </Collapse>
             </DialogActions>
           )}
         </Dialog>
@@ -5543,6 +6183,34 @@ export default function CmsVisitsPage() {
                               log.createdAt,
                           )}
                         </Typography>
+                        {(() => {
+                          const actor = formatActorLabel(log);
+                          if (!actor) return null;
+                          const displayName = actor.name || "System";
+                          return (
+                            <Box sx={{ mt: 0.25 }}>
+                              {actor.roleLabel ? (
+                                <Chip
+                                  size="small"
+                                  label={`${displayName} · ${actor.roleLabel}`}
+                                  variant="outlined"
+                                  sx={{
+                                    fontWeight: 600,
+                                    fontSize: "0.62rem",
+                                    height: 18,
+                                  }}
+                                />
+                              ) : (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  by {displayName}
+                                </Typography>
+                              )}
+                            </Box>
+                          );
+                        })()}
                         {log.notes && (
                           <Typography
                             variant="body2"
@@ -5566,7 +6234,7 @@ export default function CmsVisitsPage() {
           open={!!approveTarget}
           onClose={() => {
             setApproveTarget(null);
-            setApproveVisitCount(null);
+            setApprovePastVisits(null);
           }}
           maxWidth="md"
           fullWidth
@@ -5582,7 +6250,7 @@ export default function CmsVisitsPage() {
             }
             onClose={() => {
               setApproveTarget(null);
-              setApproveVisitCount(null);
+              setApprovePastVisits(null);
               setEscortRequired(true);
             }}
           />
@@ -5607,29 +6275,33 @@ export default function CmsVisitsPage() {
                 >
                   <Stack direction="row" spacing={2} alignItems="center">
                     <Avatar
-                      sx={{
-                        width: 44,
-                        height: 44,
-                        bgcolor: "text.primary",
-                        color: "background.paper",
-                      }}
-                    >
-                      {approveTarget.full_name?.[0]}
-                    </Avatar>
-                    <Box>
-                      <Typography variant="subtitle1" fontWeight={700}>
-                        {approveTarget.full_name}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {approveTarget.email}
-                      </Typography>
-                    </Box>
+                        sx={{
+                          width: 44,
+                          height: 44,
+                          bgcolor: "text.primary",
+                          color: "background.paper",
+                        }}
+                      >
+                        {getRegistrationDisplayInitial(approveTarget)}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={700}>
+                          {getRegistrationDisplayName(approveTarget)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {approveTarget.email}
+                        </Typography>
+                      </Box>
                   </Stack>
-                  {approveVisitCount != null && approveVisitCount > 1 && (
+                  {approvePastVisits && !approvePastVisits.isGroup && approvePastVisits.breakdown[0] && (
                     <Chip
                       size="small"
-                      label={`${approveVisitCount} past visits`}
-                      color="info"
+                      label={
+                        approvePastVisits.breakdown[0].count > 0
+                          ? `${approvePastVisits.breakdown[0].count} past visit${approvePastVisits.breakdown[0].count !== 1 ? "s" : ""}`
+                          : "New"
+                      }
+                      color={approvePastVisits.breakdown[0].count > 0 ? "info" : "default"}
                       sx={{
                         height: 22,
                         fontSize: "0.65rem",
@@ -5638,7 +6310,78 @@ export default function CmsVisitsPage() {
                       }}
                     />
                   )}
+                  {approvePastVisits && approvePastVisits.isGroup && (
+                    <Button
+                      size="small"
+                      onClick={() => setPastVisitsOpen((v) => !v)}
+                      endIcon={
+                        pastVisitsOpen ? (
+                          <ICONS.expandLess sx={{ fontSize: 16 }} />
+                        ) : (
+                          <ICONS.expandMore sx={{ fontSize: 16 }} />
+                        )
+                      }
+                      sx={{
+                        textTransform: "none",
+                        height: 26,
+                        px: 1,
+                        fontSize: "0.7rem",
+                        fontWeight: 700,
+                        color: "text.secondary",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Members' past visits
+                    </Button>
+                  )}
                 </Stack>
+                {pastVisitsOpen && approvePastVisits?.isGroup && (
+                  <Stack spacing={1} sx={{ mt: 1.5 }}>
+                    {approvePastVisits.breakdown.map((m) => (
+                      <Box
+                        key={m.id}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 1,
+                          p: 1,
+                          borderRadius: 1,
+                          bgcolor: (theme) =>
+                            alpha(theme.palette.text.primary, 0.03),
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          fontWeight={600}
+                          sx={{
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {m.fullName || "Member"}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label={
+                            m.count > 0
+                              ? `${m.count} past visit${m.count !== 1 ? "s" : ""}`
+                              : "New"
+                          }
+                          color={m.count > 0 ? "info" : "default"}
+                          sx={{
+                            height: 22,
+                            fontSize: "0.65rem",
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
                 <Divider sx={{ my: 1.5 }} />
                 <Stack
                   direction={{ xs: "column", sm: "row" }}
@@ -6644,6 +7387,7 @@ export default function CmsVisitsPage() {
           </DialogContent>
           <Divider />
           <DialogActions
+            disableSpacing
             sx={{
               p: 2.5,
               gap: 1,
@@ -6656,7 +7400,7 @@ export default function CmsVisitsPage() {
               variant="outlined"
               onClick={() => {
                 setApproveTarget(null);
-                setApproveVisitCount(null);
+                setApprovePastVisits(null);
               }}
               startIcon={<ICONS.cancel />}
               sx={{ px: 3, fontWeight: 700, borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
@@ -6705,15 +7449,24 @@ export default function CmsVisitsPage() {
               </Stack>
             )}
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setRejectTarget(null)}>Cancel</Button>
+          <DialogActions sx={{ p: 2, gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<ICONS.cancel />}
+              onClick={() => setRejectTarget(null)}
+              sx={{ borderRadius: 30 }}
+            >
+              Cancel
+            </Button>
             <Button
               variant="contained"
               color="error"
+              startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : <ICONS.close />}
               onClick={handleReject}
               disabled={submitting}
+              sx={{ borderRadius: 30 }}
             >
-              {submitting ? <CircularProgress size={20} /> : "Reject"}
+              Reject
             </Button>
           </DialogActions>
         </Dialog>
@@ -6786,6 +7539,7 @@ export default function CmsVisitsPage() {
           <DialogActions sx={{ p: 2, gap: 1 }}>
             <Button
               variant="outlined"
+              startIcon={<ICONS.cancel />}
               onClick={() => {
                 setConfirmModal({
                   open: false,
@@ -6800,13 +7554,21 @@ export default function CmsVisitsPage() {
             </Button>
             <Button
               variant="contained"
-              color="primary"
+              color={
+                confirmModal.targetStatus === "cancelled"
+                  ? "error"
+                  : "success"
+              }
               onClick={handleConfirm}
               disabled={actionLoading}
               startIcon={
                 actionLoading ? (
                   <CircularProgress size={16} color="inherit" />
-                ) : null
+                ) : confirmModal.targetStatus === "cancelled" ? (
+                  <ICONS.close />
+                ) : (
+                  <ICONS.check />
+                )
               }
               sx={{ borderRadius: 30 }}
             >
@@ -7918,6 +8680,7 @@ export default function CmsVisitsPage() {
           </DialogContent>
           <Divider />
           <DialogActions
+            disableSpacing
             sx={{
               p: 2.5,
               gap: 1,
@@ -8468,6 +9231,7 @@ export default function CmsVisitsPage() {
           </DialogContent>
           <Divider />
           <DialogActions
+            disableSpacing
             sx={{
               p: 2.5,
               gap: 1,
@@ -8476,6 +9240,7 @@ export default function CmsVisitsPage() {
           >
             <Button
               variant="outlined"
+              startIcon={<ICONS.cancel />}
               onClick={() => setEditForm(null)}
               disabled={submitting}
               sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}

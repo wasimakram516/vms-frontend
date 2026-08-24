@@ -2,7 +2,7 @@
   // ── Departmental Admin ──
   // Ordered by mental model: operations → visit config → insights → administration → kitchen
   { pageId: "visits", label: "Visits", actions: ["read", "create", "update"], roles: ["admin:departmental"] },
-  { pageId: "visitors", label: "Visitors", actions: ["read", "update"], roles: ["admin:departmental"] },
+  { pageId: "visitors", label: "Visitors", actions: ["read", "create", "update"], roles: ["admin:departmental"] },
   { pageId: "nda-forms", label: "NDA Forms", actions: ["read"], roles: ["admin:departmental"] },
   { pageId: "departments", label: "Departments", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "access-levels", label: "Access Levels", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
@@ -15,7 +15,7 @@
   // ── Kitchen Staff ──
   { pageId: "kitchen", label: "Kitchen Orders", actions: ["receive", "prepare", "ready", "deliver", "history"], roles: ["staff:kitchen"] },
   // ── Gate Staff ──
-  { pageId: "verify", label: "Verify Entry", actions: ["read", "checkin", "checkout", "vip-bypass", "todays-visitors"], roles: ["staff:gate"] },
+  { pageId: "verify", label: "Verify Entry", actions: ["read", "checkin", "checkout", "vip-bypass", "todays-visitors", "approve-status"], roles: ["staff:gate"] },
 ];
 
 export const ROLE_KEYS = [

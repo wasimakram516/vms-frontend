@@ -272,6 +272,9 @@ export default function SummaryPage() {
   const qrToken = registration?.qr_token || registration?.qrToken || registration?.id;
   const hostBrandName = registration?.hostName || registration?.host?.name || registration?.hostDetails?.name;
   const visitorIdentity = extractVisitorIdentity(registration, visitorData);
+  const groupMembers = Array.isArray(registration?.participants)
+    ? registration.participants.map((p) => p?.fullName || p?.name).filter(Boolean)
+    : [];
   if (lang === "ar" && visitorIdentity?.value) {
     if (visitorIdentity.type === "passport") {
       const arName = getArCountryName(visitorIdentity.isoCode) || visitorIdentity.countryName;
@@ -350,6 +353,9 @@ export default function SummaryPage() {
     ...(recurringScheduleLabel ? [{ label: t.recurringDays, value: recurringScheduleLabel }] : []),
     ...(deptName ? [{ label: t.summaryDepartment, value: translatedDynamic.dept || deptName }] : []),
     ...(purposeText ? [{ label: t.summaryPurpose, value: translatedDynamic.purpose || purposeText }] : []),
+    ...(groupMembers.length > 1
+      ? [{ label: t.summaryGroupMembers, value: groupMembers.join(", ") }]
+      : []),
   ];
 
   const summaryCardBorder = isDark ? alpha(SUMMARY_COLORS.white, 0.22) : alpha(SUMMARY_COLORS.primary, 0.14);
@@ -453,23 +459,23 @@ export default function SummaryPage() {
                   {(visitorEmail || visitorPhone) && (
                     <Stack useFlexGap direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.85, flexWrap: "wrap", rowGap: 0.5 }}>
                       {visitorEmail && (
-                        <>
+                        <Stack direction="row" alignItems="center" spacing={0.75} sx={{ maxWidth: "100%" }}>
                           <ICONS.email data-contact-icon="email" sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
-                          <Typography variant="caption" dir="ltr" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
+                          <Typography variant="caption" dir="ltr" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all", minWidth: 0 }}>
                             {visitorEmail}
                           </Typography>
-                        </>
+                        </Stack>
                       )}
                       {visitorEmail && visitorPhone && (
                         <Typography variant="caption" sx={{ color: summaryHeaderMutedText }}>·</Typography>
                       )}
                       {visitorPhone && (
-                        <>
+                        <Stack direction="row" alignItems="center" spacing={0.75} sx={{ maxWidth: "100%" }}>
                           <ICONS.phone data-contact-icon="phone" sx={{ fontSize: 13, color: summaryHeaderMutedText, flexShrink: 0 }} />
-                          <Typography variant="caption" dir="ltr" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all" }}>
+                          <Typography variant="caption" dir="ltr" sx={{ color: summaryHeaderMutedText, wordBreak: "break-all", minWidth: 0 }}>
                             {visitorPhone}
                           </Typography>
-                        </>
+                        </Stack>
                       )}
                     </Stack>
                   )}

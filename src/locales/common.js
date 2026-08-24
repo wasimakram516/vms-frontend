@@ -38,6 +38,11 @@ const common = {
     navLogout: "Logout",
     navConfirmLogoutTitle: "Confirm Logout",
     navConfirmLogoutMessage: "Are you sure you want to log out of your account?",
+    navLogoutPasswordTitle: "Confirm Logout",
+    navLogoutPasswordMessage: "Enter your password to log out of your account.",
+    navLogoutPasswordField: "Password",
+    navLogoutPasswordError: "Incorrect password. Please try again.",
+    navLogoutPasswordGenericError: "Could not verify your password. Please try again.",
 
     // Purpose of visit options (display labels — internal values stay in English)
     purposeMeeting: "Meeting",
@@ -104,6 +109,11 @@ const common = {
     navLogout: "تسجيل الخروج",
     navConfirmLogoutTitle: "تأكيد تسجيل الخروج",
     navConfirmLogoutMessage: "هل أنت متأكد أنك تريد تسجيل الخروج من حسابك؟",
+    navLogoutPasswordTitle: "تأكيد تسجيل الخروج",
+    navLogoutPasswordMessage: "أدخل كلمة المرور لتسجيل الخروج من حسابك.",
+    navLogoutPasswordField: "كلمة المرور",
+    navLogoutPasswordError: "كلمة المرور غير صحيحة. حاول مرة أخرى.",
+    navLogoutPasswordGenericError: "تعذّر التحقق من كلمة المرور. حاول مرة أخرى.",
 
     // Purpose of visit options (display labels — internal values stay in English)
     purposeMeeting: "اجتماع",

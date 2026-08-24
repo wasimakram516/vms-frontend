@@ -66,6 +66,7 @@ let visitorOptionFallbackCounter = 0;
 
 const getVisitorOptionKey = (registration) => {
   if (!registration) return "visitor:null";
+  if (registration.userId) return `user:${registration.userId}`;
   if (registration.id) return `registration:${registration.id}`;
 
   const stableIdentity = registration.userId || registration.user?.id || registration.createdAt || registration.created_at;
@@ -91,8 +92,30 @@ const getLatestCheckedInVisitors = (registrations) => {
   return Array.from(latestByUser.values()).filter((registration) => registration?.status === "checked_in");
 };
 
+// Group meetings are stored as ONE registration (userId null) whose members live
+// in participantUserIds (r.user is null → full_name falls back to "N/A"). The
+// picker keeps ONE option per group meeting, labelled "Group Meeting (members)"
+// so staff can both recognise it and search members by name.
+const getGroupMemberNames = (option) => {
+  if (!Array.isArray(option?.participants)) return [];
+  return option.participants
+    .map((p) => p?.fullName)
+    .filter((n) => typeof n === "string" && n.trim() !== "");
+};
+
+const getVisitorOptionLabel = (option) => {
+  const memberNames = getGroupMemberNames(option);
+  if (memberNames.length > 1) {
+    return `Group Meeting (${memberNames.join(", ")})`;
+  }
+  const name = option.user?.fullName || option.full_name || "Visitor";
+  const org = option.organisation || option.companyName || "";
+  return org ? `${name} (${org})` : name;
+};
+
 function OrderingContent() {
   const { user } = useAuth();
+  const { showMessage } = useMessage();
   const canCreate = canAccessResource(user, "kitchen", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "admin" || user?.role === "dev", action: "create" });
   const canCancel = canAccessResource(user, "kitchen", { hardcodeAllowed: user?.role === "superadmin" || user?.role === "admin" || user?.role === "dev", action: "update" });
   const { hostSettings, loading: settingsLoading } = useSettings();
@@ -222,6 +245,22 @@ function OrderingContent() {
       .filter(item => item !== null);
   }, [cart, items]);
 
+  // Purge cart entries whose menu items no longer exist — a stale
+  // localStorage cart must never reach the order payload.
+  useEffect(() => {
+    if (!isReady || items.length === 0) return;
+    setCart((prev) => {
+      const validIds = new Set(items.map((i) => i.id));
+      const staleIds = Object.keys(prev).filter((id) => !validIds.has(id));
+      if (!staleIds.length) return prev;
+      const next = { ...prev };
+      staleIds.forEach((id) => delete next[id]);
+      showMessage("Some items in your cart are no longer on the menu and were removed.", "warning");
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, items]);
+
   const updateQuantity = (itemId, delta) => {
     setCart((prev) => {
       const current = prev[itemId] || 0;
@@ -244,13 +283,28 @@ function OrderingContent() {
     }
   }, [totalItems, cartOpen]);
 
+  // Refresh the checked-in visitor picker whenever the order drawer opens so
+  // freshly checked-in visits (including group meetings) are never stale.
+  useEffect(() => {
+    if (cartOpen) {
+      fetchCheckedInRegistrations({ silent: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartOpen]);
+
   const handlePlaceOrder = async (force = false) => {
     setSubmitting(true);
     try {
-      const orderItems = Object.entries(cart).map(([itemId, quantity]) => ({
-        menuItemId: itemId,
-        quantity,
+      const orderItems = cartItemsLists.map((item) => ({
+        menuItemId: item.id,
+        quantity: item.quantity,
       }));
+
+      if (!orderItems.length) {
+        showMessage("Your cart is empty or contains unavailable items.", "warning");
+        setCartOpen(false);
+        return;
+      }
 
       const payload = {
         items: orderItems,
@@ -321,16 +375,10 @@ function OrderingContent() {
           options={resList}
           loading={resLoading}
           isOptionEqualToValue={(option, value) => getVisitorOptionKey(option) === getVisitorOptionKey(value)}
-          getOptionLabel={(option) => {
-            const name = option.user?.fullName || option.full_name || "Visitor";
-            const org = option.organisation || option.companyName || "";
-            return org ? `${name} (${org})` : name;
-          }}
+          getOptionLabel={(option) => getVisitorOptionLabel(option)}
           renderOption={(props, option) => {
             const { key: _muiKey, ...rest } = props;
-            const name = option.user?.fullName || option.full_name || "Visitor";
-            const org = option.organisation || option.companyName || "";
-            return <li {...rest} key={String(getVisitorOptionKey(option))}>{org ? `${name} (${org})` : name}</li>;
+            return <li {...rest} key={String(getVisitorOptionKey(option))}>{getVisitorOptionLabel(option)}</li>;
           }}
           noOptionsText="No checked-in visitors found"
           value={selectedVisitor}

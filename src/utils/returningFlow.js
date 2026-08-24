@@ -52,7 +52,14 @@ export async function applyReturningVerification(res, { setFlowState, setVisitor
             };
 
             const isoCode =
-                res.phoneIsoCode || res.phone_iso_code || res.isoCode || res.iso_code;
+                res.phoneIsoCode ||
+                res.phone_iso_code ||
+                res.isoCode ||
+                res.iso_code ||
+                res.user?.iso_code ||
+                res.user?.isoCode ||
+                res.user?.phoneIsoCode ||
+                res.user?.phone_iso_code;
             if (isoCode) {
                 newData.phoneIsoCode = isoCode;
             }

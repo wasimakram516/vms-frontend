@@ -86,6 +86,12 @@ export const refreshToken = withApiHandler(async () => {
   return token;
 }, { silent: true });
 
+// Verify the current user's password before a sensitive action (e.g. logout).
+export const verifyPassword = withApiHandler(async (password) => {
+  const res = await api.post("/auth/verify-password", { password });
+  return res.data?.data || res.data || { valid: true };
+}, { silent: true });
+
 // Re-fetch /auth/me to get fresh permissions.
 // Call this on app mount and after any permission assignment.
 export const refreshUser = async () => {

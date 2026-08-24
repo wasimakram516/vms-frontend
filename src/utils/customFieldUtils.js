@@ -57,6 +57,12 @@ export const PHONE_ALIASES = [
     "visitor phone", "user phone",
 ];
 
+export const COUNTRY_ALIASES = [
+    "country", "document country", "documentcountry", "nationality",
+    "issuing country", "issuingcountry", "country of issue", "countryofissue",
+    "passport country", "id country",
+];
+
 export const FULL_NAME_ALIASES = [
     "fullname", "full name", "visitor name", "visitorname", "name",
     "full_name",
@@ -167,6 +173,9 @@ export const pickId = (f) => pick(f, "civilid", ID_ALIASES);
 
 /** Extract the ID-type value (e.g. "Passport") from a field-values map */
 export const pickIdType = (f) => pick(f, "idtype", ID_TYPE_ALIASES);
+
+/** Extract the issuing country for a passport from a field-values map */
+export const pickCountry = (f) => pick(f, "country", COUNTRY_ALIASES);
 
 /** Extract the phone value from a field-values map */
 export const pickPhone = (f) => pick(f, "phone", PHONE_ALIASES);

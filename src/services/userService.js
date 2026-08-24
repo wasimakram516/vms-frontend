@@ -9,7 +9,7 @@ const buildFullPhone = (phone, isoCode) => {
   return country ? `${country.code}${phone}` : phone;
 };
 
-const mapUserToFrontend = (user) => ({
+export const mapUserToFrontend = (user) => ({
   id: user.id,
   full_name: user.fullName,
   fullName: user.fullName,
@@ -21,6 +21,8 @@ const mapUserToFrontend = (user) => ({
   adminType: user.adminType,
   status: user.status,
   departments: Array.isArray(user.departments) ? user.departments : [],
+  idNo: user.idNo || user.id_no || undefined,
+  idType: user.idType || undefined,
   created_at: user.createdAt,
   updated_at: user.updatedAt,
   createdAt: user.createdAt,
@@ -32,17 +34,44 @@ const mapUserToFrontend = (user) => ({
   companyName: user.companyName || user.company_name || null,
 });
 
-export const getAllUsers = withApiHandler(async (role) => {
-  const res = await api.get("/users", { params: { role } });
-  const users = res.data?.data || res.data || [];
-  return Array.isArray(users) ? users.map(mapUserToFrontend) : [];
+export const getAllUsers = withApiHandler(async (role, { page, limit, search } = {}) => {
+  const res = await api.get("/users", { params: { role, page, limit, search } });
+  const raw = res.data?.data || res.data || {};
+  if (Array.isArray(raw)) {
+    const mapped = raw.map(mapUserToFrontend);
+    return { data: { data: mapped, total: mapped.length, page: 1, limit: mapped.length } };
+  }
+  const items = Array.isArray(raw.data) ? raw.data.map(mapUserToFrontend) : [];
+  return { data: { data: items, total: raw.total || 0, page: raw.page || 1, limit: raw.limit || 50 } };
 });
 
-export const getVisitorUsers = withApiHandler(async () => {
-  const res = await api.get("/users/for-visitors");
-  const users = res.data?.data || res.data || [];
-  return Array.isArray(users) ? users.map(mapUserToFrontend) : [];
+export const getVisitorUsers = withApiHandler(async ({ page, limit, search } = {}) => {
+  const res = await api.get("/users/for-visitors", { params: { page, limit, search } });
+  const raw = res.data?.data || res.data || {};
+  if (Array.isArray(raw)) {
+    const mapped = raw.map(mapUserToFrontend);
+    return { data: { data: mapped, total: mapped.length, page: 1, limit: mapped.length } };
+  }
+  const items = Array.isArray(raw.data) ? raw.data.map(mapUserToFrontend) : [];
+  return { data: { data: items, total: raw.total || 0, page: raw.page || 1, limit: raw.limit || 50 } };
 });
+
+export const createVisitorUser = withApiHandler(
+  async (data) => {
+    const res = await api.post("/users/for-visitors", {
+      fullName: data.full_name,
+      email: data.email,
+      phone: data.phone || undefined,
+      phoneIsoCode: data.phoneIsoCode || undefined,
+      idNo: data.idNo || undefined,
+      idType: data.idType || undefined,
+      idCountry: data.idCountry || undefined,
+    });
+    const userData = res.data?.data || res.data;
+    return userData ? mapUserToFrontend(userData) : null;
+  },
+  { showSuccess: true }
+);
 
 export const getVisitorUserById = withApiHandler(async (id) => {
   const res = await api.get(`/users/for-visitors/${id}`);

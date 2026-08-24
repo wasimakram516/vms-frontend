@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Typography,
@@ -33,7 +34,6 @@ import {
   Alert,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSocket } from "@/contexts/SocketContext";
 import ICONS from "@/utils/iconUtil";
@@ -46,6 +46,7 @@ import {
   createAdminUser,
   createSuperAdminUser,
   assignUserDepartments,
+  mapUserToFrontend,
 } from "@/services/userService";
 import { getDepartments } from "@/services/departmentService";
 import { getRolePagePermissions, getUserPageOverrides, setUserPageOverrides } from "@/services/permissionService";
@@ -111,6 +112,8 @@ export default function UsersPage() {
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
   const defaultForm = {
     full_name: "",
@@ -168,6 +171,26 @@ export default function UsersPage() {
       if (Array.isArray(res)) setAllDepartments(res);
     });
   }, []);
+
+  // ── Socket progressive loading ──
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (payload) => {
+      if (payload.data?.length) {
+        const mapped = payload.data.map(mapUserToFrontend);
+        setUsers((prev) => {
+          const existing = new Set(prev.map((u) => u.id));
+          const fresh = mapped.filter((u) => !existing.has(u.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      }
+      if (payload.loaded >= payload.total) {
+        setIsStreaming(false);
+      }
+    };
+    socket.on("visitors:progress", handler);
+    return () => socket.off("visitors:progress", handler);
+  }, [socket]);
 
   // Load base role page permissions whenever the create form's role/type changes
   useEffect(() => {
@@ -231,8 +254,13 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const data = await getAllUsers();
-      setUsers(data || []);
+      const BATCH_SIZE = 50;
+      const result = await getAllUsers(undefined, { page: 1, limit: BATCH_SIZE });
+      setUsers(result.data || []);
+      setTotalCount(result.total || 0);
+      if (result.total > BATCH_SIZE) {
+        setIsStreaming(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -558,6 +586,8 @@ export default function UsersPage() {
             flexDirection: { xs: "column", sm: "row" },
             gap: 1,
             width: { xs: "100%", sm: "auto" },
+            flexWrap: "wrap",
+            rowGap: 1,
           }}
         >
           {canCreate && (
@@ -576,7 +606,7 @@ export default function UsersPage() {
 
       <ListToolbar
         showingCount={pagedUsers.length}
-        totalCount={filteredUsers.length}
+        totalCount={totalCount || filteredUsers.length}
         searchSlot={
           <TextField
             fullWidth

@@ -34,7 +34,10 @@ const mapOrderToFrontend = (order) => ({
     changed_by: h.changedByUser?.fullName || "System",
   })) || [],
   updated_by_user: order.updatedBy?.fullName || null,
-  visitor_name: order.visitor?.fullName || order.registration?.user?.fullName || null,
+  visitor_name:
+    Array.isArray(order.visitorNames) && order.visitorNames.length
+      ? order.visitorNames.join(", ")
+      : order.visitor?.fullName || order.registration?.user?.fullName || null,
   visitor_organisation: (
     order.registration?.organisation || 
     order.registration?.companyName || 

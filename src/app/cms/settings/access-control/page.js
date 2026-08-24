@@ -247,7 +247,7 @@ export default function AccessControlPage() {
               gap={{ xs: 1.5, sm: 1 }}
               sx={{
                 position: "sticky",
-                top: 0,
+                top: { xs: 60, md: 0 },
                 zIndex: 5,
                 bgcolor: "background.default",
                 borderBottom: "1px solid",
