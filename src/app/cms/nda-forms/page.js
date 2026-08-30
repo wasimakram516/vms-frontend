@@ -29,6 +29,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { getNdaForms, deleteNdaAcceptance, resendNdaToHost, resendNdaToVisitor } from "@/services/ndaAcceptanceService";
 import { formatDateTimeWithLocale } from "@/utils/dateUtils";
+import { phoneMatchesQuery } from "@/utils/countryCodes";
 
 export default function NdaFormsPage() {
   const [allForms, setAllForms] = useState([]);
@@ -62,6 +63,7 @@ export default function NdaFormsPage() {
       (f.user?.fullName || "").toLowerCase().includes(q) ||
       (f.user?.email || "").toLowerCase().includes(q) ||
       (f.ndaTemplate?.name || "").toLowerCase().includes(q) ||
+      phoneMatchesQuery(f.user?.phone, q, f.user?.iso_code) ||
       (f.visitorIdValues || []).some(v => String(v).toLowerCase().includes(q))
     );
   }, [allForms, searchQuery]);

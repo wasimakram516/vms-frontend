@@ -45,4 +45,17 @@ describe("visitorMatchesQuery", () => {
   it("returns false when nothing matches", () => {
     expect(visitorMatchesQuery(visitor, "nope-nothing")).toBe(false);
   });
+
+  it("matches a locally-stored phone with the country code when iso is known", () => {
+    const v = { ...visitor, phone: "12345677", iso_code: "om" };
+    expect(visitorMatchesQuery(v, "12345677")).toBe(true);
+    expect(visitorMatchesQuery(v, "96812345677")).toBe(true);
+    expect(visitorMatchesQuery(v, "+96812345677")).toBe(true);
+  });
+
+  it("matches a dial-qualified phone with the bare number", () => {
+    const v = { ...visitor, phone: "+96812345677", iso_code: "om" };
+    expect(visitorMatchesQuery(v, "12345677")).toBe(true);
+    expect(visitorMatchesQuery(v, "96812345677")).toBe(true);
+  });
 });

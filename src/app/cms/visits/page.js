@@ -54,7 +54,7 @@ import { exportAllBadges } from "@/utils/exportBadges";
 import ICONS from "@/utils/iconUtil";
 import DateTimeFieldFlatpickr from "@/components/forms/DateTimeFieldFlatpickr";
 import CountryPicker from "@/components/CountryPicker";
-import { formatPhoneNumberForDisplay } from "@/utils/countryCodes";
+import { formatPhoneNumberForDisplay, phoneMatchesQuery } from "@/utils/countryCodes";
 import { getDefaultBadgeTemplate } from "@/services/badgeService";
 import BadgePDF from "@/components/badges/BadgePDF";
 
@@ -982,13 +982,17 @@ export default function CmsVisitsPage() {
               r.full_name,
               r.email,
               r.purpose_of_visit,
+              r.visitor?.idNumber,
               fvText,
               participantsText,
             ]
               .join(" ")
               .toLowerCase()
               .includes(q);
-            if (!match) return false;
+            const phoneMatch =
+              phoneMatchesQuery(r.phone, search, r.phone_iso_code || r.visitor?.iso_code) ||
+              phoneMatchesQuery(r.visitor?.phone, search, r.visitor?.iso_code);
+            if (!match && !phoneMatch) return false;
           }
           if (statusFilter !== "all" && r.status !== statusFilter) return false;
           if (vipFastTrackOnly && !r.is_vip_fast_track) return false;
@@ -3585,6 +3589,15 @@ export default function CmsVisitsPage() {
                       getOptionLabel={(opt) =>
                         `${opt.fullName}${opt.email ? ` — ${opt.email}` : ""}`
                       }
+                      filterOptions={(options, state) => {
+                        const q = state.inputValue.trim().toLowerCase();
+                        if (!q) return options;
+                        return options.filter((opt) =>
+                          [opt.fullName, opt.email, opt.idNo].some(
+                            (v) => v != null && String(v).toLowerCase().includes(q),
+                          ) || phoneMatchesQuery(opt.phone, q, opt.iso_code),
+                        );
+                      }}
                       isOptionEqualToValue={(opt, val) => opt.id === val.id}
                       getOptionDisabled={(opt) => opt.hasActiveVisit}
                       renderTags={(value, getTagProps) =>

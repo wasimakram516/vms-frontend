@@ -44,6 +44,7 @@ import PermissionGuard from "@/components/auth/PermissionGuard";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessResource } from "@/utils/permissions";
+import { phoneMatchesQuery } from "@/utils/countryCodes";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { useMessage } from "@/contexts/MessageContext";
@@ -111,6 +112,45 @@ const getVisitorOptionLabel = (option) => {
   const name = option.user?.fullName || option.full_name || "Visitor";
   const org = option.organisation || option.companyName || "";
   return org ? `${name} (${org})` : name;
+};
+
+const getVisitorSearchableFields = (option) => {
+  const values = [
+    option.full_name,
+    option.user?.fullName,
+    option.email,
+    option.user?.email,
+    option.idNo,
+    option.user?.idNo,
+    option.visitor?.idNumber,
+  ].filter((v) => typeof v === "string" && v.trim() !== "");
+
+  const memberNames = getGroupMemberNames(option);
+  values.push(...memberNames);
+
+  if (Array.isArray(option.fieldValues)) {
+    for (const fv of option.fieldValues) {
+      if (fv?.value != null && String(fv.value).trim() !== "") {
+        values.push(String(fv.value));
+      }
+    }
+  }
+
+  return {
+    haystack: values.join(" ").toLowerCase(),
+    isoCode: option.phone_iso_code || option.user?.iso_code,
+    phoneTokens: [option.phone, option.user?.phone].filter((p) => typeof p === "string" && p.trim() !== ""),
+  };
+};
+
+const filterVisitorsByQuery = (options, input) => {
+  const q = input.trim().toLowerCase();
+  if (!q) return options;
+  return options.filter((opt) => {
+    const { haystack, isoCode, phoneTokens } = getVisitorSearchableFields(opt);
+    if (haystack.includes(q)) return true;
+    return phoneTokens.some((p) => phoneMatchesQuery(p, q, isoCode));
+  });
 };
 
 function OrderingContent() {
@@ -374,6 +414,7 @@ function OrderingContent() {
           size="small"
           options={resList}
           loading={resLoading}
+          filterOptions={(options, state) => filterVisitorsByQuery(options, state.inputValue)}
           isOptionEqualToValue={(option, value) => getVisitorOptionKey(option) === getVisitorOptionKey(value)}
           getOptionLabel={(option) => getVisitorOptionLabel(option)}
           renderOption={(props, option) => {

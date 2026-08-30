@@ -63,7 +63,7 @@ import RecordMetadata from "@/components/RecordMetadata";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
-import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay } from "@/utils/countryCodes";
+import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay, phoneMatchesQuery } from "@/utils/countryCodes";
 import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
 
 const CREATABLE_ROLES = ["superadmin", "admin", "staff"];
@@ -443,7 +443,9 @@ export default function UsersPage() {
       if (u.role === "dev") return false;
       const matchSearch =
         (u.full_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.email ?? "").toLowerCase().includes(searchQuery.toLowerCase());
+        (u.email ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        phoneMatchesQuery(u.phone, searchQuery, u.iso_code) ||
+        (u.idNo != null && String(u.idNo).toLowerCase().includes(searchQuery.toLowerCase()));
       const matchRole = roleFilter === "all" || u.role === roleFilter;
       const matchStaffType =
         roleFilter !== "staff" || 
@@ -867,6 +869,7 @@ export default function UsersPage() {
 
                     {/* Body: Email row */}
                     <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
+                      {u.email && (
                       <Box
                         sx={{
                           display: "flex",
@@ -909,6 +912,7 @@ export default function UsersPage() {
                           {u.email}
                         </Typography>
                       </Box>
+                      )}
 
                       {u.phone && (
                         <Box

@@ -320,6 +320,7 @@ export const getEligibleVisitors = withApiHandler(async () => {
         email: u.email || "",
         phone: u.phone || "",
         iso_code: u.iso_code || null,
+        idNo: u.idNo || u.id_no || null,
         hasActiveVisit: u.hasActiveVisit ?? false,
       }))
     : [];
