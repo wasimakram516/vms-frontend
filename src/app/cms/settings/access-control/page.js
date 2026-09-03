@@ -32,6 +32,7 @@ import { PAGE_ICONS } from "@/constants/pageIcons";
 
 const ACTION_LABELS = {
   "vip-bypass": "VIP Fast Track",
+  "override": "Status Override",
 };
 
 function actionLabel(action) {

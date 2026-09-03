@@ -1,7 +1,7 @@
 ﻿const PAGES = [
   // ── Departmental Admin ──
   // Ordered by mental model: operations → visit config → insights → administration → kitchen
-  { pageId: "visits", label: "Visits", actions: ["read", "create", "update"], roles: ["admin:departmental"] },
+  { pageId: "visits", label: "Visits", actions: ["read", "create", "update", "override"], roles: ["admin:departmental"] },
   { pageId: "visitors", label: "Visitors", actions: ["read", "create", "update"], roles: ["admin:departmental"] },
   { pageId: "nda-forms", label: "NDA Forms", actions: ["read"], roles: ["admin:departmental"] },
   { pageId: "departments", label: "Departments", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },

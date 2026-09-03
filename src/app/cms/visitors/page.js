@@ -274,6 +274,8 @@ export default function VisitorsPage() {
   const [csvExportLoading, setCsvExportLoading] = useState(false);
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const [activeCustomFields, setActiveCustomFields] = useState([]);
+  const accountIdNoRef = useRef(null);
+  const accountIdTypeRef = useRef(null);
   const [editCountryIsoCodes, setEditCountryIsoCodes] = useState({});
   const [phoneErrors, setPhoneErrors] = useState({});
   const [timelineModal, setTimelineModal] = useState({
@@ -462,6 +464,26 @@ export default function VisitorsPage() {
         (f) => (f.fieldKey || f.field_key) === key,
       );
       if (field) clearHiddenChildren(field, value, updated);
+
+      // When switching the ID-type select, re-seed the account's document
+      // number into the newly-visible child ID field so it stays filled.
+      if (field && accountIdNoRef.current) {
+        const norm = (s = "") => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+        const isIdType = findFieldByAliases([field], ID_TYPE_ALIASES);
+        if (isIdType && value) {
+          const idKeySet = new Set(ID_ALIASES.map((a) => norm(a)));
+          const depCfg = field.dependentsJson?.[value];
+          const childIds = Array.isArray(depCfg) ? depCfg : depCfg?.fieldIds || [];
+          for (const childId of childIds) {
+            const child = activeCustomFields.find((f) => f.id === childId);
+            const ckey = child?.fieldKey || child?.field_key;
+            if (child && ckey && idKeySet.has(norm(ckey))) {
+              updated[ckey] = accountIdNoRef.current;
+            }
+          }
+        }
+      }
+
       const nk = key.toLowerCase().replace(/[^a-z]/g, "");
       const userFieldMap = {
         fullname: "fullName",
@@ -595,6 +617,63 @@ export default function VisitorsPage() {
       if (!fvMap.email && visitor.email) fvMap.email = visitor.email;
       if (!fvMap.phone && visitor.phone) fvMap.phone = visitor.phone;
 
+      // Seed the account-level document number + type into the edit form's ID-type
+      // select and its dependent ID field, so Edit is consistent with the card/
+      // Details header. The ID custom field is a child of the ID-type select —
+      // it only renders once a matching type is chosen.
+      accountIdNoRef.current = visitor.idNo || null;
+      accountIdTypeRef.current = visitor.idType || null;
+
+      if (visitor.idNo) {
+        const norm = (s = "") => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+        const idTypeParent = findFieldByAliases(activeCustomFields, ID_TYPE_ALIASES);
+        const typeKey = idTypeParent?.fieldKey || idTypeParent?.field_key;
+        if (idTypeParent && typeKey && !fvMap[typeKey]) {
+          const opts = Array.isArray(idTypeParent.optionsJson)
+            ? idTypeParent.optionsJson
+            : [];
+          // Resolve a selectable type: prefer one matching the stored bucket,
+          // else the first option.
+          let chosenType = null;
+          if (accountIdTypeRef.current && opts.length) {
+            const bucket = norm(accountIdTypeRef.current);
+            chosenType =
+              opts.find((o) => {
+                const on = norm(o);
+                return on === bucket || on.includes(bucket) || bucket.includes(on);
+              }) || opts[0];
+          } else if (opts.length) {
+            chosenType = opts[0];
+          }
+          if (chosenType) {
+            fvMap[typeKey] = chosenType;
+            // Put the document number into the ID child field for that type.
+            const depCfg = idTypeParent.dependentsJson?.[chosenType];
+            const childIds = Array.isArray(depCfg) ? depCfg : depCfg?.fieldIds || [];
+            const idKeySet = new Set(
+              ID_ALIASES.map((a) => norm(a)),
+            );
+            for (const childId of childIds) {
+              const child = activeCustomFields.find((f) => f.id === childId);
+              const ckey = child?.fieldKey || child?.field_key;
+              if (child && ckey && idKeySet.has(norm(ckey))) {
+                fvMap[ckey] = visitor.idNo;
+              }
+            }
+          }
+        } else if (!idTypeParent) {
+          // No type select — seed any standalone ID field directly.
+          const idKeySet = new Set(
+            ID_ALIASES.map((a) => String(a).toLowerCase().replace(/[^a-z0-9]/g, "")),
+          );
+          for (const f of activeCustomFields) {
+            const key = f.fieldKey || f.field_key;
+            const k = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (idKeySet.has(k) && !fvMap[key]) fvMap[key] = visitor.idNo;
+          }
+        }
+      }
+
       setEditCountryIsoCodes(
         buildEditCountryIsoCodes(latest || {}, activeCustomFields),
       );
@@ -626,6 +705,9 @@ export default function VisitorsPage() {
         phone: editForm.phone ?? "",
         phoneIsoCode: editForm.phoneIsoCode || "",
         status: editForm.status || "active",
+        idNo: pickId(editForm?.fieldValues) || undefined,
+        idType: pickIdType(editForm?.fieldValues) || undefined,
+        idCountry: pickCountry(editForm?.fieldValues) || undefined,
       };
       const userResult = await updateVisitorUser(editModal.id, payload);
       if (userResult?.error) return;
@@ -1292,6 +1374,20 @@ export default function VisitorsPage() {
                                 )
                               : "No phone"}
                           </Typography>
+                          {selected._idValue && (
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.5,
+                              }}
+                            >
+                              <ICONS.key fontSize="inherit" />{" "}
+                              {selected._idLabel || "ID"}: {selected._idValue}
+                            </Typography>
+                          )}
                         </Stack>
                       </Box>
                     </Stack>

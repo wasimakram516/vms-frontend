@@ -87,6 +87,9 @@ export const updateVisitorUser = withApiHandler(
       phone: buildFullPhone(data.phone, data.phoneIsoCode),
       phoneIsoCode: data.phoneIsoCode,
       status: data.status,
+      idNo: data.idNo,
+      idType: data.idType,
+      idCountry: data.idCountry,
     };
     const res = await api.patch(`/users/for-visitors/${id}`, payload);
     const userData = res.data?.data || res.data;

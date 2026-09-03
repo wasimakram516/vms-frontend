@@ -666,6 +666,11 @@ export default function CmsVisitsPage() {
     hardcodeAllowed: !isKitchenAdmin,
     action: "update",
   });
+  
+  const canOverrideVisit = canAccessResource(user, "visits", {
+    hardcodeAllowed: isSuperAdmin,
+    action: "override",
+  });
 
   // ── Data ──
   const [rows, setRows] = useState([]);
@@ -2327,7 +2332,7 @@ export default function CmsVisitsPage() {
       };
     }
 
-    const canOverride = isSuperAdmin || userRole === "admin";
+    const canOverride = canOverrideVisit;
     const selectedCards = rows.filter((r) => selectedRowIds.has(r.id));
     const updated = [];
     const skipped = [];
@@ -2535,7 +2540,7 @@ export default function CmsVisitsPage() {
         selected?.status,
         userRole,
         allowedTransitions,
-        canEditRegistration(selected, isSuperAdmin, userRole),
+        canOverrideVisit && canEditRegistration(selected, isSuperAdmin, userRole),
       ),
     [
       selected?.status,
@@ -2544,6 +2549,7 @@ export default function CmsVisitsPage() {
       selected,
       isSuperAdmin,
       canEditRegistration,
+      canOverrideVisit,
     ],
   );
 
