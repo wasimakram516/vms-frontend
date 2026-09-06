@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, Fragment } from "react";
 import dayjs from "dayjs";
 import {
   Box,
@@ -1513,13 +1513,30 @@ export default function CmsVisitsPage() {
           {fmtHour12(info.startH, info.startM)} – {fmtHour12(info.endH, info.endM)}
         </Box>
       );
-      parts.push(t.outsideWorkingHours.replace('{{time}}', timeRange));
+      const [hoursBefore, hoursAfter] = t.outsideWorkingHours.split('{{time}}');
+      parts.push(
+        <Fragment key="hours">
+          {hoursBefore}
+          {timeRange}
+          {hoursAfter}
+        </Fragment>,
+      );
     }
     if (info.outsideDays) {
       parts.push(
         t.outsideWorkingDays.replace('{{days}}', info.offDays.length > 1 ? `${info.offDays.length} days` : `${info.offDays.length} day`),
       );
     }
+    const joinedParts = parts.reduce(
+      (acc, part, i) => (
+        <Fragment key={i}>
+          {acc}
+          {i > 0 ? " and " : null}
+          {part}
+        </Fragment>
+      ),
+      null,
+    );
     return (
       <Box sx={{ mt: 1.5, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
         <Stack direction="row" spacing={1} alignItems="center">
@@ -1532,7 +1549,7 @@ export default function CmsVisitsPage() {
             color="warning.contrastText"
             sx={{ fontSize: 11 }}
           >
-            This visit falls {parts.join(" and ")}.
+            This visit falls {joinedParts}.
           </Typography>
         </Stack>
       </Box>
