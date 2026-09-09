@@ -257,6 +257,49 @@ export const getCountryCodeByIsoCode = (isoCode) => {
     return COUNTRY_CODES.find((cc) => cc.isoCode === isoCode.toLowerCase()) || null;
 };
 
+/**
+ * Digits-only form of a phone number, so searches match regardless of the
+ * leading "+"/parentheses/spacing formatting: (+968)12345678, +96812345678,
+ * 96812345678 and 12345678 all converge to comparable digit strings.
+ */
+export const getPhoneDigits = (str) => String(str || "").replace(/\D+/g, "");
+
+/**
+ * Does a phone-value match a free-text query, tolerating dial-code/spacing
+ * variations for any country. When a stored number is LOCAL (no dial code)
+ * but an isoCode is supplied, the dial-qualified form is also considered, so
+ * typing "+968…"/"968…" still finds it (and vice-versa).
+ */
+export const phoneMatchesQuery = (phone, query, isoCode) => {
+    const raw = String(query || "").trim();
+    if (!raw) return true; // empty/whitespace query = no filter
+    const q = getPhoneDigits(query);
+    if (!q) return false; // a text query with no digits can't match a phone
+    const p = getPhoneDigits(phone);
+    if (!p) return false;
+
+    const dialDigits = isoCode
+        ? getPhoneDigits(getCountryCodeByIsoCode(isoCode)?.code)
+        : "";
+
+    // Candidate digit-forms of the stored number.
+    const candidates = new Set([p]);
+    if (dialDigits && p !== dialDigits) {
+        if (p.startsWith(dialDigits)) {
+            // Stored WITH dial → also match the local-only form.
+            candidates.add(p.slice(dialDigits.length));
+        } else {
+            // Stored WITHOUT dial → also match the dial-qualified form.
+            candidates.add(dialDigits + p);
+        }
+    }
+
+    for (const c of candidates) {
+        if (c.includes(q)) return true;
+    }
+    return false;
+};
+
 export const formatPhoneNumberForDisplay = (phone, isoCode) => {
     if (!phone) return phone || "";
 

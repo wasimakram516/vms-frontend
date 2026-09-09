@@ -48,8 +48,9 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
           Object.assign(fieldValues, rawFieldValues);
         }
 
-        const data = {
+        const buildData = (member) => ({
           fullName:
+            member?.fullName ||
             fieldValues["Full Name"] ||
             fieldValues["full_name"] ||
             fieldValues["name"] ||
@@ -58,6 +59,7 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
             "Unnamed Visitor",
 
           email:
+            member?.email ||
             fieldValues["Email"] ||
             fieldValues["email"] ||
             r.email ||
@@ -65,6 +67,7 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
             "",
 
           phone:
+            member?.phone ||
             fieldValues["Phone"] ||
             fieldValues["phone"] ||
             r.phone ||
@@ -72,6 +75,7 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
             "",
 
           company:
+            member?.companyName ||
             fieldValues["Company"] ||
             fieldValues["company_name"] ||
             fieldValues["organization"] ||
@@ -95,16 +99,23 @@ export async function exportAllBadges(registrations = [], badgeTemplate, filenam
           token: r.qr_token || "",
           showQrOnBadge: true,
           fieldValues: fieldValues,
-        };
-        return (
+        });
+
+        // Grouped meeting → one badge per member (all share the meeting QR).
+        const participants =
+          Array.isArray(r.participants) && r.participants.length > 1
+            ? r.participants
+            : null;
+        const memberList = participants ? participants : [null];
+        return memberList.map((member) => (
           <BadgePDF
-            key={r.id || r._id}
-            data={data}
+            key={member?.id || r.id || r._id}
+            data={buildData(member)}
             qrCodeDataUrl={r.qrCodeDataUrl}
             customizations={badgeTemplate?.layoutJson}
             single={false}
           />
-        );
+        ));
       })}
     </Document>
   );

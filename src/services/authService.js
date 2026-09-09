@@ -63,9 +63,7 @@ export const login = withApiHandler(
 );
 
 export const logout = async (redirectTo) => {
-  const storedUser = getStoredUser();
-  const redirectPath =
-    redirectTo || (storedUser?.role === "staff" ? "/staff" : "/auth/login");
+  const redirectPath = redirectTo || "/auth/login";
 
   try {
     await api.post("/auth/logout");
@@ -84,6 +82,12 @@ export const refreshToken = withApiHandler(async () => {
   const token = res.data?.accessToken || res.data?.data?.accessToken;
   if (token) setStoredAuthData(token, getStoredUser());
   return token;
+}, { silent: true });
+
+// Verify the current user's password before a sensitive action (e.g. logout).
+export const verifyPassword = withApiHandler(async (password) => {
+  const res = await api.post("/auth/verify-password", { password });
+  return res.data?.data || res.data || { valid: true };
 }, { silent: true });
 
 // Re-fetch /auth/me to get fresh permissions.

@@ -62,17 +62,19 @@ export default async function RootLayout({ children }) {
     <html
       lang={initialLang}
       dir={initialLang === "ar" ? "rtl" : "ltr"}
+      translate="no"
       className={`${comfortaa.variable} ${notoKufiArabic.variable}`}
       suppressHydrationWarning
     >
       <head>
+        <meta name="google" content="notranslate" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var l=localStorage.getItem('sinan-lang');if(l==='ar'||l==='en')document.documentElement.setAttribute('dir',l==='ar'?'rtl':'ltr');}catch(e){}`
+            __html: `try{var l=localStorage.getItem('sinan-lang');if(l==='ar'||l==='en'){document.documentElement.setAttribute('lang',l);document.documentElement.setAttribute('dir',l==='ar'?'rtl':'ltr');}}catch(e){}`
           }}
         />
       </head>
-      <body>
+      <body translate="no">
         <ClientRoot initialLang={initialLang}>
           <Navbar />
           <Box 

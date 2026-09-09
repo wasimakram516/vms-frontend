@@ -23,6 +23,8 @@ export const LanguageProvider = ({ children, initialLang = "en" }) => {
   }, []);
 
   useEffect(() => {
+    // Keep the declared document language in sync with the in-app language
+    document.documentElement.lang = lang === "ar" ? "ar" : "en";
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
   }, [lang]);
 

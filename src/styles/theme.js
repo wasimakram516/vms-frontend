@@ -29,6 +29,10 @@ export const getTheme = (mode, direction = "ltr") => {
       background: {
         default: isDark ? darkBackground : "#f8f9fa",
         paper: isDark ? darkSurface : "#ffffff",
+        // Subtle highlight used for table/card header strips.
+        highlight: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.06)",
+        // Faint hover tint for rows/lists.
+        subtle: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
       },
       text: {
         primary: isDark ? "#ffffff" : "#000000",
@@ -150,6 +154,11 @@ export const getTheme = (mode, direction = "ltr") => {
         defaultProps: {
           variant: "outlined",
           size: "small",
+        },
+      },
+      MuiSwitch: {
+        defaultProps: {
+          color: "success",
         },
       },
       MuiOutlinedInput: {

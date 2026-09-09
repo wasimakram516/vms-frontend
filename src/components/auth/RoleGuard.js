@@ -30,11 +30,7 @@ export default function RoleGuard({ children, allowedRoles = [], allowedStaffTyp
       const adminTypes = allowedAdminTypesRef.current;
 
       if (!user) {
-        if (pathname.startsWith("/staff")) {
-          router.replace("/staff");
-        } else {
-          router.replace(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
-        }
+        router.replace(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
       } else if (roles.length > 0 && !roles.includes(user.role)) {
         if (user.role === "staff") {
           router.replace(getStaffDestination(user));

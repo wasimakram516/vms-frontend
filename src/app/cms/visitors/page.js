@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import dayjs from "dayjs";
 import {
   Box,
@@ -52,7 +53,20 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import RecordMetadata from "@/components/RecordMetadata";
-import { getVisitorUsers, getVisitorUserById, updateVisitorUser } from "@/services/userService";
+import DynamicCustomField from "@/components/DynamicCustomField";
+import VisitorDetailsDialog from "@/components/visitors/VisitorDetailsDialog";
+import {
+  ID_ALIASES,
+  ID_TYPE_ALIASES,
+  findFieldByAliases,
+  collectSubtreeIds,
+  computeVisibleFieldIds,
+  getChildFieldIds,
+  pickId,
+  pickIdType,
+  pickCountry,
+} from "@/utils/customFieldUtils";
+import { getVisitorUsers, getVisitorUserById, updateVisitorUser, createVisitorUser, mapUserToFrontend } from "@/services/userService";
 import {
   getRegistrations,
   getRegistrationActivityLogs,
@@ -64,7 +78,9 @@ import { formatDate, formatDateTimeWithLocale } from "@/utils/dateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
-import { validatePhone, isRequiredField } from "@/utils/validationUtils";
+import { validatePhone } from "@/utils/validationUtils";
+import { visitorMatchesQuery } from "@/utils/visitorSearch";
+import { formatActorLabel } from "@/utils/actorLabel";
 
 const STATUS_CONFIG = {
   pending: {
@@ -229,7 +245,6 @@ function mergeFieldValuesAcrossHistory(registrations) {
 }
 
 export default function VisitorsPage() {
-  const theme = useTheme();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const { showMessage } = useMessage();
@@ -237,95 +252,91 @@ export default function VisitorsPage() {
   const { user } = useAuth();
   const isKitchenAdmin =
     user?.role === "admin" && user?.adminType === "kitchen";
+  const canCreateVisitor = canAccessResource(user, "visitors", {
+    hardcodeAllowed: true,
+    action: "create",
+  });
+  const canReadInternalNote = canAccessResource(user, "internal-notes", {
+    action: "read",
+  });
 
-  const [rows, setRows] = useState([]);
+  const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isListRefreshing, setIsListRefreshing] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(12);
+  const [totalCount, setTotalCount] = useState(0);
 
   const [selected, setSelected] = useState(null);
-  const [fetchingProfile, setFetchingProfile] = useState(false);
-  const [selectedTab, setSelectedTab] = useState("details");
   const [editModal, setEditModal] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [editForm, setEditForm] = useState(null);
-  const [csvExportLoading, setCsvExportLoading] = useState(false);
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const [activeCustomFields, setActiveCustomFields] = useState([]);
+  const accountIdNoRef = useRef(null);
+  const accountIdTypeRef = useRef(null);
   const [editCountryIsoCodes, setEditCountryIsoCodes] = useState({});
   const [phoneErrors, setPhoneErrors] = useState({});
-  const [timelineModal, setTimelineModal] = useState({
-    open: false,
-    visitId: null,
-    visitorName: "",
+
+  const [createModal, setCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    phoneIsoCode: DEFAULT_ISO_CODE,
   });
-  const [timelineLogs, setTimelineLogs] = useState([]);
-  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [createErrors, setCreateErrors] = useState({});
+  const [createIdValues, setCreateIdValues] = useState({});
+  const [createIdErrors, setCreateIdErrors] = useState({});
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+
+  // ── Dynamic ID fields (from custom fields, dependent visibility like /register) ──
+  const createIdSubtreeFields = useMemo(() => {
+    if (!activeCustomFields.length) return [];
+    const idTypeParent = findFieldByAliases(activeCustomFields, ID_TYPE_ALIASES);
+    let subtreeIds;
+    if (idTypeParent) {
+      subtreeIds = collectSubtreeIds(idTypeParent, activeCustomFields);
+    } else {
+      const standalone = findFieldByAliases(activeCustomFields, ID_ALIASES);
+      subtreeIds = standalone ? new Set([standalone.id]) : new Set();
+    }
+    if (!subtreeIds.size) return [];
+    const visibleIds = computeVisibleFieldIds(activeCustomFields, createIdValues);
+    return activeCustomFields.filter(
+      (f) => subtreeIds.has(f.id) && visibleIds.has(f.id),
+    );
+  }, [activeCustomFields, createIdValues]);
+
+  const createForcedRequiredIds = useMemo(() => {
+    const forced = new Set();
+    if (!activeCustomFields.length) return forced;
+    const visibleIds = computeVisibleFieldIds(activeCustomFields, createIdValues);
+    activeCustomFields.filter((f) => visibleIds.has(f.id)).forEach((parent) => {
+      const deps = parent.dependentsJson || parent.dependents_json;
+      if (!deps) return;
+      const val = createIdValues[parent.fieldKey || parent.field_key];
+      if (val && deps[val]?.areAllRequired) {
+        getChildFieldIds(deps[val]).forEach((id) => forced.add(id));
+      }
+    });
+    return forced;
+  }, [activeCustomFields, createIdValues]);
 
   const fetchVisitors = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     else setIsListRefreshing(true);
     try {
-      const data = await getVisitorUsers();
-      const visitors = Array.isArray(data) ? data : [];
-      const enriched = await Promise.all(
-        visitors.map(async (v) => {
-          try {
-            const regs = await getRegistrations(null, {}, v.id);
-            const list = Array.isArray(regs) ? regs : [];
-            // Walk oldest → newest so the most recent registration's value
-            // wins, but an older registration can still supply a field
-            // (e.g. ID Number) that a later, leaner follow-up visit never
-            // re-collected — keeps list cards consistent with the Details
-            // and Edit dialogs, which already merge across full history.
-            [...list].reverse().forEach((reg) => {
-              if (!Array.isArray(reg.fieldValues)) return;
-              reg.fieldValues.forEach((fv) => {
-                const key =
-                  fv.customField?.fieldKey || fv.customField?.field_key;
-                const label = fv.customField?.label || "";
-                const k = (key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                const isId = [
-                  "civilid",
-                  "omanid",
-                  "omanidnumber",
-                  "idnumber",
-                  "idnumberoman",
-                  "passport",
-                  "passportnumber",
-                  "nationalid",
-                  "nationalidnumber",
-                  "eid",
-                  "idcard",
-                  "idcardnumber",
-                  "identificationnumber",
-                  "documentnumber",
-                ].includes(k);
-                if (isId && fv.value) {
-                  v._idValue = fv.value;
-                  v._idLabel = label;
-                }
-                const isCompany = [
-                  "company",
-                  "companyname",
-                  "company_name",
-                  "organization",
-                  "organisation",
-                  "employer",
-                ].includes(k);
-                if (isCompany && fv.value) {
-                  v.companyName = fv.value;
-                }
-              });
-            });
-          } catch {}
-          return v;
-        }),
-      );
-      setRows(enriched);
+      const BATCH_SIZE = 50;
+      const result = await getVisitorUsers({ page: 1, limit: BATCH_SIZE });
+      setAllRows(result.data || []);
+      setTotalCount(result.total || 0);
+      if (result.total > BATCH_SIZE) {
+        setIsStreaming(true);
+      }
       if (!quiet) setHasLoadedOnce(true);
     } catch {
       if (!quiet) setHasLoadedOnce(true);
@@ -447,6 +458,26 @@ export default function VisitorsPage() {
         (f) => (f.fieldKey || f.field_key) === key,
       );
       if (field) clearHiddenChildren(field, value, updated);
+
+      // When switching the ID-type select, re-seed the account's document
+      // number into the newly-visible child ID field so it stays filled.
+      if (field && accountIdNoRef.current) {
+        const norm = (s = "") => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+        const isIdType = findFieldByAliases([field], ID_TYPE_ALIASES);
+        if (isIdType && value) {
+          const idKeySet = new Set(ID_ALIASES.map((a) => norm(a)));
+          const depCfg = field.dependentsJson?.[value];
+          const childIds = Array.isArray(depCfg) ? depCfg : depCfg?.fieldIds || [];
+          for (const childId of childIds) {
+            const child = activeCustomFields.find((f) => f.id === childId);
+            const ckey = child?.fieldKey || child?.field_key;
+            if (child && ckey && idKeySet.has(norm(ckey))) {
+              updated[ckey] = accountIdNoRef.current;
+            }
+          }
+        }
+      }
+
       const nk = key.toLowerCase().replace(/[^a-z]/g, "");
       const userFieldMap = {
         fullname: "fullName",
@@ -461,13 +492,32 @@ export default function VisitorsPage() {
 
   // ── Socket listeners for visitor create/update ──
   const { on } = useSocket();
+
+  // ── Socket progressive loading ──
+  useEffect(() => {
+    const unsub = on("visitors:progress", (payload) => {
+      if (payload.data?.length) {
+        const mapped = payload.data.map(mapUserToFrontend);
+        setAllRows((prev) => {
+          const existing = new Set(prev.map((v) => v.id));
+          const fresh = mapped.filter((v) => !existing.has(v.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      }
+      if (payload.loaded >= payload.total) {
+        setIsStreaming(false);
+      }
+    });
+    return unsub;
+  }, [on]);
+
   useEffect(() => {
     const unsubNew = on("visitor:new", (newVisitor) => {
       if (!newVisitor?.id) {
         fetchVisitors({ silent: true });
         return;
       }
-      setRows((prev) => {
+      setAllRows((prev) => {
         const exists = prev.some((v) => v.id === newVisitor.id);
         if (exists) return prev;
         return [newVisitor, ...prev];
@@ -476,7 +526,7 @@ export default function VisitorsPage() {
 
     const unsubUpdated = on("visitor:updated", (updatedVisitor) => {
       if (!updatedVisitor?.id) return;
-      setRows((prev) =>
+      setAllRows((prev) =>
         prev.map((v) =>
           v.id === updatedVisitor.id ? { ...v, ...updatedVisitor } : v,
         ),
@@ -492,59 +542,34 @@ export default function VisitorsPage() {
     };
   }, [on, fetchVisitors, selected?.id]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return rows;
-    const q = search.toLowerCase();
-    return rows.filter(
-      (v) =>
-        (v.fullName || "").toLowerCase().includes(q) ||
-        (v.email || "").toLowerCase().includes(q) ||
-        (v.phone || "").toLowerCase().includes(q),
-    );
-  }, [rows, search]);
+  const filtered = useMemo(
+    () => allRows.filter((v) => visitorMatchesQuery(v, search)),
+    [allRows, search],
+  );
 
   const pagedRows = useMemo(() => {
-    const start = page * rowsPerPage;
+    const start = (page - 1) * rowsPerPage;
     return filtered.slice(start, start + rowsPerPage);
   }, [filtered, page, rowsPerPage]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
 
-  const handleOpenDetail = async (visitor) => {
-    setFetchingProfile(true);
+  const handleOpenDetail = (visitor) => {
     setSelected(visitor);
-    setSelectedTab("details");
-    try {
-      const full = await getVisitorUserById(visitor.id);
-      if (!full) {
-        setFetchingProfile(false);
-        return;
-      }
-      const history = await getRegistrations(null, {}, visitor.id);
-      full.history = Array.isArray(history) ? history : [];
-      full.fields = {};
-      const mergedFields = {};
-      full.history.forEach((reg) => {
-        const visible = getVisibleFieldValues(reg);
-        Object.entries(visible).forEach(([key, val]) => {
-          if (val != null && String(val).trim() !== "") {
-            if (!(key in mergedFields)) {
-              mergedFields[key] = val;
-            }
-          }
-        });
-      });
-      full.fields = Object.keys(mergedFields).length ? mergedFields : {};
-      full._idValue = visitor._idValue;
-      full._idLabel = visitor._idLabel;
-      setSelected(full);
-    } catch {
-    } finally {
-      setFetchingProfile(false);
-    }
   };
 
   const closeProfileDialog = () => setSelected(null);
+
+  // Deep-link from the Recent Activity page (/?visitor=<userId>) — open that
+  // visitor's details overlay on load.
+  const searchParams = useSearchParams();
+  const deepVisitorId = searchParams?.get("visitor") || null;
+  const openedDeepVisitorRef = useRef(null);
+  useEffect(() => {
+    if (!deepVisitorId || openedDeepVisitorRef.current === deepVisitorId) return;
+    openedDeepVisitorRef.current = deepVisitorId;
+    handleOpenDetail({ id: deepVisitorId });
+  }, [deepVisitorId]);
 
   const handleEdit = async (visitor) => {
     let fvMap = {};
@@ -566,6 +591,63 @@ export default function VisitorsPage() {
       if (!fvMap.full_name && visitor.fullName) fvMap.full_name = visitor.fullName;
       if (!fvMap.email && visitor.email) fvMap.email = visitor.email;
       if (!fvMap.phone && visitor.phone) fvMap.phone = visitor.phone;
+
+      // Seed the account-level document number + type into the edit form's ID-type
+      // select and its dependent ID field, so Edit is consistent with the card/
+      // Details header. The ID custom field is a child of the ID-type select —
+      // it only renders once a matching type is chosen.
+      accountIdNoRef.current = visitor.idNo || null;
+      accountIdTypeRef.current = visitor.idType || null;
+
+      if (visitor.idNo) {
+        const norm = (s = "") => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+        const idTypeParent = findFieldByAliases(activeCustomFields, ID_TYPE_ALIASES);
+        const typeKey = idTypeParent?.fieldKey || idTypeParent?.field_key;
+        if (idTypeParent && typeKey && !fvMap[typeKey]) {
+          const opts = Array.isArray(idTypeParent.optionsJson)
+            ? idTypeParent.optionsJson
+            : [];
+          // Resolve a selectable type: prefer one matching the stored bucket,
+          // else the first option.
+          let chosenType = null;
+          if (accountIdTypeRef.current && opts.length) {
+            const bucket = norm(accountIdTypeRef.current);
+            chosenType =
+              opts.find((o) => {
+                const on = norm(o);
+                return on === bucket || on.includes(bucket) || bucket.includes(on);
+              }) || opts[0];
+          } else if (opts.length) {
+            chosenType = opts[0];
+          }
+          if (chosenType) {
+            fvMap[typeKey] = chosenType;
+            // Put the document number into the ID child field for that type.
+            const depCfg = idTypeParent.dependentsJson?.[chosenType];
+            const childIds = Array.isArray(depCfg) ? depCfg : depCfg?.fieldIds || [];
+            const idKeySet = new Set(
+              ID_ALIASES.map((a) => norm(a)),
+            );
+            for (const childId of childIds) {
+              const child = activeCustomFields.find((f) => f.id === childId);
+              const ckey = child?.fieldKey || child?.field_key;
+              if (child && ckey && idKeySet.has(norm(ckey))) {
+                fvMap[ckey] = visitor.idNo;
+              }
+            }
+          }
+        } else if (!idTypeParent) {
+          // No type select — seed any standalone ID field directly.
+          const idKeySet = new Set(
+            ID_ALIASES.map((a) => String(a).toLowerCase().replace(/[^a-z0-9]/g, "")),
+          );
+          for (const f of activeCustomFields) {
+            const key = f.fieldKey || f.field_key;
+            const k = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (idKeySet.has(k) && !fvMap[key]) fvMap[key] = visitor.idNo;
+          }
+        }
+      }
 
       setEditCountryIsoCodes(
         buildEditCountryIsoCodes(latest || {}, activeCustomFields),
@@ -598,6 +680,9 @@ export default function VisitorsPage() {
         phone: editForm.phone ?? "",
         phoneIsoCode: editForm.phoneIsoCode || "",
         status: editForm.status || "active",
+        idNo: pickId(editForm?.fieldValues) || undefined,
+        idType: pickIdType(editForm?.fieldValues) || undefined,
+        idCountry: pickCountry(editForm?.fieldValues) || undefined,
       };
       const userResult = await updateVisitorUser(editModal.id, payload);
       if (userResult?.error) return;
@@ -623,37 +708,110 @@ export default function VisitorsPage() {
     }
   };
 
-  const handleExportCsv = async () => {
-    const regId = selected?.history?.[0]?.id;
-    if (!regId) {
-      showMessage("No visit history to export", "warning");
-      return;
-    }
-    setCsvExportLoading(true);
-    try {
-      await exportVisitorHistoryCsv(regId);
-    } catch (err) {
-      console.error("Export failed:", err);
-    } finally {
-      setCsvExportLoading(false);
-    }
-  };
-
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    setPage(1);
   };
 
-  const openTimeline = async (visitId, visitorName) => {
-    setTimelineLoading(true);
-    setTimelineModal({ open: true, visitId, visitorName });
+  const openCreateDialog = () => {
+    setCreateForm({
+      full_name: "",
+      email: "",
+      phone: "",
+      phoneIsoCode: DEFAULT_ISO_CODE,
+    });
+    setCreateErrors({});
+    setCreateIdValues({});
+    setCreateIdErrors({});
+    setCreateModal(true);
+  };
+
+  const handleCreateChange = (key, value) => {
+    setCreateForm((prev) => ({ ...prev, [key]: value }));
+    if (createErrors[key]) {
+      setCreateErrors((prev) => ({ ...prev, [key]: null }));
+    }
+  };
+
+  const handleCreateIdChange = (key, value) => {
+    setCreateIdValues((prev) => {
+      const updated = { ...prev, [key]: value };
+      const field = activeCustomFields.find(
+        (f) => (f.fieldKey || f.field_key) === key,
+      );
+      if (field) clearHiddenChildren(field, value, updated, activeCustomFields);
+      return updated;
+    });
+    if (createIdErrors[key]) {
+      setCreateIdErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const handleSubmitCreate = async () => {
+    const errors = {};
+    const fullName = createForm.full_name.trim();
+    const email = createForm.email.trim();
+    const phone = createForm.phone.trim();
+    const isoCode = createForm.phoneIsoCode || DEFAULT_ISO_CODE;
+
+    if (!fullName) errors.full_name = "Full name is required";
+    if (!email && !phone) {
+    } else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = "Invalid email address";
+    }
+
+    if (phone) {
+      const phoneErr = validatePhone(phone, isoCode);
+      if (phoneErr) errors.phone = phoneErr;
+    }
+
+    const idErrors = {};
+    createIdSubtreeFields.forEach((f) => {
+      const key = f.fieldKey || f.field_key;
+      const isRequired =
+        f.isRequired || f.is_required || createForcedRequiredIds.has(f.id);
+      const val = createIdValues[key];
+      const empty =
+        val == null ||
+        (typeof val === "string" && !val.trim()) ||
+        (Array.isArray(val) && val.length === 0);
+      if (isRequired && empty) idErrors[key] = `${f.label} is required`;
+    });
+
+    if (Object.keys(errors).length > 0 || Object.keys(idErrors).length > 0) {
+      setCreateErrors(errors);
+      setCreateIdErrors(idErrors);
+      const bothIdentityMissing = !email && !phone;
+      showMessage(
+        bothIdentityMissing
+          ? "Email or phone is required"
+          : "Please fill in the required fields.",
+        "warning",
+      );
+      return;
+    }
+
+    setCreateSubmitting(true);
     try {
-      const logs = await getRegistrationActivityLogs(visitId);
-      setTimelineLogs(Array.isArray(logs) ? logs : []);
-    } catch {
-      setTimelineLogs([]);
+      const result = await createVisitorUser({
+        full_name: fullName,
+        email,
+        phone: phone || undefined,
+        phoneIsoCode: isoCode || undefined,
+        idNo: pickId(createIdValues) || undefined,
+        idType: pickIdType(createIdValues) || undefined,
+        idCountry: pickCountry(createIdValues) || undefined,
+      });
+      if (result?.error) return;
+      showMessage("Visitor created", "success");
+      setCreateModal(false);
+      fetchVisitors(true);
     } finally {
-      setTimelineLoading(false);
+      setCreateSubmitting(false);
     }
   };
 
@@ -673,15 +831,15 @@ export default function VisitorsPage() {
         <Box
           sx={{
             display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
             justifyContent: "space-between",
             alignItems: { xs: "stretch", sm: "center" },
             mt: 2,
             mb: 1,
             gap: 2,
-            flexWrap: "wrap",
           }}
         >
-          <Box sx={{ flex: 1 }}>
+          <Box>
             <Typography variant="h5" fontWeight="bold">
               Visitors
             </Typography>
@@ -693,30 +851,47 @@ export default function VisitorsPage() {
               Manage and view all visitor profiles across your system.
             </Typography>
           </Box>
+          {canCreateVisitor && (
+            <Button
+              variant="contained"
+              startIcon={<ICONS.add />}
+              onClick={openCreateDialog}
+              sx={{
+                whiteSpace: "nowrap",
+                height: 40,
+                borderRadius: 30,
+                fontWeight: 700,
+                px: 2.5,
+                width: { xs: "100%", sm: "auto" },
+              }}
+            >
+              Create
+            </Button>
+          )}
         </Box>
 
         <Divider sx={{ mb: 3 }} />
 
         <ListToolbar
           showingCount={pagedRows.length}
-          totalCount={filtered.length}
+          totalCount={totalCount || filtered.length}
           searchSlot={
             <TextField
               fullWidth
               size="small"
               variant="outlined"
-              placeholder="Search by name, email or phone..."
+              placeholder="Search visitors..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
-                setPage(0);
+                setPage(1);
               }}
               InputProps={{
                 startAdornment: (
                   <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} />
                 ),
               }}
-              sx={{ maxWidth: { md: 380 } }}
+              sx={{ maxWidth: { md: 600 } }}
             />
           }
           actionsSlot={
@@ -796,7 +971,7 @@ export default function VisitorsPage() {
                   },
                 }}
               >
-                {visitor._idValue && (
+                {(visitor.idNo) && (
                   <Box
                     sx={{
                       display: "flex",
@@ -815,7 +990,7 @@ export default function VisitorsPage() {
                       }}
                     >
                       <ICONS.key fontSize="small" sx={{ opacity: 0.6 }} />{" "}
-                      {visitor._idLabel || "ID"}
+                      {visitor.idType || "ID"}
                     </Typography>
                     <Typography
                       variant="body2"
@@ -827,7 +1002,7 @@ export default function VisitorsPage() {
                         color: "text.primary",
                       }}
                     >
-                      {visitor._idValue}
+                      {visitor.idNo}
                     </Typography>
                   </Box>
                 )}
@@ -1015,389 +1190,22 @@ export default function VisitorsPage() {
           <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
             <Pagination
               count={totalPages}
-              page={page + 1}
-              onChange={(_, p) => setPage(p - 1)}
+              page={page}
+              onChange={(_, p) => setPage(p)}
               color="primary"
               size="small"
             />
           </Box>
         )}
 
-        {/* ── Visitor Detail Dialog ── */}
-        <Dialog
+        {/* Visitor details overlay (shared component) */}
+        <VisitorDetailsDialog
           open={!!selected}
+          visitorId={selected?.id}
+          seed={selected}
           onClose={closeProfileDialog}
-          maxWidth="md"
-          fullWidth
-          PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
-        >
-          <DialogHeader title="Visitor Details" onClose={closeProfileDialog}>
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              alignItems={{ xs: "flex-start", sm: "center" }}
-              justifyContent="space-between"
-              sx={{ flex: 1, gap: 1 }}
-            >
-              <Typography variant="h6" fontWeight={800}>
-                Visitor Details
-              </Typography>
-              <Tooltip title="Export visit history as CSV">
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={
-                      csvExportLoading ? (
-                        <CircularProgress size={13} color="inherit" />
-                      ) : (
-                        <ICONS.download fontSize="small" />
-                      )
-                    }
-                    onClick={handleExportCsv}
-                    disabled={csvExportLoading || !selected}
-                    sx={{
-                      borderRadius: 30,
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      width: { xs: "100%", sm: "auto" },
-                    }}
-                  >
-                    Export Visit History
-                  </Button>
-                </span>
-              </Tooltip>
-            </Stack>
-          </DialogHeader>
-          <Divider />
-          <DialogContent sx={{ p: { xs: 2.5, sm: 3.5 } }}>
-            {selected &&
-              (() => (
-                <Stack spacing={3}>
-                  {/* Visitor header */}
-                  <Box
-                    sx={{
-                      p: { xs: 2, sm: 2.5 },
-                      borderRadius: 3,
-                      bgcolor: isDark
-                        ? "rgba(255,255,255,0.03)"
-                        : "rgba(0,0,0,0.02)",
-                      border: "1px solid",
-                      borderColor: "divider",
-                    }}
-                  >
-                    <Stack direction="row" spacing={2} alignItems="center">
-                      <Avatar
-                        sx={{
-                          width: 56,
-                          height: 56,
-                          bgcolor: isDark ? "#fff" : "#000",
-                          color: isDark ? "#000" : "#fff",
-                          fontSize: "1.2rem",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {(selected.fullName || "")
-                          .split(" ")
-                          .map((n) => n[0])
-                          .slice(0, 2)
-                          .join("")}
-                      </Avatar>
-                      <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography variant="h6" fontWeight={800}>
-                          {selected.fullName}
-                        </Typography>
-                        <Stack
-                          direction="row"
-                          spacing={2}
-                          sx={{ mt: 0.4, flexWrap: "wrap", gap: 1 }}
-                        >
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 0.5,
-                              wordBreak: "break-all",
-                            }}
-                          >
-                            <ICONS.emailOutline fontSize="inherit" />{" "}
-                            {selected.email || "No email"}
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 0.5,
-                            }}
-                          >
-                            <ICONS.phone fontSize="inherit" />{" "}
-                            {selected.phone
-                              ? formatPhoneNumberForDisplay(
-                                  selected.phone,
-                                  selected.iso_code,
-                                )
-                              : "No phone"}
-                          </Typography>
-                        </Stack>
-                      </Box>
-                    </Stack>
-                  </Box>
-
-                  {/* Tabs */}
-                  <Tabs
-                    value={selectedTab}
-                    onChange={(_, v) => setSelectedTab(v)}
-                    variant="fullWidth"
-                    sx={{
-                      minHeight: 46,
-                      bgcolor: (theme) =>
-                        alpha(theme.palette.text.primary, isDark ? 0.06 : 0.04),
-                      borderRadius: 999,
-                      p: 0.5,
-                      "& .MuiTabs-indicator": { display: "none" },
-                    }}
-                  >
-                    {[
-                      {
-                        value: "details",
-                        icon: <ICONS.info fontSize="small" />,
-                        label: "Details",
-                      },
-                      {
-                        value: "history",
-                        icon: <ICONS.history fontSize="small" />,
-                        label: `History (${(selected.history || []).length})`,
-                      },
-                    ].map(({ value, icon, label }) => (
-                      <Tab
-                        key={value}
-                        value={value}
-                        icon={icon}
-                        iconPosition="start"
-                        label={label}
-                        sx={{
-                          minHeight: 38,
-                          borderRadius: 999,
-                          fontWeight: 800,
-                          textTransform: "none",
-                          "&.Mui-selected": {
-                            bgcolor: "background.paper",
-                            color: "text.primary",
-                            boxShadow: isDark
-                              ? "0 8px 20px rgba(0,0,0,0.24)"
-                              : "0 6px 14px rgba(0,0,0,0.08)",
-                          },
-                        }}
-                      />
-                    ))}
-                  </Tabs>
-
-                  {/* Details tab — only additional fields, no heading */}
-                  {selectedTab === "details" ? (
-                    <Box>
-                      {selected.fields &&
-                      Object.keys(selected.fields).length > 0 ? (
-                        <Box sx={{ px: { xs: 0, sm: 1 } }}>
-                          <Box
-                            sx={{
-                              display: "grid",
-                              gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                              gap: { xs: 1.5, md: "16px 32px" },
-                            }}
-                          >
-                            {Object.entries(selected.fields).map(
-                              ([key, val]) => (
-                                <Box
-                                  key={key}
-                                  sx={{
-                                    p: 1.75,
-                                    borderRadius: 2.5,
-                                    border: "1px solid",
-                                    borderColor: "divider",
-                                    bgcolor: isDark
-                                      ? "rgba(255,255,255,0.01)"
-                                      : "rgba(0,0,0,0.01)",
-                                  }}
-                                >
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{
-                                      fontWeight: 800,
-                                      textTransform: "uppercase",
-                                      fontSize: "0.6rem",
-                                    }}
-                                  >
-                                    {key}
-                                  </Typography>
-                                  <Typography
-                                    variant="body2"
-                                    fontWeight={600}
-                                    sx={{ mt: 0.4 }}
-                                  >
-                                    {String(val ?? "—")}
-                                  </Typography>
-                                </Box>
-                              ),
-                            )}
-                          </Box>
-                        </Box>
-                      ) : (
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ textAlign: "center", py: 3 }}
-                        >
-                          No additional information available
-                        </Typography>
-                      )}
-                    </Box>
-                  ) : (
-                    /* History tab — matches PreviousVisitCard pattern */
-                    <Stack spacing={2}>
-                      {!selected.history || selected.history.length === 0 ? (
-                        <NoDataAvailable
-                          title="No visit history"
-                          description="This visitor has not made any visits yet."
-                          compact
-                          minHeight={220}
-                        />
-                      ) : (
-                        selected.history.map((visit) => (
-                          <HistoryVisitCard
-                            key={visit.id}
-                            visit={visit}
-                            visitorName={selected.fullName}
-                            isDark={isDark}
-                            onViewTimeline={openTimeline}
-                          />
-                        ))
-                      )}
-                    </Stack>
-                  )}
-                </Stack>
-              ))()}
-          </DialogContent>
-        </Dialog>
-
-        {/* ── Timeline Modal ── */}
-        <Dialog
-          open={timelineModal.open}
-          onClose={() => setTimelineModal({ open: false })}
-          maxWidth="sm"
-          fullWidth
-          PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
-        >
-          <DialogHeader
-            title={`Activity Timeline${timelineModal.visitorName ? ` — ${timelineModal.visitorName}` : ""}`}
-            onClose={() => setTimelineModal({ open: false })}
-          />
-          <Divider />
-          <DialogContent sx={{ p: 3, minHeight: 200 }}>
-            {timelineLoading ? (
-              <Box display="flex" justifyContent="center" py={4}>
-                <CircularProgress />
-              </Box>
-            ) : timelineLogs.length === 0 ? (
-              <NoDataAvailable
-                title="No activity yet"
-                description="No activity logs found for this visit."
-                compact
-                minHeight={120}
-              />
-            ) : (
-              <Box>
-                {timelineLogs.map((log, index) => {
-                  const color = ACTIVITY_COLORS[log.activityType] || "grey";
-                  return (
-                    <Box
-                      key={log.id}
-                      sx={{
-                        display: "flex",
-                        gap: 2,
-                        mb: index < timelineLogs.length - 1 ? 0 : 0,
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          pt: 0.5,
-                          minWidth: 24,
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: "50%",
-                            flexShrink: 0,
-                            bgcolor:
-                              color === "grey"
-                                ? "text.disabled"
-                                : color === "error"
-                                  ? "error.main"
-                                  : color === "success"
-                                    ? "success.main"
-                                    : color === "warning"
-                                      ? "warning.main"
-                                      : color === "info"
-                                        ? "info.main"
-                                        : "primary.main",
-                          }}
-                        />
-                        {index < timelineLogs.length - 1 && (
-                          <Box
-                            sx={{
-                              width: 1,
-                              flex: 1,
-                              minHeight: 24,
-                              bgcolor: "divider",
-                              mt: 0.5,
-                            }}
-                          />
-                        )}
-                      </Box>
-                      <Box sx={{ pb: 2.5, flex: 1, minWidth: 0 }}>
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          alignItems="center"
-                          flexWrap="wrap"
-                        >
-                          <Typography variant="body2" fontWeight={700}>
-                            {ACTIVITY_LABELS[log.activityType] ||
-                              toTitleCase(log.activityType)}
-                          </Typography>
-                        </Stack>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatDateTimeWithLocale(
-                            log.metadata?.checkedInAt ||
-                              log.metadata?.checkedOutAt ||
-                              log.createdAt,
-                          )}
-                        </Typography>
-                        {log.notes && (
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{ mt: 0.5, fontStyle: "italic" }}
-                          >
-                            {log.notes}
-                          </Typography>
-                        )}
-                      </Box>
-                    </Box>
-                  );
-                })}
-              </Box>
-            )}
-          </DialogContent>
-        </Dialog>
+          canReadInternalNote={canReadInternalNote}
+        />
 
         {/* ── Edit Visitor Dialog ── */}
         <Dialog
@@ -1575,6 +1383,7 @@ export default function VisitorsPage() {
           >
             <Button
               variant="outlined"
+              startIcon={<ICONS.cancel />}
               onClick={() => setEditModal(null)}
               disabled={submitting}
               sx={{
@@ -1598,477 +1407,134 @@ export default function VisitorsPage() {
               }
               sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
             >
-              Save Changes
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ── Create Visitor Dialog ── */}
+        <Dialog
+          open={createModal}
+          onClose={() => setCreateModal(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
+        >
+          <DialogHeader title="Add Visitor" onClose={() => setCreateModal(false)} />
+          <Divider />
+          <DialogContent sx={{ p: 2.5 }}>
+            <Stack spacing={2.5}>
+              <TextField
+                label="Full name"
+                fullWidth
+                value={createForm.full_name}
+                onChange={(e) => handleCreateChange("full_name", e.target.value)}
+                error={!!createErrors.full_name}
+                helperText={createErrors.full_name || ""}
+                InputProps={{ sx: { borderRadius: 2 } }}
+              />
+              <TextField
+                label="Email"
+                fullWidth
+                type="email"
+                value={createForm.email}
+                onChange={(e) => handleCreateChange("email", e.target.value)}
+                error={!!createErrors.email}
+                helperText={createErrors.email || ""}
+                InputProps={{ sx: { borderRadius: 2 } }}
+              />
+              <TextField
+                label="Phone"
+                fullWidth
+                type="tel"
+                value={createForm.phone}
+                onChange={(e) => {
+                  const digitsOnly = e.target.value.replace(/\D/g, "");
+                  handleCreateChange("phone", digitsOnly);
+                  if (createErrors.phone) {
+                    setCreateErrors((prev) => ({ ...prev, phone: null }));
+                  }
+                }}
+                error={!!createErrors.phone}
+                helperText={createErrors.phone || ""}
+                InputProps={{
+                  sx: { borderRadius: 2 },
+                  startAdornment: (
+                    <CountryCodeSelector
+                      value={createForm.phoneIsoCode}
+                      onChange={(iso) =>
+                        handleCreateChange("phoneIsoCode", iso)
+                      }
+                      lang={lang}
+                      dir="ltr"
+                    />
+                  ),
+                }}
+              />
+              {createIdSubtreeFields.length > 0 && (
+                <Stack spacing={2.5}>
+                  {createIdSubtreeFields.map((f) => {
+                    const key = f.fieldKey || f.field_key;
+                    const isRequired =
+                      f.isRequired ||
+                      f.is_required ||
+                      createForcedRequiredIds.has(f.id);
+                    return (
+                      <DynamicCustomField
+                        key={f.id || key}
+                        field={f}
+                        value={
+                          createIdValues[key] !== undefined
+                            ? createIdValues[key]
+                            : ""
+                        }
+                        error={createIdErrors[key] || ""}
+                        isRequired={isRequired}
+                        onChange={handleCreateIdChange}
+                        phoneIsoCode={DEFAULT_ISO_CODE}
+                        lang={lang}
+                      />
+                    );
+                  })}
+                </Stack>
+              )}
+            </Stack>
+          </DialogContent>
+          <Divider />
+          <DialogActions
+            sx={{ p: 2.5, gap: 1, flexDirection: { xs: "column", sm: "row" } }}
+          >
+            <Button
+              variant="outlined"
+              onClick={() => setCreateModal(false)}
+              disabled={createSubmitting}
+              startIcon={<ICONS.cancel />}
+              sx={{
+                borderRadius: 30,
+                width: { xs: "100%", sm: "auto" },
+                order: { xs: 2, sm: 0 },
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSubmitCreate}
+              disabled={createSubmitting}
+              startIcon={
+                createSubmitting ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : (
+                  <ICONS.add />
+                )
+              }
+              sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
+            >
+              Create
             </Button>
           </DialogActions>
         </Dialog>
       </Box>
     </PermissionRouteGuard>
-  );
-}
-
-function HistoryVisitCard({ visit, visitorName, isDark, onViewTimeline }) {
-  const visitFieldValues = getVisibleFieldValues(visit);
-  const sc = STATUS_CONFIG[visit.status] || {
-    label: toTitleCase(visit.status),
-    color: "default",
-    icon: <ICONS.history fontSize="small" />,
-  };
-  const departmentName =
-    typeof visit.department === "object" && visit.department
-      ? visit.department.name
-      : visit.department || "";
-  const accessLevelName =
-    (typeof visit.accessLevel === "object" && visit.accessLevel
-      ? visit.accessLevel.name
-      : visit.accessLevel) ||
-    (Array.isArray(visit.accessLevels) && visit.accessLevels.length
-      ? visit.accessLevels.map((a) => a.name).join(", ")
-      : "");
-  const allowMultiCheckin = visit.allowMultiCheckin ?? false;
-  const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [showOrders, setShowOrders] = useState(false);
-  const [expandedOrders, setExpandedOrders] = useState(new Set());
-
-  useEffect(() => {
-    if (showOrders && orders.length === 0) {
-      setOrdersLoading(true);
-      getKitchenOrders(visit.id)
-        .then((res) => setOrders(Array.isArray(res) ? res : []))
-        .catch(() => {})
-        .finally(() => setOrdersLoading(false));
-    }
-  }, [showOrders, visit.id]);
-
-  return (
-    <Box
-      sx={{
-        p: 2.25,
-        borderRadius: 3,
-        border: "1px solid",
-        borderColor: "divider",
-        bgcolor: (theme) =>
-          theme.palette.mode === "dark"
-            ? "rgba(255,255,255,0.02)"
-            : "rgba(0,0,0,0.015)",
-      }}
-    >
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={1.5}
-        justifyContent="space-between"
-        alignItems={{ xs: "flex-start", sm: "center" }}
-        sx={{ mb: 2 }}
-      >
-        <Box>
-          <Typography variant="subtitle1" fontWeight={800}>
-            {visit.requestedFrom ? formatDate(visit.requestedFrom) : "Visit"}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Submitted {formatDateTimeWithLocale(visit.createdAt)}
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={1}>
-          <Chip
-            label={sc.label}
-            color={sc.color}
-            size="small"
-            icon={sc.icon}
-            sx={{ fontWeight: 700, borderRadius: 2, height: 26 }}
-          />
-        </Stack>
-      </Stack>
-
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-          gap: { xs: 1.75, md: "16px 32px" },
-        }}
-      >
-        <InfoItem
-  label="Visiting Department"
-  value={departmentName || "-"}
-          icon={<ICONS.apartment fontSize="small" />}
-        />
-        <InfoItem
-          label="Requested Schedule"
-          value={buildScheduleText(
-            visit.requestedFrom,
-            visit.requestedTo,
-            "Not provided",
-          )}
-          icon={<ICONS.event fontSize="small" />}
-        />
-        <InfoItem
-          label="Approved Schedule"
-          value={buildScheduleText(
-            visit.approvedFrom,
-            visit.approvedTo,
-            "Not approved",
-          )}
-          icon={<ICONS.checkCircle fontSize="small" />}
-        />
-        <InfoItem
-          label="Multi Check-in"
-          value={allowMultiCheckin ? "Allowed" : "Not Allowed"}
-          icon={<ICONS.replay fontSize="small" />}
-        />
-        <InfoItem
-          label="Access Level"
-          value={accessLevelName || "-"}
-          icon={<ICONS.key fontSize="small" />}
-        />
-        {visit.rejectionReason ? (
-          <InfoItem
-            label="Rejection Reason"
-            value={visit.rejectionReason}
-            icon={<ICONS.close fontSize="small" />}
-            sx={{ gridColumn: { md: "1 / -1" } }}
-          />
-        ) : null}
-        {visit.approvalNote ? (
-          <InfoItem
-            label="Approver Note"
-            value={visit.approvalNote}
-            icon={<ICONS.info fontSize="small" />}
-            sx={{ gridColumn: { md: "1 / -1" } }}
-          />
-        ) : null}
-      </Box>
-
-      {Object.keys(visitFieldValues).length > 0 && (
-        <>
-          <Divider sx={{ my: 2 }} />
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-              gap: { xs: 1.5, md: "16px 32px" },
-            }}
-          >
-            {Object.entries(visitFieldValues).map(([key, val]) => (
-              <Box
-                key={key}
-                sx={{
-                  p: 1.75,
-                  borderRadius: 2.5,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  bgcolor: isDark
-                    ? "rgba(255,255,255,0.01)"
-                    : "rgba(0,0,0,0.01)",
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    fontSize: "0.6rem",
-                  }}
-                >
-                  {key}
-                </Typography>
-                <Typography variant="body2" fontWeight={600} sx={{ mt: 0.4 }}>
-                  {String(val ?? "—")}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        </>
-      )}
-
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={1}
-        sx={{ mt: 2.5 }}
-      >
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<ICONS.list fontSize="small" />}
-          onClick={() => onViewTimeline(visit.id, visitorName)}
-          sx={{ borderRadius: 30, textTransform: "none", fontWeight: 700 }}
-        >
-          Activity Timeline
-        </Button>
-        <Button
-          variant="outlined"
-          size="small"
-          color="secondary"
-          startIcon={<ICONS.restaurant fontSize="small" />}
-          onClick={() => setShowOrders(!showOrders)}
-          sx={{ borderRadius: 30, textTransform: "none", fontWeight: 700 }}
-        >
-          {showOrders ? "Hide Orders" : "View Kitchen Orders"}
-        </Button>
-      </Stack>
-
-      <Collapse in={showOrders}>
-        <Box
-          sx={{ mt: 2, pt: 2, borderTop: "1px dashed", borderColor: "divider" }}
-        >
-          {ordersLoading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-              <CircularProgress size={30} />
-            </Box>
-          ) : orders.length === 0 ? (
-            <NoDataAvailable
-              title="No orders found"
-              description="No kitchen orders have been placed for this visit yet."
-              compact
-              minHeight={150}
-            />
-          ) : (
-            <Stack spacing={2}>
-              {orders.map((order) => {
-                const sortedHistory = [...(order.status_history || [])].sort(
-                  (a, b) => new Date(a.changed_at) - new Date(b.changed_at),
-                );
-                return (
-                  <Box
-                    key={order.id}
-                    sx={{
-                      p: 2,
-                      borderRadius: 3,
-                      border: "1px solid",
-                      borderColor: "divider",
-                      bgcolor: isDark
-                        ? "rgba(255,255,255,0.02)"
-                        : "rgba(0,0,0,0.02)",
-                    }}
-                  >
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="flex-start"
-                      sx={{ mb: 1.5 }}
-                    >
-                      <Box>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          fontWeight={800}
-                          sx={{ textTransform: "uppercase" }}
-                        >
-                          Order Date
-                        </Typography>
-                        <Typography variant="body2" fontWeight={700}>
-                          {dayjs(order.created_at).format(
-                            "MMM D, YYYY - h:mm A",
-                          )}
-                        </Typography>
-                      </Box>
-                      <Chip
-                        label={order.status.replace("_", " ")}
-                        size="small"
-                        color={
-                          order.status === "delivered"
-                            ? "success"
-                            : order.status === "cancelled"
-                              ? "error"
-                              : "primary"
-                        }
-                        sx={{
-                          fontWeight: 800,
-                          textTransform: "uppercase",
-                          fontSize: "0.6rem",
-                        }}
-                      />
-                    </Stack>
-                    <Stack spacing={0.5} sx={{ mb: 1.5 }}>
-                      {order.items?.map((item, idx) => (
-                        <Typography
-                          key={idx}
-                          variant="body2"
-                          fontWeight={600}
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <span>{item.name}</span>
-                          <span style={{ opacity: 0.6 }}>×{item.quantity}</span>
-                        </Typography>
-                      ))}
-                    </Stack>
-                    <Box
-                      sx={{
-                        pt: 1,
-                        borderTop: "1px dashed",
-                        borderColor: "divider",
-                      }}
-                    >
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          setExpandedOrders((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(order.id)) next.delete(order.id);
-                            else next.add(order.id);
-                            return next;
-                          });
-                        }}
-                        endIcon={
-                          <ICONS.down
-                            sx={{
-                              transform: expandedOrders?.has(order.id)
-                                ? "rotate(180deg)"
-                                : "none",
-                              transition: "0.2s",
-                            }}
-                          />
-                        }
-                        sx={{
-                          textTransform: "none",
-                          p: 0,
-                          color: "text.secondary",
-                          fontSize: "0.7rem",
-                          fontWeight: 700,
-                          minHeight: 0,
-                        }}
-                      >
-                        View Timeline
-                      </Button>
-                      <Collapse in={expandedOrders?.has(order.id)}>
-                        <Box sx={{ pl: 0.5, pt: 2 }}>
-                          {sortedHistory.map((h, i) => (
-                            <Box
-                              key={h.id}
-                              sx={{
-                                display: "flex",
-                                gap: 1.5,
-                                mb: i < sortedHistory.length - 1 ? 1.5 : 0,
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "center",
-                                  mt: 0.5,
-                                }}
-                              >
-                                <Box
-                                  sx={{
-                                    width: 6,
-                                    height: 6,
-                                    borderRadius: "50%",
-                                    bgcolor:
-                                      i === sortedHistory.length - 1
-                                        ? "primary.main"
-                                        : "text.disabled",
-                                  }}
-                                />
-                                {i < sortedHistory.length - 1 && (
-                                  <Box
-                                    sx={{
-                                      width: 1,
-                                      flex: 1,
-                                      bgcolor: "divider",
-                                      mt: 0.5,
-                                      minHeight: 8,
-                                    }}
-                                  />
-                                )}
-                              </Box>
-                              <Box>
-                                <Stack
-                                  direction="row"
-                                  spacing={1}
-                                  alignItems="center"
-                                >
-                                  <Typography
-                                    variant="caption"
-                                    fontWeight="700"
-                                    sx={{ textTransform: "capitalize" }}
-                                  >
-                                    {h.status.replace("_", " ")}
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    sx={{ fontSize: "0.55rem", opacity: 0.5 }}
-                                  >
-                                    {dayjs(h.changed_at).format(
-                                      "MMM D, h:mm A",
-                                    )}
-                                  </Typography>
-                                  {h.changed_by && (
-                                    <Chip
-                                      label={h.changed_by}
-                                      size="small"
-                                      variant="outlined"
-                                      sx={(theme) => ({
-                                        height: 14,
-                                        fontSize: "0.5rem",
-                                        fontWeight: 700,
-                                        borderStyle: "dashed",
-                                        bgcolor: alpha(theme.palette.primary.main, 0.05),
-                                      })}
-                                    />
-                                  )}
-                                </Stack>
-                              </Box>
-                            </Box>
-                          ))}
-                        </Box>
-                      </Collapse>
-                    </Box>
-                  </Box>
-                );
-              })}
-            </Stack>
-          )}
-        </Box>
-      </Collapse>
-    </Box>
-  );
-}
-
-function InfoItem({ label, value, icon, sx = {} }) {
-  return (
-    <Box sx={sx}>
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-        <Box
-          sx={{
-            color: "primary.main",
-            display: "flex",
-            alignItems: "center",
-            minWidth: 22,
-            opacity: 0.8,
-          }}
-        >
-          {icon}
-        </Box>
-        <Typography
-          variant="caption"
-          sx={{
-            color: "text.secondary",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            fontSize: "0.65rem",
-            letterSpacing: 0.5,
-          }}
-        >
-          {label}
-        </Typography>
-      </Stack>
-      <Box sx={{ pl: "30px" }}>
-        <Typography
-          variant="body2"
-          sx={{
-            fontWeight: 600,
-            fontSize: "0.85rem",
-            color: "text.primary",
-            lineHeight: 1.4,
-          }}
-        >
-          {value || "—"}
-        </Typography>
-      </Box>
-    </Box>
   );
 }

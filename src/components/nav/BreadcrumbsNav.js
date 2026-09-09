@@ -48,6 +48,10 @@ const segmentMap = {
     label: "Analytics",
     icon: <ICONS.insights fontSize="small" sx={{ mr: 0.5 }} />,
   },
+  activity: {
+    label: "Recent Activity",
+    icon: <ICONS.history fontSize="small" sx={{ mr: 0.5 }} />,
+  },
   kitchen: {
     label: "Kitchen Orders",
     icon: <ICONS.diningTable fontSize="small" sx={{ mr: 0.5 }} />,

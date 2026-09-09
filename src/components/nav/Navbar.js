@@ -20,6 +20,7 @@ import { useColorMode } from "@/contexts/ThemeContext";
 import useI18nLayout from "@/hooks/useI18nLayout";
 import commonTranslations from "@/locales/common";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
+import LogoutPasswordDialog from "@/components/modals/LogoutPasswordDialog";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 import ICONS from "@/utils/iconUtil";
@@ -38,15 +39,20 @@ export default function Navbar() {
   const isVisitorArea = !isStaffArea && !isCmsArea;
   const isGateStaffArea = pathname?.startsWith("/staff/gate");
   const kitchenAdmin = user?.adminType === "kitchen";
+  const isKitchenAccount =
+    (user?.role === "admin" && user?.adminType === "kitchen") ||
+    (user?.role === "staff" && user?.staffType === "kitchen");
 
-  const brandHref = isStaffArea ? "/staff" : kitchenAdmin ? "/cms/kitchen" : "/";
+  const brandHref = isStaffArea ? "/auth/login" : kitchenAdmin ? "/cms/kitchen" : "/";
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
-  
+  const [passwordLogoutOpen, setPasswordLogoutOpen] = useState(false);
+
   useEffect(() => {
     if (!user) {
       setConfirmLogout(false);
+      setPasswordLogoutOpen(false);
       setAnchorEl(null);
     }
   }, [user]);
@@ -78,7 +84,11 @@ export default function Navbar() {
   const handleClose = () => setAnchorEl(null);
   const openLogoutConfirm = () => {
     handleClose();
-    setConfirmLogout(true);
+    if (isKitchenAccount) {
+      setPasswordLogoutOpen(true);
+    } else {
+      setConfirmLogout(true);
+    }
   };
 
   const handleConfirmLogout = async () => {
@@ -239,6 +249,14 @@ export default function Navbar() {
         confirmButtonText={t.navLogout}
         confirmButtonIcon={<ICONS.logout fontSize="small" />}
       />
+
+      {isKitchenAccount && (
+        <LogoutPasswordDialog
+          open={!!user && passwordLogoutOpen}
+          onClose={() => setPasswordLogoutOpen(false)}
+          onConfirm={handleConfirmLogout}
+        />
+      )}
     </Box>
   );
 }

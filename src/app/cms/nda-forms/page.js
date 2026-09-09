@@ -29,9 +29,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { getNdaForms, deleteNdaAcceptance, resendNdaToHost, resendNdaToVisitor } from "@/services/ndaAcceptanceService";
 import { formatDateTimeWithLocale } from "@/utils/dateUtils";
+import { phoneMatchesQuery } from "@/utils/countryCodes";
 
 export default function NdaFormsPage() {
-  const [forms, setForms] = useState([]);
+  const [allForms, setAllForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
@@ -46,8 +47,8 @@ export default function NdaFormsPage() {
   const fetchForms = async () => {
     setLoading(true);
     try {
-      const data = await getNdaForms();
-      setForms(Array.isArray(data) ? data : []);
+      const result = await getNdaForms({ page: 1, limit: 500 });
+      setAllForms(result.data || []);
     } finally {
       setLoading(false);
     }
@@ -57,19 +58,22 @@ export default function NdaFormsPage() {
 
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return forms;
-    return forms.filter((f) =>
+    if (!q) return allForms;
+    return allForms.filter((f) =>
       (f.user?.fullName || "").toLowerCase().includes(q) ||
       (f.user?.email || "").toLowerCase().includes(q) ||
       (f.ndaTemplate?.name || "").toLowerCase().includes(q) ||
+      phoneMatchesQuery(f.user?.phone, q, f.user?.iso_code) ||
       (f.visitorIdValues || []).some(v => String(v).toLowerCase().includes(q))
     );
-  }, [forms, searchQuery]);
+  }, [allForms, searchQuery]);
 
   const paged = useMemo(
     () => filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
     [filtered, page, rowsPerPage]
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
 
   const handleSearch = (e) => {
     setSearchQuery(e.target.value);
@@ -303,9 +307,9 @@ export default function NdaFormsPage() {
             )}
 
             <Box display="flex" justifyContent="center" mt={4}>
-              {filtered.length > rowsPerPage && (
+              {totalPages > 1 && (
                 <Pagination
-                  count={Math.ceil(filtered.length / rowsPerPage)}
+                  count={totalPages}
                   page={page + 1}
                   onChange={(_, v) => setPage(v - 1)}
                   color="primary"

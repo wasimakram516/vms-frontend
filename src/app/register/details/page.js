@@ -357,6 +357,36 @@ export default function DetailsPage() {
       }
     });
 
+    // Email OR phone — only one of the two is required to identify a visitor.
+    const nk = (s = "") => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+    const visibleFields = fields.filter((f) => visibleFieldIds.has(f.id));
+    const emailField = visibleFields.find((f) => {
+      const t = (f.input_type || f.inputType || "").toLowerCase();
+      const k = nk(f.field_key || f.fieldKey);
+      return t === "email" || k === "email" || k.includes("email");
+    });
+    const phoneField = visibleFields.find(
+      (f) => (f.input_type || f.inputType || "").toLowerCase() === "phone",
+    );
+    const emailKey = emailField && (emailField.field_key || emailField.fieldKey);
+    const phoneKey = phoneField && (phoneField.field_key || phoneField.fieldKey);
+    if (emailKey || phoneKey) {
+      const emailVal = emailKey
+        ? String(visitorData.dynamicFields?.[emailKey] || "").trim()
+        : "";
+      const phoneVal = phoneKey
+        ? String(visitorData.dynamicFields?.[phoneKey] || "").trim()
+        : "";
+      if (!emailVal && !phoneVal) {
+        const msg = t.emailOrPhoneRequired || "Email or phone is required";
+        if (emailKey) newErrors[emailKey] = msg;
+        if (phoneKey) newErrors[phoneKey] = msg;
+      } else {
+        if (emailKey && !emailVal) delete newErrors[emailKey];
+        if (phoneKey && !phoneVal) delete newErrors[phoneKey];
+      }
+    }
+
     if (!visitorData.departmentId) {
       newErrors.departmentId = t.departmentRequired;
     }

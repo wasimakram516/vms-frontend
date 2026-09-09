@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Typography,
@@ -33,7 +34,6 @@ import {
   Alert,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
-import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSocket } from "@/contexts/SocketContext";
 import ICONS from "@/utils/iconUtil";
@@ -46,6 +46,7 @@ import {
   createAdminUser,
   createSuperAdminUser,
   assignUserDepartments,
+  mapUserToFrontend,
 } from "@/services/userService";
 import { getDepartments } from "@/services/departmentService";
 import { getRolePagePermissions, getUserPageOverrides, setUserPageOverrides } from "@/services/permissionService";
@@ -62,7 +63,7 @@ import RecordMetadata from "@/components/RecordMetadata";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
-import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay } from "@/utils/countryCodes";
+import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay, phoneMatchesQuery } from "@/utils/countryCodes";
 import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
 
 const CREATABLE_ROLES = ["superadmin", "admin", "staff"];
@@ -111,6 +112,8 @@ export default function UsersPage() {
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
   const defaultForm = {
     full_name: "",
@@ -168,6 +171,26 @@ export default function UsersPage() {
       if (Array.isArray(res)) setAllDepartments(res);
     });
   }, []);
+
+  // ── Socket progressive loading ──
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (payload) => {
+      if (payload.data?.length) {
+        const mapped = payload.data.map(mapUserToFrontend);
+        setUsers((prev) => {
+          const existing = new Set(prev.map((u) => u.id));
+          const fresh = mapped.filter((u) => !existing.has(u.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
+      }
+      if (payload.loaded >= payload.total) {
+        setIsStreaming(false);
+      }
+    };
+    socket.on("visitors:progress", handler);
+    return () => socket.off("visitors:progress", handler);
+  }, [socket]);
 
   // Load base role page permissions whenever the create form's role/type changes
   useEffect(() => {
@@ -231,8 +254,13 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const data = await getAllUsers();
-      setUsers(data || []);
+      const BATCH_SIZE = 50;
+      const result = await getAllUsers(undefined, { page: 1, limit: BATCH_SIZE });
+      setUsers(result.data || []);
+      setTotalCount(result.total || 0);
+      if (result.total > BATCH_SIZE) {
+        setIsStreaming(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -415,7 +443,9 @@ export default function UsersPage() {
       if (u.role === "dev") return false;
       const matchSearch =
         (u.full_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.email ?? "").toLowerCase().includes(searchQuery.toLowerCase());
+        (u.email ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        phoneMatchesQuery(u.phone, searchQuery, u.iso_code) ||
+        (u.idNo != null && String(u.idNo).toLowerCase().includes(searchQuery.toLowerCase()));
       const matchRole = roleFilter === "all" || u.role === roleFilter;
       const matchStaffType =
         roleFilter !== "staff" || 
@@ -558,6 +588,8 @@ export default function UsersPage() {
             flexDirection: { xs: "column", sm: "row" },
             gap: 1,
             width: { xs: "100%", sm: "auto" },
+            flexWrap: "wrap",
+            rowGap: 1,
           }}
         >
           {canCreate && (
@@ -576,7 +608,7 @@ export default function UsersPage() {
 
       <ListToolbar
         showingCount={pagedUsers.length}
-        totalCount={filteredUsers.length}
+        totalCount={totalCount || filteredUsers.length}
         searchSlot={
           <TextField
             fullWidth
@@ -837,6 +869,7 @@ export default function UsersPage() {
 
                     {/* Body: Email row */}
                     <Box sx={{ flexGrow: 1, px: 2, py: 1.5 }}>
+                      {u.email && (
                       <Box
                         sx={{
                           display: "flex",
@@ -879,6 +912,7 @@ export default function UsersPage() {
                           {u.email}
                         </Typography>
                       </Box>
+                      )}
 
                       {u.phone && (
                         <Box
@@ -1268,95 +1302,117 @@ export default function UsersPage() {
                   <Alert severity="info" sx={{ borderRadius: 2, fontSize: "0.82rem" }}>
                     Checked actions are granted. Overrides layer on top of the role&apos;s base set — <strong>deny</strong> removes an inherited action, <strong>allow</strong> adds one the role doesn&apos;t have.
                   </Alert>
-                  {overrideRolePages.map((page) => {
-                  const baseGrants = isEditMode ? (editRolePermissions[page.pageId] || []) : (rolePermissions[page.pageId] || []);
-                  const currentOverrides = isEditMode ? editOverrides : overrides;
-                  const PageIcon = PAGE_ICONS[page.pageId];
-                  return (
-                    <Box
-                      key={page.pageId}
-                      sx={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        gap: 1,
-                        rowGap: 0.75,
-                        mb: 1,
-                        px: { xs: 1.5, sm: 2 },
-                        py: { xs: 1.25, sm: 1 },
-                        border: "1px solid",
-                        borderColor: "divider",
-                        borderRadius: 2,
-                        bgcolor: "background.paper",
-                      }}
-                    >
-                      <Chip
-                        label={page.label}
-                        size="small"
-                        icon={PageIcon ? <PageIcon sx={{ fontSize: "1rem !important" }} /> : undefined}
-                        sx={{
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          fontSize: "0.7rem",
-                          borderRadius: 999,
-                          minWidth: { sm: 150 },
-                          justifyContent: "flex-start",
-                        }}
-                      />
-                      <Stack
-                        direction="row"
-                        flexWrap="wrap"
-                        alignItems="center"
-                        sx={{
-                          flexBasis: { xs: "100%", sm: "auto" },
-                          flexGrow: { sm: 1 },
-                          columnGap: 1,
-                          rowGap: 0.5,
-                        }}
-                      >
-                        {page.actions.map((action) => {
-                          const isInherited = baseGrants.includes(action);
-                          const currentOverride = currentOverrides[page.pageId]?.[action] || "";
-                          const isChecked = isInherited ? currentOverride !== "deny" : currentOverride === "allow";
-                          const isOverridden = currentOverride !== "";
-                          return (
-                            <FormControlLabel
-                              key={action}
-                              control={
-                                <Checkbox
-                                  checked={isChecked}
-                                  size="small"
-                                  disabled={!canManageOverrides}
-                                  onChange={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
-                                />
-                              }
-                              label={
-                                <Stack direction="row" alignItems="center" spacing={0.5}>
-                                  <Typography sx={{ fontSize: "0.85rem", textTransform: "capitalize" }}>
-                                    {action.replace(/-/g, " ")}
-                                  </Typography>
-                                  {isOverridden ? (
-                                    <Chip
-                                      label={currentOverride}
-                                      size="small"
-                                      color={currentOverride === "allow" ? "success" : "error"}
-                                      sx={{ height: 16, fontSize: "0.6rem", "& .MuiChip-label": { px: 0.6 } }}
-                                    />
-                                  ) : isInherited ? (
-                                    <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary" }}>
-                                      inherited
-                                    </Typography>
-                                  ) : null}
-                                </Stack>
-                              }
-                              sx={{ mr: 1 }}
+                  {(() => {
+                    const renderActionControl = (page, action, { withLabel = false } = {}) => {
+                      const baseGrants = isEditMode ? (editRolePermissions[page.pageId] || []) : (rolePermissions[page.pageId] || []);
+                      const currentOverrides = isEditMode ? editOverrides : overrides;
+                      const isInherited = baseGrants.includes(action);
+                      const currentOverride = currentOverrides[page.pageId]?.[action] || "";
+                      const isChecked = isInherited ? currentOverride !== "deny" : currentOverride === "allow";
+                      const isOverridden = currentOverride !== "";
+                      return (
+                        <FormControlLabel
+                          key={`${page.pageId}-${action}`}
+                          control={
+                            <Checkbox
+                              checked={isChecked}
+                              size="small"
+                              disabled={!canManageOverrides}
+                              onChange={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
                             />
-                          );
-                        })}
-                      </Stack>
-                    </Box>
-                  );
-                })}
+                          }
+                          label={
+                            <Stack direction="row" alignItems="center" spacing={0.5}>
+                              <Typography sx={{ fontSize: "0.85rem", textTransform: "capitalize" }}>
+                                {withLabel ? `${page.label} ` : ""}{action.replace(/-/g, " ")}
+                              </Typography>
+                              {isOverridden ? (
+                                <Chip
+                                  label={currentOverride}
+                                  size="small"
+                                  color={currentOverride === "allow" ? "success" : "error"}
+                                  sx={{ height: 16, fontSize: "0.6rem", "& .MuiChip-label": { px: 0.6 } }}
+                                />
+                              ) : isInherited ? (
+                                <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary" }}>
+                                  inherited
+                                </Typography>
+                              ) : null}
+                            </Stack>
+                          }
+                          sx={{ mr: 1 }}
+                        />
+                      );
+                    };
+
+                    const renderOverridePage = (page, children = []) => {
+                      const PageIcon = PAGE_ICONS[page.pageId];
+                      return (
+                        <Box
+                          key={page.pageId}
+                          sx={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            gap: 1,
+                            rowGap: 0.75,
+                            mb: 1,
+                            px: { xs: 1.5, sm: 2 },
+                            py: { xs: 1.25, sm: 1 },
+                            border: "1px solid",
+                            borderColor: "divider",
+                            borderRadius: 2,
+                            bgcolor: "background.paper",
+                          }}
+                        >
+                          <Chip
+                            label={page.label}
+                            size="small"
+                            icon={PageIcon ? <PageIcon sx={{ fontSize: "1rem !important" }} /> : undefined}
+                            sx={{
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              fontSize: "0.7rem",
+                              borderRadius: 999,
+                              minWidth: { sm: 150 },
+                              justifyContent: "flex-start",
+                            }}
+                          />
+                          <Stack
+                            direction="row"
+                            flexWrap="wrap"
+                            alignItems="center"
+                            sx={{
+                              flexBasis: { xs: "100%", sm: "auto" },
+                              flexGrow: { sm: 1 },
+                              columnGap: 1,
+                              rowGap: 0.5,
+                            }}
+                          >
+                            {page.actions.map((action) => renderActionControl(page, action))}
+                            {children.length > 0 && (
+                              <>
+                                {children.flatMap((child) =>
+                                  child.actions.map((action) =>
+                                    renderActionControl(child, action, { withLabel: true }),
+                                  ),
+                                )}
+                              </>
+                            )}
+                          </Stack>
+                        </Box>
+                      );
+                    };
+
+                    return overrideRolePages
+                      .filter((p) => !p.group)
+                      .map((page) => {
+                        const children = overrideRolePages.filter(
+                          (other) => other.group === page.pageId,
+                        );
+                        return renderOverridePage(page, children);
+                      });
+                  })()}
               </>
             );
           })()}

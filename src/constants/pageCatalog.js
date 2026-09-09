@@ -1,13 +1,15 @@
 ﻿const PAGES = [
   // ── Departmental Admin ──
   // Ordered by mental model: operations → visit config → insights → administration → kitchen
-  { pageId: "visits", label: "Visits", actions: ["read", "create", "update"], roles: ["admin:departmental"] },
-  { pageId: "visitors", label: "Visitors", actions: ["read", "update"], roles: ["admin:departmental"] },
+  { pageId: "visits", label: "Visits", actions: ["read", "create", "update", "override"], roles: ["admin:departmental"] },
+  { pageId: "internal-notes", label: "Internal Notes", actions: ["read", "update"], group: "visits", roles: ["admin:departmental"] },
+  { pageId: "visitors", label: "Visitors", actions: ["read", "create", "update"], roles: ["admin:departmental"] },
   { pageId: "nda-forms", label: "NDA Forms", actions: ["read"], roles: ["admin:departmental"] },
   { pageId: "departments", label: "Departments", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "access-levels", label: "Access Levels", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "fields", label: "Custom Fields", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "analytics", label: "Analytics", actions: ["read"], roles: ["admin:departmental"] },
+  { pageId: "activity", label: "Recent Activity", actions: ["read"], roles: ["admin:departmental"] },
   { pageId: "users", label: "Users", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "host-details", label: "Host Details", actions: ["read", "create", "update", "delete"], roles: ["admin:departmental"] },
   { pageId: "kitchen", label: "Kitchen Orders", actions: ["read", "create", "update"], roles: ["admin:departmental", "admin:kitchen"] },
@@ -15,7 +17,8 @@
   // ── Kitchen Staff ──
   { pageId: "kitchen", label: "Kitchen Orders", actions: ["receive", "prepare", "ready", "deliver", "history"], roles: ["staff:kitchen"] },
   // ── Gate Staff ──
-  { pageId: "verify", label: "Verify Entry", actions: ["read", "checkin", "checkout", "vip-bypass", "todays-visitors"], roles: ["staff:gate"] },
+  { pageId: "verify", label: "Verify Entry", actions: ["read", "checkin", "checkout", "vip-bypass", "todays-visitors", "approve-status"], roles: ["staff:gate"] },
+  { pageId: "internal-notes", label: "Internal Notes", actions: ["read", "update"], group: "verify", roles: ["staff:gate"] },
 ];
 
 export const ROLE_KEYS = [

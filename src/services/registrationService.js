@@ -120,6 +120,7 @@ export const mapRegistration = (r) => {
     access_levels: r.accessLevels ?? [],
     vehicle_plate: r.vehiclePlate ?? null,
     approval_note: r.approvalNote ?? null,
+    internal_note: r.internalNote ?? null,
     vip_reason: r.vipReason ?? null,
     admin_approved_at: r.adminApprovedAt,
     admin_approved_by_user_id: r.adminApprovedByUserId,
@@ -132,6 +133,7 @@ export const mapRegistration = (r) => {
     recurring_time_to: r.recurringTimeTo ?? null,
     current_visit_end: r.currentVisitEnd ?? null,
     ...r,
+    participants: Array.isArray(r.participants) ? r.participants : [],
   };
 
   if (Array.isArray(r.history)) {
@@ -141,18 +143,31 @@ export const mapRegistration = (r) => {
   return mapped;
 };
 
-export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}, userId) => {
+export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}, userId, { page, limit, search } = {}) => {
   const params = {};
   if (status && status !== "all") params.status = status;
   if (from) params.from = from;
   if (to) params.to = to;
   if (userId) params.userId = userId;
+  if (page) params.page = page;
+  if (limit) params.limit = limit;
+  if (search) params.search = search;
   const res = await api.get("/registrations", { params });
-  const registrations = res.data?.data || res.data || [];
+  const raw = res.data?.data || res.data || {};
+  const isPaginated = !!(page || limit || search);
 
-  return Array.isArray(registrations)
-    ? registrations.map(mapRegistration)
-    : [];
+  if (Array.isArray(raw)) {
+    const mapped = raw.map(mapRegistration);
+    if (isPaginated) {
+      return { data: { data: mapped, total: mapped.length, page: 1, limit: mapped.length } };
+    }
+    return { data: mapped };
+  }
+  const items = Array.isArray(raw.data) ? raw.data.map(mapRegistration) : [];
+  if (isPaginated) {
+    return { data: { data: items, total: raw.total || 0, page: raw.page || 1, limit: raw.limit || 50 } };
+  }
+  return { data: items };
 });
 
 export const getRegistrationById = withApiHandler(async (id) => {
@@ -182,6 +197,16 @@ export const updateRegistration = withApiHandler(
     return res.data?.data || res.data;
   },
   { showSuccess: true }
+);
+
+export const updateInternalNote = withApiHandler(
+  async (id, internalNote) => {
+    const res = await api.patch(`/registrations/${id}/internal-note`, {
+      internalNote: internalNote ?? "",
+    });
+    return res.data?.data || res.data;
+  },
+  {} // silent — the UI owns the success/error feedback
 );
 
 export const getRegistrationActivityLogs = withApiHandler(async (id) => {
@@ -306,6 +331,7 @@ export const getEligibleVisitors = withApiHandler(async () => {
         email: u.email || "",
         phone: u.phone || "",
         iso_code: u.iso_code || null,
+        idNo: u.idNo || u.id_no || null,
         hasActiveVisit: u.hasActiveVisit ?? false,
       }))
     : [];

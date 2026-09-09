@@ -36,10 +36,13 @@ const buildCatalog = (user, isKitchenModuleEnabled = true) => {
     { label: "Fields", icon: ICONS.form, path: "/cms/fields", pageId: "fields" },
     { label: "Users", icon: ICONS.people, path: "/cms/users", pageId: "users" },
     { label: "Settings", icon: ICONS.settings, path: "/cms/settings", pageId: "settings" },
+    { label: "Recent Activity", icon: ICONS.history, path: "/cms/activity", pageId: "activity" },
   ];
 
   if (isKitchenModuleEnabled) {
-    items.splice(items.length - 1, 0, { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen", pageId: "kitchen" });
+    const settingsIndex = items.findIndex((item) => item.pageId === "settings");
+    const kitchenItem = { label: "Kitchen Orders", icon: ICONS.diningTable, path: "/cms/kitchen", pageId: "kitchen" };
+    items.splice(settingsIndex, 0, kitchenItem);
   }
 
   return items;
