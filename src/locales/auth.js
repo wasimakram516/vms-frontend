@@ -1,14 +1,14 @@
 import common from "./common";
 
-// Admin/staff login flow.
+// Unified login flow, shared by every role (admins and staff types alike).
 const auth = {
   en: {
     ...common.en,
 
-    loginPanelTitle: "Admin Portal",
-    loginPanelSubtitle: "Enter your credentials to access the Sinan Sentry admin tools.",
-    loginTitle: "Admin sign in",
-    loginSubtitle: "Enter your credentials to access the Sinan Sentry admin portal.",
+    loginPanelTitle: "Sinan Sentry",
+    loginPanelSubtitle: "Enter your credentials to access the Sinan Sentry portal.",
+    loginTitle: "Sign in",
+    loginSubtitle: "Enter your credentials to continue to your Sinan Sentry account.",
     loginEmail: "Email",
     loginPassword: "Password",
     loginSigning: "Signing...",
@@ -17,10 +17,10 @@ const auth = {
   ar: {
     ...common.ar,
 
-    loginPanelTitle: "بوابة الإدارة",
-    loginPanelSubtitle: "أدخل بيانات اعتمادك للوصول إلى أدوات مسؤول سنان سنتري.",
-    loginTitle: "تسجيل دخول المسؤول",
-    loginSubtitle: "أدخل بيانات اعتمادك للوصول إلى بوابة مسؤول سنان سنتري.",
+    loginPanelTitle: "سنان سنتري",
+    loginPanelSubtitle: "أدخل بيانات اعتمادك للوصول إلى بوابة سنان سنتري.",
+    loginTitle: "تسجيل الدخول",
+    loginSubtitle: "أدخل بيانات اعتمادك لمتابعة الدخول إلى حسابك في سنان سنتري.",
     loginEmail: "البريد الإلكتروني",
     loginPassword: "كلمة المرور",
     loginSigning: "جارٍ التسجيل...",
