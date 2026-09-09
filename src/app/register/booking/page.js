@@ -19,6 +19,8 @@ import {
   FormHelperText,
   Checkbox,
   FormControlLabel,
+  RadioGroup,
+  Radio,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -45,6 +47,7 @@ import { parse24To12, convert12To24, formatDate, formatTime } from "@/utils/date
 import { translateBatch } from "@/services/translationService";
 import { ndaDocToHtml } from "@/utils/ndaDocUtils";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
+import { workingHoursToUserLocal, userTimeZone, rollOvernightEnd } from "@/utils/premiseTime";
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 // 5-minute steps: 00, 05, 10 … 55
@@ -81,6 +84,50 @@ const fmtHour12 = (h24, min = 0) => {
   return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
 };
 
+const toMinsOf = (str) => {
+  const [h, m] = (str || "00:00").split(":").map(Number);
+  return h * 60 + m;
+};
+
+const fmtTimeM = (mins) =>
+  `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+
+// Enforce strictly from<to on the same day
+const orderFromTo = (fromVal, toVal) => {
+  const fromM = toMinsOf(fromVal);
+  const toM = toMinsOf(toVal);
+  if (fromM < toM) return { fromVal, toVal };
+  const bumped = Math.min(fromM + 5, 23 * 60 + 55);
+  if (bumped > fromM) return { fromVal, toVal: fmtTimeM(bumped) };
+  return {
+    fromVal: fmtTimeM(Math.max(fromM - 5, 0)),
+    toVal: fmtTimeM(23 * 60 + 55),
+  };
+};
+
+// Working hours are defined in the premise clock (Asia/Muscat, GMT+4). Render
+// the same window in the viewer's own device timezone so the numbers a user
+// sees always line up with the times they enter (identity for Oman users).
+const fmtLocalWorkingHours = (cfg) => {
+  const wh = workingHoursToUserLocal(
+    {
+      startH: cfg?.start ?? 8,
+      startM: cfg?.startMinute ?? 0,
+      endH: cfg?.end ?? 17,
+      endM: cfg?.endMinute ?? 0,
+    },
+    userTimeZone(),
+  );
+  return {
+    startH: wh.startH,
+    startM: wh.startM,
+    endH: wh.endH,
+    endM: wh.endM,
+    start: fmtHour12(wh.startH, wh.startM),
+    end: fmtHour12(wh.endH, wh.endM),
+  };
+};
+
 export default function BookingPage() {
   const router = useRouter();
   const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState, setFlowState } = useVisitor();
@@ -115,11 +162,69 @@ export default function BookingPage() {
   const [specificDays, setSpecificDays] = useState([]); // day indices [0=Sun..6=Sat]
   const [specificEndDate, setSpecificEndDate] = useState(null); // dayjs end date for specificDays preset
 
-  // "working" | "weekend" — which day category the visitor is booking for
+  // "working" | "all" — which day category the visitor is booking for
   const [dayTypeTab, setDayTypeTab] = useState("working");
 
   // Host working-hours/days config loaded on mount
   const [hostConfig, setHostConfig] = useState(null);
+
+  const computeDaySet = (mode, cfg) => {
+    const wd = cfg?.workingDays ?? [0, 1, 2, 3, 4];
+    const we = cfg?.weekendDays ?? [5, 6];
+    return mode === "all" ? [...new Set([...wd, ...we])] : wd;
+  };
+
+  // Custom-mode only: warn when the picked date is an off day or times fall
+  // outside working hours (presets keep their existing behaviour).
+  const renderCustomOutsideWarning = () => {
+    if (!hostConfig || !bookingDate) return null;
+    const startH = hostConfig.start ?? 8;
+    const startM = hostConfig.startMinute ?? 0;
+    const endH = hostConfig.end ?? 17;
+    const endM = hostConfig.endMinute ?? 0;
+    const startMoD = startH * 60 + startM;
+    const endMoD = endH * 60 + endM;
+    const workingDays = hostConfig.workingDays ?? [0, 1, 2, 3, 4];
+    const parseMoD = (val) => {
+      const [h, m] = (val || "00:00").split(":").map(Number);
+      return h * 60 + m;
+    };
+    const fromMoD = parseMoD(bookingData?.timeFrom || "08:00");
+    const toMoD = parseMoD(bookingData?.timeTo || "17:00");
+    const outsideHours = !(
+      fromMoD >= startMoD &&
+      fromMoD <= endMoD &&
+      toMoD >= startMoD &&
+      toMoD <= endMoD
+    );
+    const dow = bookingDate.day();
+    const outsideDay = !workingDays.includes(dow);
+
+    if (!outsideHours && !outsideDay) return null;
+    const parts = [];
+    if (outsideDay)
+      parts.push(
+        t.outsideWorkingDays.replace("{{days}}", DAY_LABELS[dow]),
+      );
+    if (outsideHours) parts.push(t.outsideWorkingHours);
+    const joined = parts.join(" and ");
+
+    return (
+      <Box sx={{ mt: 1.5, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
+          <Typography
+            variant="caption"
+            fontWeight={700}
+            color="warning.contrastText"
+            sx={{ fontSize: 11 }}
+          >
+            {joined}.
+          </Typography>
+        </Stack>
+      </Box>
+    );
+  };
 
   const DAY_LABELS = [t.daySun, t.dayMon, t.dayTue, t.dayWed, t.dayThu, t.dayFri, t.daySat];
 
@@ -285,10 +390,21 @@ export default function BookingPage() {
     }
   }, [isEditMode]);
 
-  // Load host working-hours config (best-effort; gracefully falls back to defaults)
+  // Load host working-hours config (best-effort; gracefully falls back to defaults).
   useEffect(() => {
     getWorkingHours().then((cfg) => { if (cfg) setHostConfig(cfg); }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setBookingData((prev) => {
+      if (!prev.timeFrom || !prev.timeTo) return prev;
+      if (bookingType === "preset" && selectedPreset === "fullDay") return prev;
+      const { fromVal, toVal } = orderFromTo(prev.timeFrom, prev.timeTo);
+      if (fromVal === prev.timeFrom && toVal === prev.timeTo) return prev;
+      return { ...prev, timeFrom: fromVal, timeTo: toVal };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingData?.timeFrom, bookingData?.timeTo, bookingType, selectedPreset]);
 
   useEffect(() => {
     if (!ndaRequired) return;
@@ -312,20 +428,31 @@ export default function BookingPage() {
     setBookingData((prev) => ({ ...prev, date: newDate }));
   };
 
-  // Updates bookingData[type] to newTime24 ("HH:MM") and enforces from<to.
+  // Updates bookingData[type] to newTime24 ("HH:MM") and enforces strictly
+  // from<to — never equal, never wrapping past midnight (no 12:00 AM end).
   const handleTimeChange = (type, newTime24) => {
     setBookingData((prev) => {
-      let newData = { ...prev, [type]: newTime24 };
-      if (type === "timeFrom" && newData.timeTo <= newTime24) {
-        let [h, m] = newTime24.split(":").map(Number);
-        h = (h + 1) % 24;
-        newData.timeTo = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-      } else if (type === "timeTo" && newData.timeFrom >= newTime24) {
-        let [h, m] = newTime24.split(":").map(Number);
-        h = (h - 1 + 24) % 24;
-        newData.timeFrom = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      if (type === "timeFrom") {
+        if (toMinsOf(prev.timeTo) <= toMinsOf(newTime24)) {
+          // Keep the ~1h gap after a later start; at the edge of the day the
+          // strict-order helper pulls the pair inside 00:00–23:55 instead.
+          const target = Math.min(toMinsOf(newTime24) + 60, 23 * 60 + 55);
+          const next =
+            target > toMinsOf(newTime24)
+              ? { fromVal: newTime24, toVal: fmtTimeM(target) }
+              : orderFromTo(newTime24, prev.timeTo);
+          return { ...prev, timeFrom: next.fromVal, timeTo: next.toVal };
+        }
+        return { ...prev, timeFrom: newTime24 };
       }
-      return newData;
+      if (toMinsOf(prev.timeFrom) >= toMinsOf(newTime24)) {
+        const lowered = orderFromTo(
+          fmtTimeM(Math.max(toMinsOf(newTime24) - 60, 0)),
+          newTime24,
+        );
+        return { ...prev, timeFrom: lowered.fromVal, timeTo: lowered.toVal };
+      }
+      return { ...prev, timeTo: newTime24 };
     });
   };
 
@@ -469,18 +596,14 @@ export default function BookingPage() {
           from = from.startOf("day");
           to = from.add(6, "days").endOf("day");
           recurringType = "full_week";
-          recurringDays = dayTypeTab === "weekend"
-            ? (hostConfig?.weekendDays ?? [5, 6])
-            : (hostConfig?.workingDays ?? [0, 1, 2, 3, 4]);
+          recurringDays = computeDaySet(dayTypeTab, hostConfig);
           recurringTimeFrom = bookingData.timeFrom;
           recurringTimeTo = bookingData.timeTo;
         } else if (selectedPreset === "fullMonth") {
           from = from.startOf("day");
           to = from.endOf("month");
           recurringType = "full_month";
-          recurringDays = dayTypeTab === "weekend"
-            ? (hostConfig?.weekendDays ?? [5, 6])
-            : (hostConfig?.workingDays ?? [0, 1, 2, 3, 4]);
+          recurringDays = computeDaySet(dayTypeTab, hostConfig);
           recurringTimeFrom = bookingData.timeFrom;
           recurringTimeTo = bookingData.timeTo;
         } else if (selectedPreset === "specificDays") {
@@ -498,6 +621,15 @@ export default function BookingPage() {
         fromDate = bookingDate.format("YYYY-MM-DD");
         toDate = bookingDate.format("YYYY-MM-DD");
       }
+
+      // Overnight visits: end-before-start → roll the end to the next morning.
+      toDate = rollOvernightEnd({
+        fromDate,
+        toDate,
+        fromTime: bookingData?.timeFrom,
+        toTime: bookingData?.timeTo,
+        isPreset: bookingType === "preset",
+      });
 
       // Full Day uses exact ISO from working-hours config; all other presets and custom
       // reconstruct from the user-selected date + timeFrom/timeTo dropdowns.
@@ -769,6 +901,13 @@ export default function BookingPage() {
 
                   {bookingType === "custom" && (
                     <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 320 }}>
+                      {hostConfig && (
+                        <Typography dir="ltr" variant="caption" color="info.main" sx={{ display: "block", mb: 1.5, fontSize: "0.68rem" }}>
+                          {t.bookingWorkingHoursInfo
+                            .replace("{{start}}", fmtLocalWorkingHours(hostConfig).start)
+                            .replace("{{end}}", fmtLocalWorkingHours(hostConfig).end)}
+                        </Typography>
+                      )}
                       <Stack spacing={2} sx={{ mb: 2 }}>
                         {renderTimeDropdowns("timeFrom", t.bookingArrival)}
                         {renderTimeDropdowns("timeTo", t.bookingDeparture)}
@@ -777,10 +916,17 @@ export default function BookingPage() {
                         <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
                           <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
                           <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
-                            {t.bookingDuration.replace("{{min}}", dayjs(`2000-01-01 ${bookingData.timeTo}`).diff(dayjs(`2000-01-01 ${bookingData.timeFrom}`), "minute"))}
+                            {(() => {
+                            const f = dayjs(`2000-01-01 ${bookingData.timeFrom}`);
+                            const tEnd = dayjs(`2000-01-01 ${bookingData.timeTo}`);
+                            const end = tEnd.isBefore(f) ? tEnd.add(1, "day") : tEnd; // overnight
+                            const mins = Math.max(0, end.diff(f, "minute"));
+                            return t.bookingDuration.replace("{{min}}", mins);
+                          })()}
                           </Typography>
                         </Stack>
                       </Box>
+                      {renderCustomOutsideWarning()}
                     </Box>
                   )}
 
@@ -841,7 +987,7 @@ export default function BookingPage() {
                               const locale = lang === "ar" ? "ar-u-nu-latn" : "en-GB";
                               const fmtDate = (d) => new Intl.DateTimeFormat(locale, { day: "2-digit", month: "long", year: "numeric" }).format(d.toDate());
                               const fmtTime = (d) => d.toDate().toLocaleString(locale, { hour: "2-digit", minute: "2-digit", hour12: true });
-                              return `${fmtDate(from)}, ${fmtTime(from)} → ${fmtDate(to)}, ${fmtTime(to)}`;
+                              return `${fmtDate(from)}, ${fmtTime(from)} ${isRtl ? "←" : "→"} ${fmtDate(to)}, ${fmtTime(to)}`;
                             })()}
                           </Typography>
                         </Box>
@@ -850,21 +996,24 @@ export default function BookingPage() {
                       {/* ── Day-type tabs (fullWeek/fullMonth only) ── */}
                       {(selectedPreset === "fullWeek" || selectedPreset === "fullMonth") && (
                         <Box sx={{ mb: 2 }}>
+                          <Typography variant="caption" fontWeight={600} color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                            {t.bookingWorkingDays}:{" "}
+                            {(hostConfig?.workingDays ?? [0, 1, 2, 3, 4]).map((d) => DAY_LABELS[d]).join(", ")}
+                          </Typography>
                           <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.65rem" }}>
                             {t.bookingDayType}
                           </Typography>
-                          <Tabs
+                          <RadioGroup
+                            row
                             value={dayTypeTab}
                             onChange={(_, v) => {
                               setDayTypeTab(v);
                               if (fieldErrors.specificDays) setFieldErrors((p) => { const n = { ...p }; delete n.specificDays; return n; });
                             }}
-                            TabIndicatorProps={{ sx: { height: 3, borderRadius: 1 } }}
-                            sx={{ minHeight: 32, "& .MuiTab-root": { minHeight: 32, py: 0.5, fontSize: "0.72rem", fontWeight: 700 } }}
                           >
-                            <Tab value="working" label={t.bookingWorkingDays} />
-                            <Tab value="weekend" label={t.bookingWeekendDays} />
-                          </Tabs>
+                            <FormControlLabel value="working" control={<Radio size="small" />} label={t.bookingWorkingOnly} />
+                            <FormControlLabel value="all" control={<Radio size="small" />} label={t.bookingWorkingPlusWeekends} />
+                          </RadioGroup>
                         </Box>
                       )}
 
@@ -949,9 +1098,7 @@ export default function BookingPage() {
 
                       {/* ── Week / Month bracket-day preview ── */}
                       {(selectedPreset === "fullWeek" || selectedPreset === "fullMonth") && hasValidBookingDate && (() => {
-                        const activeDaySet = dayTypeTab === "weekend"
-                          ? (hostConfig?.weekendDays ?? [5, 6])
-                          : (hostConfig?.workingDays  ?? [0, 1, 2, 3, 4]);
+                        const activeDaySet = computeDaySet(dayTypeTab, hostConfig);
                         const weekendSet = hostConfig?.weekendDays ?? [5, 6];
                         const bracketStart = bookingDate;
                         const bracketEnd = selectedPreset === "fullWeek"
@@ -963,7 +1110,7 @@ export default function BookingPage() {
                           if (activeDaySet.includes(cur.day())) days.push(cur);
                           cur = cur.add(1, "day");
                         }
-                        const label = dayTypeTab === "weekend" ? t.bookingWeekendDays : t.bookingWorkingDays;
+                        const label = dayTypeTab === "all" ? t.bookingAllDays : t.bookingWorkingDays;
                         return (
                           <Box sx={{ mb: 2, p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                             <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.6rem" }}>
@@ -997,10 +1144,10 @@ export default function BookingPage() {
                             <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
                               {t.bookingFullDayWorkingHoursInfo
                                 .replace("{{start}}", hostConfig
-                                  ? fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0)
+                                  ? fmtLocalWorkingHours(hostConfig).start
                                   : "8:00 AM")
                                 .replace("{{end}}", hostConfig
-                                  ? fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0)
+                                  ? fmtLocalWorkingHours(hostConfig).end
                                   : "5:00 PM")}
                             </Typography>
                           </Stack>
@@ -1015,10 +1162,10 @@ export default function BookingPage() {
                                 const ampm = h24 < 12 ? "AM" : "PM";
                                 return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
                               };
-                              const s = fmtH12(hostConfig.start, hostConfig.startMinute ?? 0);
-                              const e = fmtH12(hostConfig.end, hostConfig.endMinute ?? 0);
+                              const s = fmtH12(fmtLocalWorkingHours(hostConfig).startH, fmtLocalWorkingHours(hostConfig).startM);
+                              const e = fmtH12(fmtLocalWorkingHours(hostConfig).endH, fmtLocalWorkingHours(hostConfig).endM);
                               return (
-                                <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                                <Typography dir="ltr" variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
                                   {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                 </Typography>
                               );
@@ -1032,7 +1179,10 @@ export default function BookingPage() {
                             {renderTimeDropdowns("timeTo", t.bookingEndTime)}
                           </Stack>
                           {(() => {
-                            const mins = dayjs(`2000-01-01 ${bookingData.timeTo}`).diff(dayjs(`2000-01-01 ${bookingData.timeFrom}`), "minute");
+                            const f = dayjs(`2000-01-01 ${bookingData.timeFrom || "08:00"}`);
+                            const tEnd = dayjs(`2000-01-01 ${bookingData.timeTo || "17:00"}`);
+                            const end = tEnd.isBefore(f) ? tEnd.add(1, "day") : tEnd; // overnight
+                            const mins = end.diff(f, "minute");
                             if (mins <= 0) return null;
                             return (
                               <Box sx={{ mt: 1.5, p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
@@ -1045,31 +1195,74 @@ export default function BookingPage() {
                               </Box>
                             );
                           })()}
-                          {hostConfig && (() => {
-                            const parseMoD = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-                            const startMoD = hostConfig.start * 60 + (hostConfig.startMinute ?? 0);
-                            const endMoD = hostConfig.end * 60 + (hostConfig.endMinute ?? 0);
-                            const fromMoD = parseMoD(bookingData.timeFrom || "08:00");
-                            const toMoD = parseMoD(bookingData.timeTo || "17:00");
-                            if (fromMoD >= startMoD && toMoD <= endMoD) return null;
-                            const fmtH12 = (h24, min) => {
-                              const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-                              const ampm = h24 < 12 ? "AM" : "PM";
-                              return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
-                            };
-                            const s = fmtH12(hostConfig.start, hostConfig.startMinute ?? 0);
-                            const e = fmtH12(hostConfig.end, hostConfig.endMinute ?? 0);
-                            return (
-                              <Box sx={{ mt: 1.5, p: 1, bgcolor: "warning.main", borderRadius: 2 }}>
-                                <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
-                                  <ICONS.warning sx={{ fontSize: 14, color: "warning.contrastText" }} />
-                                  <Typography variant="caption" fontWeight={700} color="warning.contrastText" sx={{ fontSize: 11 }}>
-                                    {t.bookingSelectedTimeOutside.replace("{{start}}", s).replace("{{end}}", e)}
-                                  </Typography>
-                                </Stack>
-                              </Box>
-                            );
-                          })()}
+                          {hostConfig &&
+                            (() => {
+                              const parseMoD = (t) => {
+                                const [h, m] = t.split(":").map(Number);
+                                return h * 60 + m;
+                              };
+                              const startMoD =
+                                (hostConfig.start ?? 8) * 60 +
+                                (hostConfig.startMinute ?? 0);
+                              const endMoD =
+                                (hostConfig.end ?? 17) * 60 +
+                                (hostConfig.endMinute ?? 0);
+                              const fromMoD = parseMoD(
+                                bookingData.timeFrom || "08:00",
+                              );
+                              const toMoD = parseMoD(
+                                bookingData.timeTo || "17:00",
+                              );
+                              if (fromMoD >= startMoD && toMoD <= endMoD)
+                                return null;
+                              const fmtH12 = (h24, min) => {
+                                const h12 =
+                                  h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+                                const ampm = h24 < 12 ? "AM" : "PM";
+                                return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+                              };
+                              const s = fmtH12(
+                                fmtLocalWorkingHours(hostConfig).startH,
+                                fmtLocalWorkingHours(hostConfig).startM,
+                              );
+                              const e = fmtH12(
+                                fmtLocalWorkingHours(hostConfig).endH,
+                                fmtLocalWorkingHours(hostConfig).endM,
+                              );
+                              return (
+                                <Box
+                                  sx={{
+                                    mt: 1.5,
+                                    p: 1,
+                                    bgcolor: "warning.main",
+                                    borderRadius: 2,
+                                  }}
+                                >
+                                  <Stack
+                                    direction="row"
+                                    sx={{ gap: 1 }}
+                                    alignItems="center"
+                                  >
+                                    <ICONS.warning
+                                      sx={{
+                                        fontSize: 14,
+                                        color: "warning.contrastText",
+                                      }}
+                                    />
+                                    <Typography
+                                      variant="caption"
+                                      fontWeight={700}
+                                      color="warning.contrastText"
+                                      sx={{ fontSize: 11 }}
+                                    >
+                                      {t.bookingSelectedTimeOutside
+                                        .replace("{{start}}", s)
+                                        .replace("{{end}}", e)}
+                                    </Typography>
+                                  </Stack>
+                                </Box>
+                              );
+                            })()}
                         </Box>
                       )}
                     </Box>
@@ -1098,7 +1291,7 @@ export default function BookingPage() {
               variant="contained"
               fullWidth
               disabled={submitting || !hasValidBookingDate}
-              startIcon={submitting ? <CircularProgress size={24} color="inherit" /> : <ICONS.send />}
+              startIcon={submitting ? <CircularProgress size={24} color="inherit" /> : <ICONS.send sx={{ transform: isRtl ? "scaleX(-1)" : "none" }} />}
               onClick={handleSubmit}
               sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(dir) }}
             >

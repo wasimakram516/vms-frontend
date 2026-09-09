@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { GlobalStyles } from "@mui/material";
 import { DateTimePicker, DatePicker } from "@mui/x-date-pickers";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -42,19 +43,52 @@ export default function DateTimeFieldFlatpickr({
   required = false,
   helperText,
   minDate,
+  maxDate,
   placeholder,
+  open: controlledOpen,
+  onOpenChange,
 }) {
+  // Open the picker when clicking anywhere on the field (not just the icon),
+  // so the whole date input acts like a single clickable control.
+  // `open`/`onOpenChange` make this controlled so a parent can coordinate
+  // several pickers (only one popup at a time); otherwise internal state.
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (v) => {
+    if (!isControlled) setInternalOpen(v);
+    onOpenChange?.(v);
+  };
+
   const dayjsValue = value ? dayjs(value) : null;
   const dayjsMin = minDate ? dayjs(minDate) : undefined;
+  const dayjsMax = maxDate ? dayjs(maxDate) : undefined;
+
+  const rangeError = (() => {
+    if (!enableTime || !dayjsValue || !dayjsValue.isValid()) return null;
+    if (dayjsMin && dayjsValue.isSame(dayjsMin, "day") && dayjsValue.isBefore(dayjsMin)) {
+      return `Must be at or after ${dayjsMin.format("DD MMM YYYY, hh:mm A")}`;
+    }
+    if (dayjsMax && dayjsValue.isSame(dayjsMax, "day") && dayjsValue.isAfter(dayjsMax)) {
+      return `Must be at or before ${dayjsMax.format("DD MMM YYYY, hh:mm A")}`;
+    }
+    return null;
+  })();
 
   const slotProps = {
     textField: {
       fullWidth: true,
       required,
-      helperText,
+      helperText: rangeError || helperText,
+      error: Boolean(rangeError),
       size: "medium",
       placeholder: placeholder || (enableTime ? "dd MMM yyyy, hh:mm AM/PM" : "dd MMM yyyy"),
       InputProps: { sx: { borderRadius: 3 } },
+      onClick: (e) => {
+        e.stopPropagation();
+        setOpen(true);
+      },
+      inputProps: { "aria-label": label },
     },
   };
 
@@ -77,7 +111,11 @@ export default function DateTimeFieldFlatpickr({
             label={label}
             value={dayjsValue}
             onChange={handleChange}
-            minDateTime={dayjsMin}
+            open={open}
+            onOpen={() => setOpen(true)}
+            onClose={() => setOpen(false)}
+            minDate={dayjsMin}
+            maxDate={dayjsMax}
             format="DD MMM YYYY, hh:mm A"
             ampm
             slotProps={slotProps}
@@ -86,6 +124,9 @@ export default function DateTimeFieldFlatpickr({
           <DatePicker
             label={label}
             value={dayjsValue}
+            open={open}
+            onOpen={() => setOpen(true)}
+            onClose={() => setOpen(false)}
             onChange={(val) => {
               if (!val) { onChange?.(null); return; }
               try {
@@ -96,6 +137,7 @@ export default function DateTimeFieldFlatpickr({
               }
             }}
             minDate={dayjsMin}
+            maxDate={dayjsMax}
             format="DD MMM YYYY"
             slotProps={slotProps}
           />

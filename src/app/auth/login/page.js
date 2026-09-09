@@ -24,7 +24,7 @@ import { getStaffDestination } from "@/utils/navigationUtils";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
 export default function LoginPage() {
   const router = useRouter();
-  const { user, setUser, logout, loading: authLoading } = useAuth();
+  const { user, setUser, loading: authLoading } = useAuth();
   const { mode } = useColorMode();
   const { t, isArabic: isRtl } = useI18nLayout(authTranslations);
   const isDark = mode === "dark";
@@ -75,17 +75,15 @@ export default function LoginPage() {
     try {
       const response = await login(form.email, form.password);
       if (!response?.error) {
+        setUser(response.user);
         if (response.user.role === "staff") {
-          await logout("/auth/login");
+          router.push(getStaffDestination(response.user));
+        } else if (response.user.role === "dev") {
+          router.push("/cms/settings");
+        } else if (response.user.role === "admin" && response.user.adminType === "kitchen") {
+          router.push("/cms/kitchen");
         } else {
-          setUser(response.user);
-          if (response.user.role === "dev") {
-            router.push("/cms/settings");
-          } else if (response.user.role === "admin" && response.user.adminType === "kitchen") {
-            router.push("/cms/kitchen");
-          } else {
-            router.push("/cms/dashboard");
-          }
+          router.push("/cms/dashboard");
         }
       }
     } finally {

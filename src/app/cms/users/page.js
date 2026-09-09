@@ -1302,95 +1302,117 @@ export default function UsersPage() {
                   <Alert severity="info" sx={{ borderRadius: 2, fontSize: "0.82rem" }}>
                     Checked actions are granted. Overrides layer on top of the role&apos;s base set — <strong>deny</strong> removes an inherited action, <strong>allow</strong> adds one the role doesn&apos;t have.
                   </Alert>
-                  {overrideRolePages.map((page) => {
-                  const baseGrants = isEditMode ? (editRolePermissions[page.pageId] || []) : (rolePermissions[page.pageId] || []);
-                  const currentOverrides = isEditMode ? editOverrides : overrides;
-                  const PageIcon = PAGE_ICONS[page.pageId];
-                  return (
-                    <Box
-                      key={page.pageId}
-                      sx={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        gap: 1,
-                        rowGap: 0.75,
-                        mb: 1,
-                        px: { xs: 1.5, sm: 2 },
-                        py: { xs: 1.25, sm: 1 },
-                        border: "1px solid",
-                        borderColor: "divider",
-                        borderRadius: 2,
-                        bgcolor: "background.paper",
-                      }}
-                    >
-                      <Chip
-                        label={page.label}
-                        size="small"
-                        icon={PageIcon ? <PageIcon sx={{ fontSize: "1rem !important" }} /> : undefined}
-                        sx={{
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          fontSize: "0.7rem",
-                          borderRadius: 999,
-                          minWidth: { sm: 150 },
-                          justifyContent: "flex-start",
-                        }}
-                      />
-                      <Stack
-                        direction="row"
-                        flexWrap="wrap"
-                        alignItems="center"
-                        sx={{
-                          flexBasis: { xs: "100%", sm: "auto" },
-                          flexGrow: { sm: 1 },
-                          columnGap: 1,
-                          rowGap: 0.5,
-                        }}
-                      >
-                        {page.actions.map((action) => {
-                          const isInherited = baseGrants.includes(action);
-                          const currentOverride = currentOverrides[page.pageId]?.[action] || "";
-                          const isChecked = isInherited ? currentOverride !== "deny" : currentOverride === "allow";
-                          const isOverridden = currentOverride !== "";
-                          return (
-                            <FormControlLabel
-                              key={action}
-                              control={
-                                <Checkbox
-                                  checked={isChecked}
-                                  size="small"
-                                  disabled={!canManageOverrides}
-                                  onChange={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
-                                />
-                              }
-                              label={
-                                <Stack direction="row" alignItems="center" spacing={0.5}>
-                                  <Typography sx={{ fontSize: "0.85rem", textTransform: "capitalize" }}>
-                                    {action.replace(/-/g, " ")}
-                                  </Typography>
-                                  {isOverridden ? (
-                                    <Chip
-                                      label={currentOverride}
-                                      size="small"
-                                      color={currentOverride === "allow" ? "success" : "error"}
-                                      sx={{ height: 16, fontSize: "0.6rem", "& .MuiChip-label": { px: 0.6 } }}
-                                    />
-                                  ) : isInherited ? (
-                                    <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary" }}>
-                                      inherited
-                                    </Typography>
-                                  ) : null}
-                                </Stack>
-                              }
-                              sx={{ mr: 1 }}
+                  {(() => {
+                    const renderActionControl = (page, action, { withLabel = false } = {}) => {
+                      const baseGrants = isEditMode ? (editRolePermissions[page.pageId] || []) : (rolePermissions[page.pageId] || []);
+                      const currentOverrides = isEditMode ? editOverrides : overrides;
+                      const isInherited = baseGrants.includes(action);
+                      const currentOverride = currentOverrides[page.pageId]?.[action] || "";
+                      const isChecked = isInherited ? currentOverride !== "deny" : currentOverride === "allow";
+                      const isOverridden = currentOverride !== "";
+                      return (
+                        <FormControlLabel
+                          key={`${page.pageId}-${action}`}
+                          control={
+                            <Checkbox
+                              checked={isChecked}
+                              size="small"
+                              disabled={!canManageOverrides}
+                              onChange={() => canManageOverrides && handleToggleOverride(page.pageId, action, isInherited, isEditMode)}
                             />
-                          );
-                        })}
-                      </Stack>
-                    </Box>
-                  );
-                })}
+                          }
+                          label={
+                            <Stack direction="row" alignItems="center" spacing={0.5}>
+                              <Typography sx={{ fontSize: "0.85rem", textTransform: "capitalize" }}>
+                                {withLabel ? `${page.label} ` : ""}{action.replace(/-/g, " ")}
+                              </Typography>
+                              {isOverridden ? (
+                                <Chip
+                                  label={currentOverride}
+                                  size="small"
+                                  color={currentOverride === "allow" ? "success" : "error"}
+                                  sx={{ height: 16, fontSize: "0.6rem", "& .MuiChip-label": { px: 0.6 } }}
+                                />
+                              ) : isInherited ? (
+                                <Typography variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary" }}>
+                                  inherited
+                                </Typography>
+                              ) : null}
+                            </Stack>
+                          }
+                          sx={{ mr: 1 }}
+                        />
+                      );
+                    };
+
+                    const renderOverridePage = (page, children = []) => {
+                      const PageIcon = PAGE_ICONS[page.pageId];
+                      return (
+                        <Box
+                          key={page.pageId}
+                          sx={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                            gap: 1,
+                            rowGap: 0.75,
+                            mb: 1,
+                            px: { xs: 1.5, sm: 2 },
+                            py: { xs: 1.25, sm: 1 },
+                            border: "1px solid",
+                            borderColor: "divider",
+                            borderRadius: 2,
+                            bgcolor: "background.paper",
+                          }}
+                        >
+                          <Chip
+                            label={page.label}
+                            size="small"
+                            icon={PageIcon ? <PageIcon sx={{ fontSize: "1rem !important" }} /> : undefined}
+                            sx={{
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              fontSize: "0.7rem",
+                              borderRadius: 999,
+                              minWidth: { sm: 150 },
+                              justifyContent: "flex-start",
+                            }}
+                          />
+                          <Stack
+                            direction="row"
+                            flexWrap="wrap"
+                            alignItems="center"
+                            sx={{
+                              flexBasis: { xs: "100%", sm: "auto" },
+                              flexGrow: { sm: 1 },
+                              columnGap: 1,
+                              rowGap: 0.5,
+                            }}
+                          >
+                            {page.actions.map((action) => renderActionControl(page, action))}
+                            {children.length > 0 && (
+                              <>
+                                {children.flatMap((child) =>
+                                  child.actions.map((action) =>
+                                    renderActionControl(child, action, { withLabel: true }),
+                                  ),
+                                )}
+                              </>
+                            )}
+                          </Stack>
+                        </Box>
+                      );
+                    };
+
+                    return overrideRolePages
+                      .filter((p) => !p.group)
+                      .map((page) => {
+                        const children = overrideRolePages.filter(
+                          (other) => other.group === page.pageId,
+                        );
+                        return renderOverridePage(page, children);
+                      });
+                  })()}
               </>
             );
           })()}

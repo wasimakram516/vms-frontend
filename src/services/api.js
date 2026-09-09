@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getStoredToken, getStoredUser, setStoredAuthData, clearStoredAuthData } from "@/utils/authStorage";
+import { getStoredToken, setStoredAuthData, clearStoredAuthData } from "@/utils/authStorage";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
@@ -102,8 +102,7 @@ api.interceptors.response.use(
           refreshError.response?.status === 401 ||
           refreshError.response?.status === 403
         ) {
-          const storedUser = getStoredUser();
-          const redirectPath = storedUser?.role === "staff" ? "/staff" : "/auth/login";
+          const redirectPath = "/auth/login";
           clearStoredAuthData();
           if (typeof window !== "undefined") {
             window.location.href = redirectPath;

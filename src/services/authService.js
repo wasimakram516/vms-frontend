@@ -63,9 +63,7 @@ export const login = withApiHandler(
 );
 
 export const logout = async (redirectTo) => {
-  const storedUser = getStoredUser();
-  const redirectPath =
-    redirectTo || (storedUser?.role === "staff" ? "/staff" : "/auth/login");
+  const redirectPath = redirectTo || "/auth/login";
 
   try {
     await api.post("/auth/logout");

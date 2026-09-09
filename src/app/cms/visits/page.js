@@ -29,6 +29,8 @@ import {
   Tab,
   Switch,
   FormControlLabel,
+  RadioGroup,
+  Radio,
   useTheme,
   useMediaQuery,
   alpha,
@@ -40,8 +42,8 @@ import {
   AccordionDetails,
   Collapse,
 } from "@mui/material";
+import { useSearchParams } from "next/navigation";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useMessage } from "@/contexts/MessageContext";
 import { useSocket } from "@/contexts/SocketContext";
@@ -66,6 +68,7 @@ import {
   exportVisitorHistoryCsv,
   exportRegistrationsXlsx,
   updateRegistration,
+  updateInternalNote,
   getEligibleVisitors,
   adminCreateVisits,
   checkNdaValidity,
@@ -89,6 +92,12 @@ import { validateRequired } from "@/utils/validationUtils";
 import { countPastVisits, resolvePastVisitBreakdown } from "@/utils/visitCount";
 import { formatActorLabel } from "@/utils/actorLabel";
 import { getRegistrationDisplayName, getRegistrationDisplayInitial } from "@/utils/registrationDisplay";
+import { countScheduledDays } from "@/utils/scheduleDayCount";
+import {
+  markBadgesPrinted,
+  markBadgesExported,
+  logVisitsExported,
+} from "@/services/activityService";
 
 import AppCard from "@/components/cards/AppCard";
 import DialogHeader from "@/components/modals/DialogHeader";
@@ -98,8 +107,48 @@ import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import ResponsiveCardGrid from "@/components/ResponsiveCardGrid";
 import RecordMetadata from "@/components/RecordMetadata";
+import VisitorDetailsDialog from "@/components/visitors/VisitorDetailsDialog";
+import ClickableVisitorName from "@/components/visitors/ClickableVisitorName";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
+import { workingHoursToUserLocal, userTimeZone, rollOvernightEnd } from "@/utils/premiseTime";
+
+// Format a working-hours boundary as a readable 12-hour AM/PM string (e.g. "8:00 AM").
+const fmtHour12 = (h24, min = 0) => {
+  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  const ampm = h24 < 12 ? "AM" : "PM";
+  return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+};
+
+// Working hours are premise-time (GMT+4); show them in the viewer's timezone.
+const fmtLocalWorkingHours = (cfg) => {
+  const wh = workingHoursToUserLocal(
+    {
+      startH: cfg?.start ?? 8,
+      startM: cfg?.startMinute ?? 0,
+      endH: cfg?.end ?? 17,
+      endM: cfg?.endMinute ?? 0,
+    },
+    userTimeZone(),
+  );
+  return {
+    startH: wh.startH,
+    startM: wh.startM,
+    endH: wh.endH,
+    endM: wh.endM,
+    start: fmtHour12(wh.startH, wh.startM),
+    end: fmtHour12(wh.endH, wh.endM),
+  };
+};
+
+// True when an approved window ends before it starts (invalid legacy data).
+const isInvertedWindow = (fromVal, toVal) => {
+  if (!fromVal || !toVal) return false;
+  const f = dayjs(fromVal);
+  const t = dayjs(toVal);
+  if (!f.isValid() || !t.isValid()) return false;
+  return f.valueOf() >= t.valueOf();
+};
 
 const STATUS_CONFIG = {
   pending: {
@@ -279,6 +328,53 @@ function getOverrideTargets(currentStatus, role, normalAllowed, canOverride) {
   return role === "superadmin"
     ? targets
     : targets.filter((s) => s !== "approved");
+}
+
+function ExpandableNote({ text = "", maxLines = 3 }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const innerRef = useRef(null);
+  const clampRef = useRef(null);
+
+  useEffect(() => {
+    const inner = innerRef.current;
+    const clamp = clampRef.current;
+    if (!inner || !clamp) return;
+    setOverflowing(inner.scrollHeight > clamp.clientHeight + 1);
+  }, [text]);
+
+  if (!text) return null;
+  return (
+    <Box>
+      <Typography
+        ref={clampRef}
+        component="div"
+        variant="body2"
+        color="text.primary"
+        sx={{
+          position: "relative",
+          overflow: "hidden",
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+          whiteSpace: "pre-wrap",
+          display: expanded ? "block" : "-webkit-box",
+          WebkitLineClamp: expanded ? "unset" : maxLines,
+          WebkitBoxOrient: "vertical",
+        }}
+      >
+        <span ref={innerRef}>{text}</span>
+      </Typography>
+      {overflowing && (
+        <Button
+          size="small"
+          onClick={() => setExpanded((p) => !p)}
+          sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: "none" }}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </Button>
+      )}
+    </Box>
+  );
 }
 
 function InfoItem({ label, value, icon, sx = {} }) {
@@ -568,6 +664,22 @@ function getVisibleFieldValues(registration) {
   return map;
 }
 
+function resolveVisitName(row) {
+  if (!row) return "";
+  const participants =
+    Array.isArray(row.participants) && row.participants.length > 1
+      ? row.participants
+      : [];
+  if (participants.length > 1) {
+    const names = participants
+      .map((p) => p.fullName)
+      .filter(Boolean)
+      .join(", ");
+    return names || `Group Meeting (${participants.length})`;
+  }
+  return row.full_name || row.fullName || "";
+}
+
 const buildEditForm = (reg, fields = []) => {
   const fvMap = {};
   if (Array.isArray(reg.fieldValues)) {
@@ -630,6 +742,7 @@ const buildEditForm = (reg, fields = []) => {
     escortRequired: hasApproved
       ? (reg.escort_required ?? reg.escortRequired ?? true)
       : true,
+    internalNote: reg.internal_note ?? reg.internalNote ?? "",
     fieldValues: fvMap,
   };
 };
@@ -671,6 +784,14 @@ export default function CmsVisitsPage() {
     hardcodeAllowed: isSuperAdmin,
     action: "override",
   });
+  const canReadInternalNote = canAccessResource(user, "internal-notes", {
+    hardcodeAllowed: isSuperAdmin,
+    action: "read",
+  });
+  const canWriteInternalNote = canAccessResource(user, "internal-notes", {
+    hardcodeAllowed: isSuperAdmin,
+    action: "update",
+  });
 
   // ── Data ──
   const [rows, setRows] = useState([]);
@@ -691,8 +812,8 @@ export default function CmsVisitsPage() {
   const [vipFastTrackOnly, setVipFastTrackOnly] = useState(false);
   const [groupMeetingOnly, setGroupMeetingOnly] = useState(false);
   const [datePreset, setDatePreset] = useState("all");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const [customFrom, setCustomFrom] = useState(null);
+  const [customTo, setCustomTo] = useState(null);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [requestDateFrom, setRequestDateFrom] = useState("");
   const [requestDateTo, setRequestDateTo] = useState("");
@@ -716,6 +837,9 @@ export default function CmsVisitsPage() {
   const [fetchingProfile, setFetchingProfile] = useState(false);
   const [detailTab, setDetailTab] = useState(0);
   const [editForm, setEditForm] = useState(null);
+  // Which schedule picker popup is open in the edit dialog ('from' | 'to' | null).
+  // The From/To pickers share this slot so both popups can never mount at once.
+  const [openSchedulePicker, setOpenSchedulePicker] = useState(null);
   const [statusModal, setStatusModal] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     open: false,
@@ -725,7 +849,7 @@ export default function CmsVisitsPage() {
   const [customTimestamp, setCustomTimestamp] = useState(null);
   const customTimestampRef = useRef(null);
   const batchTimestampRef = useRef(null);
-  const [memberDialog, setMemberDialog] = useState({ open: false, member: null });
+  const [visitorDialog, setVisitorDialog] = useState({ open: false, visitorId: null, seed: null });
   const [actionsExpanded, setActionsExpanded] = useState(true);
   const [timelineModal, setTimelineModal] = useState({
     open: false,
@@ -756,6 +880,12 @@ export default function CmsVisitsPage() {
   const [scheduleType, setScheduleType] = useState("custom");
   const [selectedPreset, setSelectedPreset] = useState("fullDay");
   const [dayTypeTab, setDayTypeTab] = useState("working");
+  const [internalNoteDraft, setInternalNoteDraft] = useState("");
+  const [internalNoteDialogOpen, setInternalNoteDialogOpen] = useState(false);
+  // Registration (row or selected visit) currently being edited by the
+  // standalone internal-note dialog — not necessarily the open detail panel.
+  const [internalNoteTarget, setInternalNoteTarget] = useState(null);
+  const [internalNoteSaving, setInternalNoteSaving] = useState(false);
   const [specificDays, setSpecificDays] = useState([]);
   const [specificEndDate, setSpecificEndDate] = useState(null);
   const [selectedAccessLevelIds, setSelectedAccessLevelIds] = useState([]);
@@ -764,6 +894,7 @@ export default function CmsVisitsPage() {
   const [vehiclePlate, setVehiclePlate] = useState("");
   const [vehiclePlateError, setVehiclePlateError] = useState("");
   const [approvalNote, setApprovalNote] = useState("");
+  const [approvalInternalNote, setApprovalInternalNote] = useState("");
   const [isVip, setIsVip] = useState(false);
   const [escortRequired, setEscortRequired] = useState(true);
   const [vipReason, setVipReason] = useState("");
@@ -773,6 +904,53 @@ export default function CmsVisitsPage() {
   const [accessLevels, setAccessLevels] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [activeCustomFields, setActiveCustomFields] = useState([]);
+
+  // Update the shared schedule state and auto-enable Allow Multiple Check-ins
+  // whenever the resulting schedule spans more than one day (Full Week / Full
+  // Month / Specific Days). Only ever turns it ON — staff can still toggle it
+  // off after, and a single-day schedule keeps its current value.
+  const computeDaySet = (mode, cfg) => {
+    const wd = cfg?.workingDays ?? [0, 1, 2, 3, 4];
+    const we = cfg?.weekendDays ?? [5, 6];
+    return mode === "all" ? [...new Set([...wd, ...we])] : wd;
+  };
+
+  const applySchedule = (patch) => {
+    const nextType = patch.scheduleType ?? scheduleType;
+    const nextPreset = patch.selectedPreset ?? selectedPreset;
+    const nextDays = patch.specificDays ?? specificDays;
+    const nextTab = patch.dayTypeTab ?? dayTypeTab;
+    const nextEnd = patch.specificEndDate ?? specificEndDate;
+    const nextDate = patch.scheduledDate ?? scheduledDate;
+    let weekdays = [];
+    if (nextType === "preset" && (nextPreset === "fullWeek" || nextPreset === "fullMonth")) {
+      weekdays = computeDaySet(nextTab, hostConfig);
+    } else if (nextType === "preset" && nextPreset === "specificDays") {
+      weekdays = nextDays;
+    }
+    const dayCount = countScheduledDays({
+      isPreset: nextType === "preset",
+      preset: nextPreset,
+      startDate: nextDate,
+      endDate: nextEnd,
+      weekdays,
+    });
+    setScheduleType(nextType);
+    setSelectedPreset(nextPreset);
+    setSpecificDays(nextDays);
+    setSpecificEndDate(nextEnd);
+    setScheduledDate(nextDate);
+    setDayTypeTab(nextTab);
+    if (dayCount > 1) setAllowMultiCheckin(true);
+  };
+
+  // True when an edited From/To pair lies on different calendar days.
+  const editScheduleSpansMultiple = (fromVal, toVal) => {
+    if (!editForm?.hasApproved || !fromVal || !toVal) return false;
+    const from = dayjs(fromVal);
+    const to = dayjs(toVal);
+    return from.isValid() && to.isValid() && !from.isSame(to, "day");
+  };
 
   // ── Override status dropdown menu anchor ──
   const [overrideMenuAnchor, setOverrideMenuAnchor] = useState(null);
@@ -861,6 +1039,15 @@ export default function CmsVisitsPage() {
 
   // ── Socket listeners (same pattern as registrations) ──
   const { on } = useSocket();
+  const searchParams = useSearchParams();
+  // Deep-link from the Recent Activity page (/?visit=<id>) — open that visit's profile.
+  const deepVisitId = searchParams?.get("visit") || null;
+  const openedDeepVisitRef = useRef(null);
+  useEffect(() => {
+    if (!deepVisitId || openedDeepVisitRef.current === deepVisitId) return;
+    openedDeepVisitRef.current = deepVisitId;
+    handleOpenProfile({ id: deepVisitId });
+  }, [deepVisitId]);
   useEffect(() => {
     const unsubNew = on("registration:new", (newReg) => {
       if (!newReg?.id) {
@@ -1010,8 +1197,24 @@ export default function CmsVisitsPage() {
             const createdAt = r.created_at || r.createdAt;
             if (createdAt) {
               const d = dayjs(createdAt);
-              if (from && d.isBefore(dayjs(from))) return false;
-              if (to && d.isAfter(dayjs(to).endOf("day"))) return false;
+              if (
+                from &&
+                d.isBefore(
+                  /^\d{4}-\d{2}-\d{2}$/.test(from)
+                    ? dayjs(from).startOf("day")
+                    : dayjs(from),
+                )
+              )
+                return false;
+              if (
+                to &&
+                d.isAfter(
+                  /^\d{4}-\d{2}-\d{2}$/.test(to)
+                    ? dayjs(to).endOf("day")
+                    : dayjs(to),
+                )
+              )
+                return false;
             }
           }
           // ── Requested visit date range ──
@@ -1135,7 +1338,11 @@ export default function CmsVisitsPage() {
     setOrdersLoading(true);
     try {
       const full = await getRegistrationById(row.id);
-      if (full) setSelected(full);
+      if (full) {
+        setSelected(full);
+        setInternalNoteDraft(full?.internal_note ?? row?.internal_note ?? "");
+        setInternalNoteDialogOpen(false);
+      }
       // Past-visit breakdown for the detail header — the visit being viewed is
       // excluded from every member's count. Group meetings show each member's
       // history separately.
@@ -1157,8 +1364,44 @@ export default function CmsVisitsPage() {
     }
   };
 
-  const openMemberInfo = (member) => {
-    setMemberDialog({ open: true, member });
+  const openVisitorDetails = (visitorId, seed) =>
+    setVisitorDialog({ open: true, visitorId, seed: seed || null });
+
+  const handleSaveInternalNote = async () => {
+    const targetId = internalNoteTarget?.id;
+    if (!targetId) return;
+    setInternalNoteSaving(true);
+    try {
+      const res = await updateInternalNote(
+        targetId,
+        internalNoteDraft.trim() || "",
+      );
+      if (res?.error) return;
+      const saved = (res?.internalNote ?? internalNoteDraft.trim()) || null;
+      setSelected((prev) =>
+        prev?.id === targetId
+          ? { ...prev, internal_note: saved, internalNote: saved }
+          : prev,
+      );
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === targetId
+            ? { ...r, internal_note: saved, internalNote: saved }
+            : r,
+        ),
+      );
+      setInternalNoteDraft(saved || "");
+      setInternalNoteDialogOpen(false);
+      setInternalNoteTarget(null);
+      showMessage("Internal note saved", "success");
+    } catch (e) {
+      showMessage(
+        e?.response?.data?.message || e?.message || "Failed to save internal note",
+        "error",
+      );
+    } finally {
+      setInternalNoteSaving(false);
+    }
   };
 
   // ── Status transition ──
@@ -1256,23 +1499,42 @@ export default function CmsVisitsPage() {
     const next = { ...current, [part]: value };
     const time24 = convert12To24(next.hour12, next.minute, next.ampm);
 
+    const fmtHM = (mins) =>
+      `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+    const minsOf = (str) => {
+      const [h, m] = (str || "00:00").split(":").map(Number);
+      return h * 60 + m;
+    };
     if (type === "scheduledFrom") {
-      setScheduledFrom(time24);
+      const fromMin = minsOf(time24);
       if (scheduledTo <= time24) {
-        let [h, m] = time24.split(":").map(Number);
-        h = (h + 1) % 24;
-        setScheduledTo(
-          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
-        );
+        const target = Math.min(fromMin + 60, 23 * 60 + 55);
+        if (target > fromMin) {
+          // Push the end after the new start, capped at 11:55 PM (never 12 AM).
+          setScheduledFrom(time24);
+          setScheduledTo(fmtHM(target));
+        } else {
+          // Start is at the last slot of the day: step it back so the end can stay strictly after it.
+          setScheduledFrom(fmtHM(Math.max(fromMin - 5, 0)));
+          setScheduledTo(fmtHM(23 * 60 + 55));
+        }
+      } else {
+        setScheduledFrom(time24);
       }
     } else {
-      setScheduledTo(time24);
+      const toMin = minsOf(time24);
       if (scheduledFrom >= time24) {
-        let [h, m] = time24.split(":").map(Number);
-        h = (h - 1 + 24) % 24;
-        setScheduledFrom(
-          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
-        );
+        const lowered = Math.max(toMin - 60, 0);
+        if (lowered >= toMin) {
+          // End is at the first slot of the day: nudge it forward instead.
+          setScheduledTo(fmtHM(Math.min(toMin + 5, 23 * 60 + 55)));
+        } else {
+          // Pull the start before the new end, floored at 12:00 AM.
+          setScheduledTo(time24);
+          setScheduledFrom(fmtHM(lowered));
+        }
+      } else {
+        setScheduledTo(time24);
       }
     }
   };
@@ -1427,13 +1689,6 @@ export default function CmsVisitsPage() {
     return toMinutes - fromMinutes;
   };
 
-  // Format a working-hours boundary as a readable 12-hour AM/PM string (e.g. "8:00 AM").
-  const fmtHour12 = (h24, min = 0) => {
-    const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-    const ampm = h24 < 12 ? "AM" : "PM";
-    return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
-  };
-
   // Mirror the backend's outside-working-hours / outside-working-days flags for the
   // schedule currently selected in the dialog, so the CMS warns the same way the
   // public booking page respects the host's working window and working days.
@@ -1461,7 +1716,12 @@ export default function CmsVisitsPage() {
       fromMoD = parseMoD(scheduledFrom);
       toMoD = parseMoD(scheduledTo);
     }
-    const outsideHours = fromMoD < startMoD || toMoD > endMoD;
+    const outsideHours = !(
+      fromMoD >= startMoD &&
+      fromMoD <= endMoD &&
+      toMoD >= startMoD &&
+      toMoD <= endMoD
+    );
 
     // Effective day(s) this schedule targets.
     let outsideDays = false;
@@ -1470,7 +1730,7 @@ export default function CmsVisitsPage() {
       scheduleType === "preset" &&
       (selectedPreset === "fullWeek" || selectedPreset === "fullMonth")
     ) {
-      const days = dayTypeTab === "working" ? workingDays : weekendDays;
+      const days = computeDaySet(dayTypeTab, hostConfig);
       offDays = days.filter((d) => weekendDays.includes(d));
       outsideDays = offDays.length > 0;
     } else if (scheduleType === "preset" && selectedPreset === "specificDays") {
@@ -1503,29 +1763,15 @@ export default function CmsVisitsPage() {
     if (info.outsideDays) {
       parts.push(
         info.offDays.length
-          ? `outside working days (${info.offDays.map((d) => DAY_LABELS[d]).join(", ")})`
+          ? t.outsideWorkingDays.replace(
+              "{{days}}",
+              info.offDays.map((d) => DAY_LABELS[d]).join(", "),
+            )
           : "outside working days",
       );
     }
     if (info.outsideHours) {
-      const timeRange = (
-        <Box component="span" dir="ltr" sx={{ whiteSpace: "nowrap" }}>
-          {fmtHour12(info.startH, info.startM)} – {fmtHour12(info.endH, info.endM)}
-        </Box>
-      );
-      const [hoursBefore, hoursAfter] = t.outsideWorkingHours.split('{{time}}');
-      parts.push(
-        <Fragment key="hours">
-          {hoursBefore}
-          {timeRange}
-          {hoursAfter}
-        </Fragment>,
-      );
-    }
-    if (info.outsideDays) {
-      parts.push(
-        t.outsideWorkingDays.replace('{{days}}', info.offDays.length > 1 ? `${info.offDays.length} days` : `${info.offDays.length} day`),
-      );
+      parts.push(t.outsideWorkingHours);
     }
     const joinedParts = parts.reduce(
       (acc, part, i) => (
@@ -1627,15 +1873,15 @@ export default function CmsVisitsPage() {
       let detectedDayType = "working";
       const rDays = fullReg.recurring_days ?? fullReg.recurringDays ?? null;
       if (hostConfig && Array.isArray(rDays) && rDays.length > 0) {
-        const allWeekend = rDays.every((d) =>
+        const hasWeekend = rDays.some((d) =>
           (hostConfig.weekendDays ?? [5, 6]).includes(d),
         );
-        if (allWeekend) detectedDayType = "weekend";
+        if (hasWeekend) detectedDayType = "all";
       } else if (hostConfig && scheduleFrom) {
         const d = dayjs(scheduleFrom);
         const dow = d.day();
         if ((hostConfig.weekendDays ?? [5, 6]).includes(dow))
-          detectedDayType = "weekend";
+          detectedDayType = "all";
       }
       setDayTypeTab(detectedDayType);
       if (rType === "specific_days" && Array.isArray(rDays)) {
@@ -1671,8 +1917,34 @@ export default function CmsVisitsPage() {
               : []
         : [];
       setSelectedAccessLevelIds(prefillIds);
+      // When approving a pending registration, auto-enable Allow Multiple
+      // Check-ins if the requested route already flags it or spans more than
+      // one day. Already-approved visits keep their stored value.
+      const seedStart = getLocalDate(scheduleFrom);
+      const seedEnd = getLocalDate(scheduleTo);
+      const seedMulti =
+        detectedType === "preset" &&
+        seedStart &&
+        countScheduledDays({
+          isPreset: true,
+          preset: detectedPreset,
+          startDate: seedStart,
+          endDate: detectedPreset === "specificDays" ? seedEnd : null,
+          weekdays:
+            detectedPreset === "fullWeek" || detectedPreset === "fullMonth"
+              ? detectedDayType === "working"
+                ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+                : (hostConfig?.weekendDays ?? [5, 6])
+              : detectedPreset === "specificDays"
+                ? Array.isArray(rDays)
+                  ? rDays
+                  : []
+                : [],
+        }) > 1;
       setAllowMultiCheckin(
-        isAdminApproved ? (fullReg.allow_multi_checkin ?? false) : false,
+        isAdminApproved
+          ? (fullReg.allow_multi_checkin ?? false)
+          : (fullReg.allow_multi_checkin || seedMulti),
       );
       const prefillParking = isAdminApproved
         ? (fullReg.allow_parking ?? false)
@@ -1681,6 +1953,7 @@ export default function CmsVisitsPage() {
       setVehiclePlate(prefillParking ? (fullReg.vehicle_plate ?? "") : "");
       setVehiclePlateError("");
       setApprovalNote(isAdminApproved ? (fullReg.approval_note ?? "") : "");
+      setApprovalInternalNote(fullReg?.internal_note ?? fullReg?.internalNote ?? "");
       const prefillVip = isAdminApproved ? (fullReg.is_vip ?? false) : false;
       setIsVip(prefillVip);
       setEscortRequired(
@@ -1765,6 +2038,15 @@ export default function CmsVisitsPage() {
         toDate = scheduledDate.format("YYYY-MM-DD");
       }
 
+      // Overnight visits: end-before-start → roll the end to the next morning.
+      toDate = rollOvernightEnd({
+        fromDate,
+        toDate,
+        fromTime,
+        toTime,
+        isPreset: scheduleType === "preset",
+      });
+
       const targetStatus =
         approveTarget._pendingStatus ||
         (isSuperAdmin ? "approved" : "admin_approved");
@@ -1780,10 +2062,7 @@ export default function CmsVisitsPage() {
           };
         }
         if (selectedPreset === "fullWeek" || selectedPreset === "fullMonth") {
-          const days =
-            dayTypeTab === "working"
-              ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
-              : (hostConfig?.weekendDays ?? [5, 6]);
+          const days = computeDaySet(dayTypeTab, hostConfig);
           return {
             recurringType:
               selectedPreset === "fullWeek" ? "full_week" : "full_month",
@@ -1814,6 +2093,29 @@ export default function CmsVisitsPage() {
 
       const approveResult = await updateStatus(approveTarget.id, payload);
       if (approveResult?.error) return;
+      // Internal note is optional and separately permissioned — persist it only
+      // when the current user may write it and supplied a value.
+      if (canWriteInternalNote && approvalInternalNote.trim()) {
+        const note = approvalInternalNote.trim();
+        try {
+          const res = await updateInternalNote(approveTarget.id, note);
+          const saved = (res?.internalNote ?? note) || null;
+          setSelected((prev) =>
+            prev?.id === approveTarget.id
+              ? { ...prev, internal_note: saved }
+              : prev,
+          );
+          setRows((prev) =>
+            prev.map((r) =>
+              r.id === approveTarget.id
+                ? { ...r, internal_note: saved }
+                : r,
+            ),
+          );
+        } catch {
+          // best-effort — the approval itself succeeded
+        }
+      }
       showMessage(
         `Visit ${targetStatus === "approved" ? "approved" : "department approved"} successfully`,
         "success",
@@ -1874,6 +2176,16 @@ export default function CmsVisitsPage() {
 
   const handleSaveEdit = async () => {
     if (!editForm?.id) return;
+    if (
+      editForm.scheduleFrom &&
+      editForm.scheduleTo &&
+      dayjs(editForm.scheduleFrom).isValid() &&
+      dayjs(editForm.scheduleTo).isValid() &&
+      dayjs(editForm.scheduleFrom).isAfter(dayjs(editForm.scheduleTo))
+    ) {
+      showMessage("From date & time must be before the To date & time", "error");
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
@@ -1904,6 +2216,29 @@ export default function CmsVisitsPage() {
       if (editForm.departmentId) payload.departmentId = editForm.departmentId;
       const editResult = await updateRegistration(editForm.id, payload);
       if (editResult?.error) return;
+      // Internal note is a separately-permissioned field — persist it through
+      // its own endpoint only when the user may write it.
+      if (canWriteInternalNote) {
+        const note =
+          typeof editForm.internalNote === "string"
+            ? editForm.internalNote.trim()
+            : "";
+        try {
+          const res = await updateInternalNote(editForm.id, note);
+          const saved =
+            (res?.internalNote ?? note) || null;
+          setSelected((prev) =>
+            prev?.id === editForm.id ? { ...prev, internal_note: saved } : prev,
+          );
+          setRows((prev) =>
+            prev.map((r) =>
+              r.id === editForm.id ? { ...r, internal_note: saved } : r,
+            ),
+          );
+        } catch {
+          // best-effort — the visit update still succeeded
+        }
+      }
       showMessage("Visit updated", "success");
       setEditForm(null);
       fetchVisits(true);
@@ -2074,10 +2409,7 @@ export default function CmsVisitsPage() {
         };
       }
       if (selectedPreset === "fullWeek" || selectedPreset === "fullMonth") {
-        const days =
-          dayTypeTab === "working"
-            ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
-            : (hostConfig?.weekendDays ?? [5, 6]);
+        const days = computeDaySet(dayTypeTab, hostConfig);
         return {
           recurringType:
             selectedPreset === "fullWeek" ? "full_week" : "full_month",
@@ -2304,6 +2636,14 @@ export default function CmsVisitsPage() {
         fromDate = scheduledDate.format("YYYY-MM-DD");
         toDate = scheduledDate.format("YYYY-MM-DD");
       }
+      // Overnight visits: roll the end date forward to avoid inverted windows.
+      toDate = rollOvernightEnd({
+        fromDate,
+        toDate,
+        fromTime,
+        toTime,
+        isPreset: scheduleType === "preset",
+      });
       sharedPayload = {
         approvedFrom: dayjs(`${fromDate}T${fromTime}`).toISOString(),
         approvedTo: dayjs(`${toDate}T${toTime}`).toISOString(),
@@ -2332,10 +2672,7 @@ export default function CmsVisitsPage() {
       ) {
         sharedPayload.recurringType =
           selectedPreset === "fullWeek" ? "full_week" : "full_month";
-        sharedPayload.recurringDays =
-          dayTypeTab === "working"
-            ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
-            : (hostConfig?.weekendDays ?? [5, 6]);
+        sharedPayload.recurringDays = computeDaySet(dayTypeTab, hostConfig);
         sharedPayload.recurringTimeFrom = scheduledFrom;
         sharedPayload.recurringTimeTo = scheduledTo;
       }
@@ -2429,7 +2766,7 @@ export default function CmsVisitsPage() {
     setTimelineModal({
       open: true,
       visitId: selected.id,
-      visitorName: selected.full_name || "",
+      visitorName: resolveVisitName(selected),
     });
     try {
       const logs = await getRegistrationActivityLogs(selected.id);
@@ -2505,6 +2842,7 @@ export default function CmsVisitsPage() {
       const blob = await pdf(doc).toBlob();
       const blobUrl = URL.createObjectURL(blob);
       window.open(blobUrl, "_blank", "width=800,height=600,scrollbars=yes");
+      markBadgesPrinted([row?.id]);
     } catch {
       showMessage("Failed to generate badge", "error");
     }
@@ -2519,6 +2857,13 @@ export default function CmsVisitsPage() {
     }
     setExportingXlsx(true);
     try {
+      const logRes = await logVisitsExported(ids, "xlsx");
+      if (logRes?.error) {
+        console.warn(
+          "[Visits] visits-exported logging failed:",
+          logRes?.message,
+        );
+      }
       await exportRegistrationsXlsx(ids);
       showMessage("Visits exported", "success");
     } catch {
@@ -2782,34 +3127,31 @@ export default function CmsVisitsPage() {
               alignItems="center"
               sx={{ flexWrap: "wrap", gap: 1 }}
             >
-              <DatePicker
-                label="From"
-                value={customFrom ? dayjs(customFrom) : null}
-                onChange={(val) => {
-                  setCustomFrom(val ? val.format("YYYY-MM-DD") : "");
-                  setPage(0);
-                }}
-                slotProps={{
-                  textField: {
-                    size: "small",
-                    sx: { "& .MuiInputBase-root": { borderRadius: 3 } },
-                  },
-                }}
-              />
-              <DatePicker
-                label="To"
-                value={customTo ? dayjs(customTo) : null}
-                onChange={(val) => {
-                  setCustomTo(val ? val.format("YYYY-MM-DD") : "");
-                  setPage(0);
-                }}
-                slotProps={{
-                  textField: {
-                    size: "small",
-                    sx: { "& .MuiInputBase-root": { borderRadius: 3 } },
-                  },
-                }}
-              />
+              <Box sx={{ width: { xs: "100%", sm: 180 } }}>
+                <DateTimeFieldFlatpickr
+                  label="From"
+                  value={customFrom}
+                  maxDate={customTo}
+                  onChange={(val) => {
+                    setCustomFrom(val || null);
+                    if (customTo && val && dayjs(val).isAfter(dayjs(customTo))) {
+                      setCustomTo(null);
+                    }
+                    setPage(0);
+                  }}
+                />
+              </Box>
+              <Box sx={{ width: { xs: "100%", sm: 180 } }}>
+                <DateTimeFieldFlatpickr
+                  label="To"
+                  value={customTo}
+                  minDate={customFrom}
+                  onChange={(val) => {
+                    setCustomTo(val || null);
+                    setPage(0);
+                  }}
+                />
+              </Box>
             </Stack>
           )}
         </Stack>
@@ -2877,6 +3219,18 @@ export default function CmsVisitsPage() {
                   }
                   setExportingBadges(true);
                   try {
+                    // One activity entry for the whole badge-PDF export (not
+                    // one per visitor). Runs before the PDF so it's never skipped.
+                    const ids = filtered.map((r) => r?.id).filter(Boolean);
+                    if (ids.length) {
+                      const logRes = await markBadgesExported(ids);
+                      if (logRes?.error) {
+                        console.warn(
+                          "[Badges] bulk badge export logging failed:",
+                          logRes?.message,
+                        );
+                      }
+                    }
                     await exportAllBadges(
                       filtered,
                       badgeTemplate,
@@ -3047,16 +3401,32 @@ export default function CmsVisitsPage() {
                             .join("") || "?"}
                         </Avatar>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
-                          <Typography
-                            variant="subtitle1"
-                            fontWeight={800}
-                            noWrap
-                            sx={{ lineHeight: 1.2 }}
-                          >
-                            {row.participants?.length > 1
-                              ? `Group Meeting (${row.participants.length})`
-                              : row.full_name}
-                          </Typography>
+                          {row.participants?.length > 1 ? (
+                            <Typography
+                              variant="subtitle1"
+                              fontWeight={800}
+                              noWrap
+                              sx={{ lineHeight: 1.2 }}
+                            >
+                              Group Meeting ({row.participants.length})
+                            </Typography>
+                          ) : (
+                            <ClickableVisitorName
+                              name={row.full_name}
+                              visitorId={row.userId}
+                              seed={{
+                                fullName: row.full_name,
+                                email: row.email,
+                                phone: row.phone,
+                                iso_code: row.phone_iso_code,
+                              }}
+                              onOpen={openVisitorDetails}
+                              truncate
+                              variant="subtitle1"
+                              fontWeight={800}
+                              sx={{ lineHeight: 1.2 }}
+                            />
+                          )}
                         </Box>
                         {selectMode && (
                           <Checkbox
@@ -3194,6 +3564,24 @@ export default function CmsVisitsPage() {
                       },
                     }}
                   >
+                    {canReadInternalNote && (row.internal_note || row.internalNote) && (
+                      <Box sx={{ py: 0.8 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.6,
+                            color: "text.secondary",
+                            mb: 0.6,
+                          }}
+                        >
+                          <ICONS.description fontSize="small" sx={{ opacity: 0.6 }} />{" "}
+                          Internal Note
+                        </Typography>
+                        <ExpandableNote text={row.internal_note || row.internalNote} />
+                      </Box>
+                    )}
                     {row.participants?.length > 1 && (
                       <Box sx={{ py: 0.8 }}>
                         <Typography
@@ -3216,23 +3604,29 @@ export default function CmsVisitsPage() {
                           spacing={0.6}
                         >
                           {row.participants.map((p) => (
-                            <Chip
+                            <Tooltip
                               key={p.id}
-                              label={p.fullName}
-                              size="small"
-                              variant="outlined"
-                              clickable
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openMemberInfo(p);
-                              }}
-                              sx={{
-                                fontWeight: 600,
-                                fontSize: "0.68rem",
-                                height: 22,
-                                cursor: "pointer",
-                              }}
-                            />
+                              title="View visitor details"
+                              arrow
+                              placement="top"
+                            >
+                              <Chip
+                                label={p.fullName}
+                                size="small"
+                                variant="outlined"
+                                clickable
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openVisitorDetails(p.id, p);
+                                }}
+                                sx={{
+                                  fontWeight: 600,
+                                  fontSize: "0.68rem",
+                                  height: 22,
+                                  cursor: "pointer",
+                                }}
+                              />
+                            </Tooltip>
                           ))}
                         </Stack>
                       </Box>
@@ -3484,19 +3878,26 @@ export default function CmsVisitsPage() {
                           </IconButton>
                         </span>
                       </Tooltip>
-                      {canEditRegistration(row, isSuperAdmin, userRole) &&
-                        canAccessResource(user, "visits", {
-                          hardcodeAllowed: true,
-                          action: "update",
-                        }) && (
-                          <Tooltip title="Edit Visit">
+                      {(canUpdate || canWriteInternalNote) &&
+                        canEditRegistration(row, isSuperAdmin, userRole) && (
+                          <Tooltip
+                            title={canUpdate ? "Edit Visit" : "Edit Internal Note"}
+                          >
                             <span>
                               <IconButton
                                 size="small"
                                 disabled={selectMode}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleCardEdit(row);
+                                  if (canUpdate) {
+                                    handleCardEdit(row);
+                                  } else if (canWriteInternalNote) {
+                                    setInternalNoteTarget(row);
+                                    setInternalNoteDraft(
+                                      row.internal_note || row.internalNote || "",
+                                    );
+                                    setInternalNoteDialogOpen(true);
+                                  }
                                 }}
                                 sx={{
                                   color: selectMode
@@ -3684,7 +4085,12 @@ export default function CmsVisitsPage() {
                               direction="row"
                               spacing={0.5}
                               alignItems="center"
-                              sx={{ flexWrap: "wrap", flexShrink: 0 }}
+                              sx={{
+                                flexWrap: "wrap",
+                                flexShrink: 0,
+                                flexBasis: { xs: "100%", sm: "auto" },
+                                order: 3,
+                              }}
                             >
                               {visitorVisitCounts[opt.id] != null &&
                                 visitorVisitCounts[opt.id] > 0 && (
@@ -3712,6 +4118,23 @@ export default function CmsVisitsPage() {
                                 />
                               )}
                             </Stack>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openVisitorDetails(opt.id, opt);
+                              }}
+                              sx={{
+                                color: "primary.main",
+                                p: 0.5,
+                                flexShrink: 0,
+                                ml: "auto",
+                                order: { xs: 2, sm: 4 },
+                              }}
+                              title="View visitor details"
+                            >
+                              <ICONS.view fontSize="small" />
+                            </IconButton>
                           </Stack>
                         </Box>
                       )}
@@ -4011,7 +4434,7 @@ export default function CmsVisitsPage() {
                         >
                           <DateCalendar
                             value={scheduledDate}
-                            onChange={(newDate) => setScheduledDate(newDate)}
+onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                             disablePast
                           />
                         </Box>
@@ -4020,7 +4443,7 @@ export default function CmsVisitsPage() {
                         <Stack spacing={2}>
                           <Tabs
                             value={scheduleType}
-                            onChange={(_, v) => setScheduleType(v)}
+                            onChange={(_, v) => applySchedule({ scheduleType: v })}
                             variant="fullWidth"
                             sx={{
                               minHeight: 46,
@@ -4079,6 +4502,17 @@ export default function CmsVisitsPage() {
                                 borderColor: "divider",
                               }}
                             >
+                              {hostConfig && (
+                                <Typography
+                                  variant="caption"
+                                  color="info.main"
+                                  sx={{ display: "block", mb: 1.5, fontSize: "0.68rem", direction: "ltr" }}
+                                >
+                                  {t.bookingWorkingHoursInfo
+                                    .replace("{{start}}", fmtLocalWorkingHours(hostConfig).start)
+                                    .replace("{{end}}", fmtLocalWorkingHours(hostConfig).end)}
+                                </Typography>
+                              )}
                               <Stack spacing={2} sx={{ mb: 2 }}>
                                 {renderTimeDropdowns(
                                   "scheduledFrom",
@@ -4152,11 +4586,13 @@ export default function CmsVisitsPage() {
                                   select
                                   size="small"
                                   value={selectedPreset || "fullDay"}
-                                  onChange={(e) => {
-                                    setSelectedPreset(e.target.value);
-                                    setSpecificDays([]);
-                                    setDayTypeTab("working");
-                                  }}
+                                  onChange={(e) =>
+                                    applySchedule({
+                                      selectedPreset: e.target.value,
+                                      specificDays: [],
+                                      dayTypeTab: "working",
+                                    })
+                                  }
                                   sx={{
                                     "& .MuiOutlinedInput-root": {
                                       borderRadius: 2,
@@ -4238,6 +4674,21 @@ export default function CmsVisitsPage() {
                                 <Box sx={{ mb: 2 }}>
                                   <Typography
                                     variant="caption"
+                                    fontWeight={600}
+                                    color="info.main"
+                                    sx={{
+                                      display: "block",
+                                      mb: 0.75,
+                                      fontSize: "0.68rem",
+                                    }}
+                                  >
+                                    {t.bookingWorkingDays}:{" "}
+                                    {(hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+                                      .map((d) => DAY_LABELS[d])
+                                      .join(", ")}
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
                                     fontWeight={700}
                                     color="text.secondary"
                                     sx={{
@@ -4249,33 +4700,24 @@ export default function CmsVisitsPage() {
                                   >
                                     {t.bookingDayType}
                                   </Typography>
-                                  <Tabs
+                                  <RadioGroup
+                                    row
                                     value={dayTypeTab}
-                                    onChange={(_, v) => {
-                                      setDayTypeTab(v);
-                                    }}
-                                    TabIndicatorProps={{
-                                      sx: { height: 3, borderRadius: 1 },
-                                    }}
-                                    sx={{
-                                      minHeight: 32,
-                                      "& .MuiTab-root": {
-                                        minHeight: 32,
-                                        py: 0.5,
-                                        fontSize: "0.72rem",
-                                        fontWeight: 700,
-                                      },
-                                    }}
+                                    onChange={(_, v) =>
+                                      applySchedule({ dayTypeTab: v })
+                                    }
                                   >
-                                    <Tab
+                                    <FormControlLabel
                                       value="working"
-                                      label={t.bookingWorkingDays}
+                                      control={<Radio size="small" />}
+                                      label={t.bookingWorkingOnly}
                                     />
-                                    <Tab
-                                      value="weekend"
-                                      label={t.bookingWeekendDays}
+                                    <FormControlLabel
+                                      value="all"
+                                      control={<Radio size="small" />}
+                                      label={t.bookingWorkingPlusWeekends}
                                     />
-                                  </Tabs>
+                                  </RadioGroup>
                                 </Box>
                               )}
 
@@ -4297,13 +4739,13 @@ export default function CmsVisitsPage() {
                                           <Box
                                             key={idx}
                                             onClick={() =>
-                                              setSpecificDays((prev) =>
-                                                active
-                                                  ? prev.filter(
+                                              applySchedule({
+                                                specificDays: active
+                                                  ? specificDays.filter(
                                                       (d) => d !== idx,
                                                     )
-                                                  : [...prev, idx],
-                                              )
+                                                  : [...specificDays, idx],
+                                              })
                                             }
                                             sx={{
                                               px: 1.5,
@@ -4414,11 +4856,11 @@ export default function CmsVisitsPage() {
                                           : ""
                                       }
                                       onChange={(e) =>
-                                        setSpecificEndDate(
-                                          e.target.value
+                                        applySchedule({
+                                          specificEndDate: e.target.value
                                             ? dayjs(e.target.value)
                                             : null,
-                                        )
+                                        })
                                       }
                                       inputProps={{
                                         min: scheduledDate
@@ -4442,12 +4884,10 @@ export default function CmsVisitsPage() {
                                 hostConfig &&
                                 scheduledDate &&
                                 (() => {
-                                  const activeDaySet =
-                                    dayTypeTab === "working"
-                                      ? (hostConfig.workingDays ?? [
-                                          0, 1, 2, 3, 4,
-                                        ])
-                                      : (hostConfig.weekendDays ?? [5, 6]);
+                                  const activeDaySet = computeDaySet(
+                                    dayTypeTab,
+                                    hostConfig,
+                                  );
                                   const weekendSet = hostConfig.weekendDays ?? [
                                     5, 6,
                                   ];
@@ -4482,9 +4922,9 @@ export default function CmsVisitsPage() {
                                       >
                                         {t.bookingDaysInRange.replace(
                                           "{{type}}",
-                                          dayTypeTab === "working"
-                                            ? t.bookingWorkingDays
-                                            : t.bookingWeekendDays,
+                                          dayTypeTab === "all"
+                                            ? t.bookingAllDays
+                                            : t.bookingWorkingDays,
                                         )}
                                       </Typography>
                                       <Stack
@@ -4547,11 +4987,11 @@ export default function CmsVisitsPage() {
                                         ? t.bookingFullDayWorkingHoursInfo
                                             .replace(
                                               "{{start}}",
-                                              fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0),
+                                              fmtLocalWorkingHours(hostConfig).start,
                                             )
                                             .replace(
                                               "{{end}}",
-                                              fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0),
+                                              fmtLocalWorkingHours(hostConfig).end,
                                             )
                                         : t.bookingFullDayWorkingHoursInfo
                                             .replace("{{start}}", "8:00 AM")
@@ -4568,10 +5008,10 @@ export default function CmsVisitsPage() {
                                           const ampm = h24 < 12 ? "AM" : "PM";
                                           return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
                                         };
-                                        const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
-                                        const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                        const s = fmt(fmtLocalWorkingHours(hostConfig).startH, fmtLocalWorkingHours(hostConfig).startM);
+                                        const e = fmt(fmtLocalWorkingHours(hostConfig).endH, fmtLocalWorkingHours(hostConfig).endM);
                                         return (
-                                          <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                                          <Typography dir="ltr" variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
                                             {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                           </Typography>
                                         );
@@ -4684,6 +5124,12 @@ export default function CmsVisitsPage() {
                             size="small"
                             color="warning"
                             variant="outlined"
+                            clickable
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openVisitorDetails(v.id, v);
+                            }}
+                            sx={{ cursor: "pointer" }}
                           />
                         ))}
                       </Box>
@@ -4809,144 +5255,13 @@ export default function CmsVisitsPage() {
           );
         })()}
 
-        {/* ── Member Info Dialog ── */}
-        <Dialog
-          open={memberDialog.open}
-          onClose={() => setMemberDialog({ open: false, member: null })}
-          maxWidth="xs"
-          fullWidth
-          PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
-        >
-          <DialogHeader
-            title="Member Details"
-            onClose={() => setMemberDialog({ open: false, member: null })}
-          />
-          <Divider />
-          <DialogContent sx={{ p: 2.5 }}>
-            {memberDialog.member && (
-              <Stack spacing={2}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1.5,
-                    p: 1.5,
-                    borderRadius: 2,
-                    bgcolor: (theme) =>
-                      alpha(theme.palette.primary.main, 0.06),
-                  }}
-                >
-                  <Avatar
-                    sx={{
-                      width: 44,
-                      height: 44,
-                      bgcolor: isDark ? "#fff" : "#000",
-                      color: isDark ? "#000" : "#fff",
-                      fontWeight: 800,
-                    }}
-                  >
-                    {(memberDialog.member.fullName || "")
-                      .split(" ")
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase() || "?"}
-                  </Avatar>
-                  <Typography variant="subtitle1" fontWeight={800}>
-                    {memberDialog.member.fullName}
-                  </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    border: "1px solid",
-                    borderColor: "divider",
-                    borderRadius: 2,
-                    overflow: "hidden",
-                    bgcolor: isDark
-                      ? "rgba(255,255,255,0.02)"
-                      : "rgba(0,0,0,0.015)",
-                  }}
-                >
-                  {[
-                    {
-                      label: "Email",
-                      value: memberDialog.member.email,
-                      icon: <ICONS.emailOutline fontSize="small" />,
-                    },
-                    {
-                      label: "Phone",
-                      value: memberDialog.member.phone
-                        ? formatPhoneNumberForDisplay(
-                            memberDialog.member.phone,
-                            memberDialog.member.iso_code,
-                          )
-                        : null,
-                      icon: <ICONS.phone fontSize="small" />,
-                    },
-                    {
-                      label: memberDialog.member.idType || "ID Number",
-                      value: memberDialog.member.idNo,
-                      icon: <ICONS.key fontSize="small" />,
-                    },
-                    {
-                      label: "Company",
-                      value: memberDialog.member.companyName,
-                      icon: <ICONS.business fontSize="small" />,
-                    },
-                  ]
-                    .filter((r) => r.value)
-                    .map((r, idx, arr) => (
-                      <Box
-                        key={r.label}
-                        sx={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: 1.5,
-                          px: 1.75,
-                          py: 1.25,
-                          borderBottom:
-                            idx < arr.length - 1 ? "1px solid" : "none",
-                          borderColor: "divider",
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            color: "text.secondary",
-                            display: "flex",
-                            alignItems: "center",
-                            mt: 0.2,
-                            minWidth: 22,
-                          }}
-                        >
-                          {r.icon}
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              fontSize: "0.62rem",
-                            }}
-                          >
-                            {r.label}
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            sx={{ wordBreak: "break-word" }}
-                          >
-                            {String(r.value)}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    ))}
-                </Box>
-              </Stack>
-            )}
-          </DialogContent>
-        </Dialog>
+        {/* Visitor Details Overlay (shared component) */}
+        <VisitorDetailsDialog
+          open={visitorDialog.open}
+          visitorId={visitorDialog.visitorId}
+          seed={visitorDialog.seed}
+          onClose={() => setVisitorDialog({ open: false, visitorId: null, seed: null })}
+        />
 
         {/* ── Filter Modal ── */}
         <FilterModal
@@ -5357,6 +5672,7 @@ export default function CmsVisitsPage() {
           open={!!selected}
           onClose={() => {
             setSelected(null);
+            setInternalNoteDialogOpen(false);
             setDetailPastVisits(null);
             setDetailPastVisitsOpen(false);
             setOrders([]);
@@ -5372,6 +5688,7 @@ export default function CmsVisitsPage() {
             title="Visit Details"
             onClose={() => {
               setSelected(null);
+        setInternalNoteDialogOpen(false);
               setDetailPastVisits(null);
               setDetailPastVisitsOpen(false);
               setOrders([]);
@@ -5441,15 +5758,33 @@ export default function CmsVisitsPage() {
                             justifyContent={{ xs: "center", sm: "space-between" }}
                             sx={{ width: "100%" }}
                           >
-                            <Typography
-                              variant="subtitle1"
-                              fontWeight={700}
-                              sx={{ textAlign: { xs: "center", sm: "left" } }}
-                            >
-                              {selected.participants?.length > 1
-                                ? `Group Meeting (${selected.participants.length})`
-                                : selected.full_name}
-                            </Typography>
+{selected.participants?.length > 1 ? (
+                              <Typography
+                                variant="subtitle1"
+                                fontWeight={700}
+                                sx={{ textAlign: { xs: "center", sm: "left" } }}
+                              >
+                                Group Meeting ({selected.participants.length})
+                              </Typography>
+) : (
+                              <ClickableVisitorName
+                                name={selected.full_name}
+                                visitorId={selected.userId}
+                                seed={{
+                                  fullName: selected.full_name,
+                                  email: selected.email,
+                                  phone: selected.phone,
+                                  iso_code: selected.phone_iso_code,
+                                }}
+                                onOpen={openVisitorDetails}
+                                variant="subtitle1"
+                                fontWeight={700}
+                                sx={{
+                                  width: "fit-content",
+                                  mx: { xs: "auto", sm: 0 },
+                                }}
+                              />
+                            )}
                             {detailPastVisits &&
                               !detailPastVisits.isGroup &&
                               detailPastVisits.breakdown[0] && (
@@ -5484,22 +5819,28 @@ export default function CmsVisitsPage() {
                               sx={{ mt: 0.75, justifyContent: { xs: "center", sm: "flex-start" } }}
                             >
                               {selected.participants.map((p) => (
-                                <Chip
+                                <Tooltip
                                   key={p.id}
-                                  label={p.fullName}
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                  clickable
-                                  onClick={() => openMemberInfo(p)}
-                                  icon={<ICONS.person fontSize="small" />}
-                                  sx={{
-                                    fontWeight: 600,
-                                    fontSize: "0.68rem",
-                                    height: 22,
-                                    cursor: "pointer",
-                                  }}
-                                />
+                                  title="View visitor details"
+                                  arrow
+                                  placement="top"
+                                >
+                                  <Chip
+                                    label={p.fullName}
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                    clickable
+                                    onClick={() => openVisitorDetails(p.id, p)}
+                                    icon={<ICONS.person fontSize="small" />}
+                                    sx={{
+                                      fontWeight: 600,
+                                      fontSize: "0.68rem",
+                                      height: 22,
+                                      cursor: "pointer",
+                                    }}
+                                  />
+                                </Tooltip>
                               ))}
                             </Stack>
                           )}
@@ -5759,18 +6100,16 @@ export default function CmsVisitsPage() {
                                         alpha(theme.palette.text.primary, 0.03),
                                     }}
                                   >
-                                    <Typography
+                                    <ClickableVisitorName
+                                      name={m.fullName || "Member"}
+                                      visitorId={m.id}
+                                      seed={m}
+                                      onOpen={openVisitorDetails}
+                                      truncate
                                       variant="caption"
                                       fontWeight={600}
-                                      sx={{
-                                        minWidth: 0,
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {m.fullName || "Member"}
-                                    </Typography>
+                                      sx={{ minWidth: 0 }}
+                                    />
                                     <Chip
                                       size="small"
                                       label={
@@ -5821,6 +6160,22 @@ export default function CmsVisitsPage() {
                           )}
                           icon={<ICONS.checkCircle fontSize="small" />}
                         />
+                        {isInvertedWindow(
+                          selected.approved_from,
+                          selected.approved_to,
+                        ) && (
+                          <Alert
+                            severity="error"
+                            sx={{
+                              borderRadius: 2,
+                              gridColumn: { xs: "1", md: "1 / -1" },
+                            }}
+                          >
+                            This visit's approved window is invalid — it ends
+                            before it starts. Correct the approved end date/time
+                            before checking in.
+                          </Alert>
+                        )}
                         {(() => {
                           const rType =
                             selected.recurring_type ??
@@ -5913,6 +6268,46 @@ export default function CmsVisitsPage() {
                         )}
                       </Box>
                     </Box>
+
+                    {canReadInternalNote && (
+                      <Box sx={{ mt: 2 }}>
+                        <Box
+                          sx={{
+                            mb: 1,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <Typography
+                            variant="subtitle2"
+                            sx={{
+                              fontWeight: 700,
+                              color: "text.secondary",
+                              textTransform: "uppercase",
+                              fontSize: "0.7rem",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1,
+                            }}
+                          >
+                            <ICONS.description sx={{ fontSize: "1rem" }} />{" "}
+                            Internal Note
+                          </Typography>
+                        </Box>
+                        <Typography
+                          variant="body2"
+                          color="text.primary"
+                          sx={{
+                            overflowWrap: "anywhere",
+                            wordBreak: "break-word",
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {selected.internal_note || selected.internalNote || "No internal note"}
+                        </Typography>
+                      </Box>
+                    )}
 
                     {/* Timeline button */}
                     <Box>
@@ -6119,6 +6514,100 @@ export default function CmsVisitsPage() {
               </Collapse>
             </DialogActions>
           )}
+        </Dialog>
+
+        {/* ── Edit Internal Note Dialog ── */}
+        <Dialog
+          open={internalNoteDialogOpen}
+          onClose={() => {
+            if (internalNoteSaving) return;
+            setInternalNoteDraft(
+              internalNoteTarget?.internal_note ||
+                internalNoteTarget?.internalNote ||
+                "",
+            );
+            setInternalNoteDialogOpen(false);
+            setInternalNoteTarget(null);
+          }}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: { borderRadius: 4, overflow: "hidden", variant: "frosted" },
+          }}
+        >
+          <DialogHeader
+            title="Edit Internal Note"
+            onClose={() => {
+              if (internalNoteSaving) return;
+              setInternalNoteDraft(
+                internalNoteTarget?.internal_note ||
+                  internalNoteTarget?.internalNote ||
+                  "",
+              );
+              setInternalNoteDialogOpen(false);
+              setInternalNoteTarget(null);
+            }}
+          />
+          <Divider />
+          <DialogContent sx={{ p: 3 }}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={4}
+              size="small"
+              autoFocus
+              placeholder="Private note for staff only — never shared with the visitor."
+              value={internalNoteDraft}
+              onChange={(e) => setInternalNoteDraft(e.target.value)}
+              disabled={internalNoteSaving}
+              sx={{
+                "& .MuiOutlinedInput-root": { borderRadius: 2 },
+              }}
+            />
+          </DialogContent>
+          <Divider />
+          <DialogActions sx={{ p: 2.5, justifyContent: "flex-end" }}>
+            <Button
+              variant="outlined"
+              size="small"
+              disabled={internalNoteSaving}
+              onClick={() => {
+                setInternalNoteDraft(
+                  internalNoteTarget?.internal_note ||
+                    internalNoteTarget?.internalNote ||
+                    "",
+                );
+                setInternalNoteDialogOpen(false);
+                setInternalNoteTarget(null);
+              }}
+              startIcon={<ICONS.cancel fontSize="small" />}
+              sx={{ borderRadius: 30 }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              disabled={
+                internalNoteSaving ||
+                internalNoteDraft.trim() ===
+                  (internalNoteTarget?.internal_note ||
+                    internalNoteTarget?.internalNote ||
+                    "")
+              }
+              onClick={handleSaveInternalNote}
+              startIcon={
+                internalNoteSaving ? (
+                  <CircularProgress size={14} color="inherit" />
+                ) : (
+                  <ICONS.save fontSize="small" />
+                )
+              }
+              sx={{ borderRadius: 30 }}
+            >
+              Save
+            </Button>
+          </DialogActions>
         </Dialog>
 
         {/* ── Timeline Modal ── */}
@@ -6387,18 +6876,16 @@ export default function CmsVisitsPage() {
                             alpha(theme.palette.text.primary, 0.03),
                         }}
                       >
-                        <Typography
+                        <ClickableVisitorName
+                          name={m.fullName || "Member"}
+                          visitorId={m.id}
+                          seed={m}
+                          onOpen={openVisitorDetails}
+                          truncate
                           variant="caption"
                           fontWeight={600}
-                          sx={{
-                            minWidth: 0,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {m.fullName || "Member"}
-                        </Typography>
+                          sx={{ minWidth: 0 }}
+                        />
                         <Chip
                           size="small"
                           label={
@@ -6796,6 +7283,15 @@ export default function CmsVisitsPage() {
               >
                 Review and Adjust Schedule
               </Typography>
+              {isInvertedWindow(
+                approveTarget?.approved_from,
+                approveTarget?.approved_to,
+              ) && (
+                <Alert severity="error" sx={{ borderRadius: 2, mb: 2 }}>
+                  This visit's approved window is invalid — it ends before it
+                  starts. Set a valid end date/time below before approving.
+                </Alert>
+              )}
               <Grid container spacing={3}>
                 <Grid size={{ xs: 12, sm: 6.5 }}>
                   <Box
@@ -6813,7 +7309,7 @@ export default function CmsVisitsPage() {
                   >
                     <DateCalendar
                       value={scheduledDate}
-                      onChange={(newDate) => setScheduledDate(newDate)}
+                      onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                       disablePast
                     />
                   </Box>
@@ -6824,7 +7320,7 @@ export default function CmsVisitsPage() {
                     {/* Toggle between Preset and Custom using Tabs */}
                     <Tabs
                       value={scheduleType}
-                      onChange={(_, value) => setScheduleType(value)}
+                      onChange={(_, value) => applySchedule({ scheduleType: value })}
                       variant="fullWidth"
                       sx={{
                         minHeight: 46,
@@ -6886,6 +7382,17 @@ export default function CmsVisitsPage() {
                           minHeight: 280,
                         }}
                       >
+                        {hostConfig && (
+                          <Typography
+                            variant="caption"
+                            color="info.main"
+                            sx={{ display: "block", mb: 1.5, fontSize: "0.68rem", direction: "ltr" }}
+                          >
+                            {t.bookingWorkingHoursInfo
+                              .replace("{{start}}", fmtLocalWorkingHours(hostConfig).start)
+                              .replace("{{end}}", fmtLocalWorkingHours(hostConfig).end)}
+                          </Typography>
+                        )}
                         <Stack spacing={2} sx={{ mb: 2 }}>
                           {renderTimeDropdowns(
                             "scheduledFrom",
@@ -6960,11 +7467,13 @@ export default function CmsVisitsPage() {
                             select
                             size="small"
                             value={selectedPreset || "fullDay"}
-                            onChange={(e) => {
-                              setSelectedPreset(e.target.value);
-                              setSpecificDays([]);
-                              setDayTypeTab("working");
-                            }}
+                            onChange={(e) =>
+                              applySchedule({
+                                selectedPreset: e.target.value,
+                                specificDays: [],
+                                dayTypeTab: "working",
+                              })
+                            }
                             sx={{
                               "& .MuiOutlinedInput-root": { borderRadius: 2 },
                             }}
@@ -7040,6 +7549,21 @@ export default function CmsVisitsPage() {
                           <Box sx={{ mb: 2 }}>
                             <Typography
                               variant="caption"
+                              fontWeight={600}
+                              color="info.main"
+                              sx={{
+                                display: "block",
+                                mb: 0.75,
+                                fontSize: "0.68rem",
+                              }}
+                            >
+                              {t.bookingWorkingDays}:{" "}
+                              {(hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+                                .map((d) => DAY_LABELS[d])
+                                .join(", ")}
+                            </Typography>
+                            <Typography
+                              variant="caption"
                               fontWeight={700}
                               color="text.secondary"
                               sx={{
@@ -7051,33 +7575,24 @@ export default function CmsVisitsPage() {
                             >
                               {t.bookingDayType}
                             </Typography>
-                            <Tabs
+                            <RadioGroup
+                              row
                               value={dayTypeTab}
-                              onChange={(_, v) => {
-                                setDayTypeTab(v);
-                              }}
-                              TabIndicatorProps={{
-                                sx: { height: 3, borderRadius: 1 },
-                              }}
-                              sx={{
-                                minHeight: 32,
-                                "& .MuiTab-root": {
-                                  minHeight: 32,
-                                  py: 0.5,
-                                  fontSize: "0.72rem",
-                                  fontWeight: 700,
-                                },
-                              }}
+                              onChange={(_, v) =>
+                                applySchedule({ dayTypeTab: v })
+                              }
                             >
-                              <Tab
+                              <FormControlLabel
                                 value="working"
-                                label={t.bookingWorkingDays}
+                                control={<Radio size="small" />}
+                                label={t.bookingWorkingOnly}
                               />
-                              <Tab
-                                value="weekend"
-                                label={t.bookingWeekendDays}
+                              <FormControlLabel
+                                value="all"
+                                control={<Radio size="small" />}
+                                label={t.bookingWorkingPlusWeekends}
                               />
-                            </Tabs>
+                            </RadioGroup>
                           </Box>
                         )}
 
@@ -7096,11 +7611,13 @@ export default function CmsVisitsPage() {
                                     <Box
                                       key={idx}
                                       onClick={() =>
-                                        setSpecificDays((prev) =>
-                                          active
-                                            ? prev.filter((d) => d !== idx)
-                                            : [...prev, idx],
-                                        )
+                                        applySchedule({
+                                          specificDays: active
+                                            ? specificDays.filter(
+                                                (d) => d !== idx,
+                                              )
+                                            : [...specificDays, idx],
+                                        })
                                       }
                                       sx={{
                                         px: 1.5,
@@ -7210,11 +7727,11 @@ export default function CmsVisitsPage() {
                                     : ""
                                 }
                                 onChange={(e) =>
-                                  setSpecificEndDate(
-                                    e.target.value
+                                  applySchedule({
+                                    specificEndDate: e.target.value
                                       ? dayjs(e.target.value)
                                       : null,
-                                  )
+                                  })
                                 }
                                 inputProps={{
                                   min: scheduledDate
@@ -7238,10 +7755,7 @@ export default function CmsVisitsPage() {
                           hostConfig &&
                           scheduledDate &&
                           (() => {
-                            const activeDaySet =
-                              dayTypeTab === "working"
-                                ? (hostConfig.workingDays ?? [0, 1, 2, 3, 4])
-                                : (hostConfig.weekendDays ?? [5, 6]);
+                            const activeDaySet = computeDaySet(dayTypeTab, hostConfig);
                             const weekendSet = hostConfig.weekendDays ?? [5, 6];
                             const date = scheduledDate;
                             let endDate;
@@ -7274,9 +7788,9 @@ export default function CmsVisitsPage() {
                                 >
                                   {t.bookingDaysInRange.replace(
                                     "{{type}}",
-                                    dayTypeTab === "working"
-                                      ? t.bookingWorkingDays
-                                      : t.bookingWeekendDays,
+                                    dayTypeTab === "all"
+                                      ? t.bookingAllDays
+                                      : t.bookingWorkingDays,
                                   )}
                                 </Typography>
                                 <Stack
@@ -7335,11 +7849,11 @@ export default function CmsVisitsPage() {
                                   ? t.bookingFullDayWorkingHoursInfo
                                       .replace(
                                         "{{start}}",
-                                        fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0),
+                                        fmtLocalWorkingHours(hostConfig).start,
                                       )
                                       .replace(
                                         "{{end}}",
-                                        fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0),
+                                        fmtLocalWorkingHours(hostConfig).end,
                                       )
                                   : t.bookingFullDayWorkingHoursInfo
                                       .replace("{{start}}", "8:00 AM")
@@ -7356,10 +7870,10 @@ export default function CmsVisitsPage() {
                                   const ampm = h24 < 12 ? "AM" : "PM";
                                   return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
                                 };
-                                const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
-                                const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                const s = fmt(fmtLocalWorkingHours(hostConfig).startH, fmtLocalWorkingHours(hostConfig).startM);
+                                const e = fmt(fmtLocalWorkingHours(hostConfig).endH, fmtLocalWorkingHours(hostConfig).endM);
                                 return (
-                                  <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                                  <Typography dir="ltr" variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
                                     {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                   </Typography>
                                 );
@@ -7420,6 +7934,35 @@ export default function CmsVisitsPage() {
                 sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
               />
             </Box>
+            {canWriteInternalNote && (
+              <Box sx={{ mt: 2 }}>
+                <Typography
+                  variant="subtitle2"
+                  sx={{ mb: 1, fontWeight: 700, color: "text.primary" }}
+                >
+                  Internal Note{" "}
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    (optional)
+                  </Typography>
+                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  maxRows={5}
+                  size="small"
+                  placeholder="Private note for staff only — never shown to the visitor"
+                  value={approvalInternalNote}
+                  onChange={(e) => setApprovalInternalNote(e.target.value)}
+                  inputProps={{ maxLength: 1000 }}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                />
+              </Box>
+            )}
           </DialogContent>
           <Divider />
           <DialogActions
@@ -7472,7 +8015,7 @@ export default function CmsVisitsPage() {
               <Stack spacing={2}>
                 <Typography variant="body2">
                   Are you sure you want to reject{" "}
-                  <strong>{rejectTarget.full_name}</strong>'s visit?
+                  <strong>{resolveVisitName(rejectTarget)}</strong>'s visit?
                 </Typography>
                 <TextField
                   size="small"
@@ -7549,26 +8092,29 @@ export default function CmsVisitsPage() {
             </Typography>
             {(confirmModal.targetStatus === "checked_in" ||
               confirmModal.targetStatus === "checked_out") && (
-              <DateTimeFieldFlatpickr
-                label="Timestamp"
-                value={customTimestamp}
-                onChange={(val) => {
-                  let iso = null;
-                  if (
-                    val &&
-                    val instanceof Date &&
-                    Number.isFinite(val.getTime())
-                  ) {
-                    try {
-                      iso = val.toISOString();
-                    } catch {
-                      iso = null;
+              <Box>
+                <DateTimeFieldFlatpickr
+                  label="Timestamp"
+                  value={customTimestamp}
+                  helperText="Times are shown and entered in your timezone."
+                  onChange={(val) => {
+                    let iso = null;
+                    if (
+                      val &&
+                      val instanceof Date &&
+                      Number.isFinite(val.getTime())
+                    ) {
+                      try {
+                        iso = val.toISOString();
+                      } catch {
+                        iso = null;
+                      }
                     }
-                  }
-                  setCustomTimestamp(iso);
-                  customTimestampRef.current = iso;
-                }}
-              />
+                    setCustomTimestamp(iso);
+                    customTimestampRef.current = iso;
+                  }}
+                />
+              </Box>
             )}
           </DialogContent>
           <Divider />
@@ -7643,16 +8189,49 @@ export default function CmsVisitsPage() {
                   const visitorMap = {};
                   [...selectedRowIds].forEach((id) => {
                     const row = rows.find((r) => r.id === id);
-                    const userId = row?.user_id || row?.userId || id;
-                    if (!visitorMap[userId]) {
-                      visitorMap[userId] = {
-                        userId,
-                        name: row?.full_name || row?.fullName || "Visitor",
+                    const isGroup =
+                      Array.isArray(row?.participants) &&
+                      row.participants.length > 1;
+                    const keyId = row?.user_id || row?.userId || id;
+                    const groupNames = isGroup
+                      ? row.participants
+                          .map((p) => p.fullName)
+                          .filter(Boolean)
+                          .join(", ")
+                      : "";
+                    if (!visitorMap[keyId]) {
+                      visitorMap[keyId] = {
+                        keyId,
+                        // Group meetings have no single owner — each member is
+                        // listed individually and opens their own details.
+                        userId: isGroup ? null : keyId,
+                        name:
+                          groupNames ||
+                          row?.full_name ||
+                          row?.fullName ||
+                          "Visitor",
+                        members: isGroup
+                          ? row.participants
+                              .map((p) => ({
+                                id: p.id,
+                                fullName:
+                                  p.fullName || p.name || "Member",
+                                email: p.email || null,
+                                phone: p.phone || null,
+                                iso_code: p.iso_code || null,
+                                idNo: p.idNo || null,
+                                idType: p.idType || null,
+                              }))
+                              .filter((p) => p.id)
+                          : null,
+                        email: row?.email || null,
+                        phone: row?.phone || null,
+                        iso_code: row?.phone_iso_code || null,
                         selectedCount: 0,
                         pastVisits: batchVisitorVisitCounts[id] ?? 0,
                       };
                     }
-                    visitorMap[userId].selectedCount++;
+                    visitorMap[keyId].selectedCount++;
                   });
                   const visitors = Object.values(visitorMap);
                   return (
@@ -7681,20 +8260,73 @@ export default function CmsVisitsPage() {
                         <Stack spacing={0.75}>
                           {visitors.map((v) => (
                             <Stack
-                              key={v.userId}
+                              key={v.keyId}
                               direction="row"
                               spacing={1}
                               alignItems="flex-start"
                               sx={{ py: 0.4, flexWrap: "wrap", rowGap: 0.5 }}
                             >
-                              <Typography
+{Array.isArray(v.members) && v.members.length > 0 ? (
+                              <Stack
+                                direction="row"
+                                alignItems="center"
+                                flexWrap="wrap"
+                                useFlexGap
+                                sx={{
+                                  flex: 1,
+                                  minWidth: { xs: 0, sm: 120 },
+                                  rowGap: 0.5,
+                                  gap: 0.5,
+                                }}
+                              >
+                                {v.members.map((m, i) => (
+                                  <Fragment key={m.id}>
+                                    <ClickableVisitorName
+                                      name={m.fullName}
+                                      visitorId={m.id}
+                                      seed={{
+                                        fullName: m.fullName,
+                                        email: m.email,
+                                        phone: m.phone,
+                                        iso_code: m.iso_code,
+                                        idNo: m.idNo,
+                                        idType: m.idType,
+                                      }}
+                                      onOpen={openVisitorDetails}
+                                      variant="body2"
+                                      fontWeight={600}
+                                      sx={{ minWidth: 0 }}
+                                    />
+                                    {i < v.members.length - 1 && (
+                                      <Typography
+                                        component="span"
+                                        variant="body2"
+                                        color="text.disabled"
+                                        sx={{ flexShrink: 0 }}
+                                      >
+                                        ,
+                                      </Typography>
+                                    )}
+                                  </Fragment>
+                                ))}
+                              </Stack>
+                            ) : (
+                              <ClickableVisitorName
+                                name={v.name}
+                                visitorId={v.userId}
+                                seed={{
+                                  fullName: v.name,
+                                  email: v.email,
+                                  phone: v.phone,
+                                  iso_code: v.iso_code,
+                                }}
+                                onOpen={openVisitorDetails}
+                                truncate
                                 variant="body2"
                                 fontWeight={600}
                                 sx={{ flex: 1, minWidth: 120 }}
-                                noWrap
-                              >
-                                {v.name}
-                              </Typography>
+                              />
+                            )}
                               <Stack
                                 direction="row"
                                 spacing={0.5}
@@ -7854,6 +8486,7 @@ export default function CmsVisitsPage() {
                   <DateTimeFieldFlatpickr
                     label="Timestamp"
                     value={batchTimestamp}
+                    helperText="Times are shown and entered in your timezone."
                     onChange={(val) => {
                       let iso = null;
                       if (
@@ -8109,7 +8742,7 @@ export default function CmsVisitsPage() {
                       >
                         <DateCalendar
                           value={scheduledDate}
-                          onChange={(newDate) => setScheduledDate(newDate)}
+                          onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                           disablePast
                         />
                       </Box>
@@ -8118,7 +8751,7 @@ export default function CmsVisitsPage() {
                       <Stack spacing={2}>
                         <Tabs
                           value={scheduleType}
-                          onChange={(_, value) => setScheduleType(value)}
+                          onChange={(_, value) => applySchedule({ scheduleType: value })}
                           variant="fullWidth"
                           sx={{
                             minHeight: 46,
@@ -8178,6 +8811,17 @@ export default function CmsVisitsPage() {
                               minHeight: 280,
                             }}
                           >
+                            {hostConfig && (
+                              <Typography
+                                variant="caption"
+                                color="info.main"
+                                sx={{ display: "block", mb: 1.5, fontSize: "0.68rem", direction: "ltr" }}
+                              >
+                                {t.bookingWorkingHoursInfo
+                                  .replace("{{start}}", fmtLocalWorkingHours(hostConfig).start)
+                                  .replace("{{end}}", fmtLocalWorkingHours(hostConfig).end)}
+                              </Typography>
+                            )}
                             <Stack spacing={2} sx={{ mb: 2 }}>
                               {renderTimeDropdowns(
                                 "scheduledFrom",
@@ -8249,11 +8893,13 @@ export default function CmsVisitsPage() {
                                 select
                                 size="small"
                                 value={selectedPreset || "fullDay"}
-                                onChange={(e) => {
-                                  setSelectedPreset(e.target.value);
-                                  setSpecificDays([]);
-                                  setDayTypeTab("working");
-                                }}
+                                onChange={(e) =>
+                                  applySchedule({
+                                    selectedPreset: e.target.value,
+                                    specificDays: [],
+                                    dayTypeTab: "working",
+                                  })
+                                }
                                 sx={{
                                   "& .MuiOutlinedInput-root": {
                                     borderRadius: 2,
@@ -8329,6 +8975,21 @@ export default function CmsVisitsPage() {
                               <Box sx={{ mb: 2 }}>
                                 <Typography
                                   variant="caption"
+                                  fontWeight={600}
+                                  color="info.main"
+                                  sx={{
+                                    display: "block",
+                                    mb: 0.75,
+                                    fontSize: "0.68rem",
+                                  }}
+                                >
+                                  {t.bookingWorkingDays}:{" "}
+                                  {(hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+                                    .map((d) => DAY_LABELS[d])
+                                    .join(", ")}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
                                   fontWeight={700}
                                   color="text.secondary"
                                   sx={{
@@ -8340,33 +9001,24 @@ export default function CmsVisitsPage() {
                                 >
                                   {t.bookingDayType}
                                 </Typography>
-                                <Tabs
+                                <RadioGroup
+                                  row
                                   value={dayTypeTab}
-                                  onChange={(_, v) => {
-                                    setDayTypeTab(v);
-                                  }}
-                                  TabIndicatorProps={{
-                                    sx: { height: 3, borderRadius: 1 },
-                                  }}
-                                  sx={{
-                                    minHeight: 32,
-                                    "& .MuiTab-root": {
-                                      minHeight: 32,
-                                      py: 0.5,
-                                      fontSize: "0.72rem",
-                                      fontWeight: 700,
-                                    },
-                                  }}
+                                  onChange={(_, v) =>
+                                    applySchedule({ dayTypeTab: v })
+                                  }
                                 >
-                                  <Tab
+                                  <FormControlLabel
                                     value="working"
-                                    label={t.bookingWorkingDays}
+                                    control={<Radio size="small" />}
+                                    label={t.bookingWorkingOnly}
                                   />
-                                  <Tab
-                                    value="weekend"
-                                    label={t.bookingWeekendDays}
+                                  <FormControlLabel
+                                    value="all"
+                                    control={<Radio size="small" />}
+                                    label={t.bookingWorkingPlusWeekends}
                                   />
-                                </Tabs>
+                                </RadioGroup>
                               </Box>
                             )}
                             {selectedPreset === "specificDays" && (
@@ -8385,11 +9037,13 @@ export default function CmsVisitsPage() {
                                         <Box
                                           key={idx}
                                           onClick={() =>
-                                            setSpecificDays((prev) =>
-                                              active
-                                                ? prev.filter((d) => d !== idx)
-                                                : [...prev, idx],
-                                            )
+                                            applySchedule({
+                                              specificDays: active
+                                                ? specificDays.filter(
+                                                    (d) => d !== idx,
+                                                  )
+                                                : [...specificDays, idx],
+                                            })
                                           }
                                           sx={{
                                             px: 1.5,
@@ -8499,11 +9153,11 @@ export default function CmsVisitsPage() {
                                         : ""
                                     }
                                     onChange={(e) =>
-                                      setSpecificEndDate(
-                                        e.target.value
+                                      applySchedule({
+                                        specificEndDate: e.target.value
                                           ? dayjs(e.target.value)
                                           : null,
-                                      )
+                                      })
                                     }
                                     inputProps={{
                                       min: scheduledDate
@@ -8525,12 +9179,7 @@ export default function CmsVisitsPage() {
                               hostConfig &&
                               scheduledDate &&
                               (() => {
-                                const activeDaySet =
-                                  dayTypeTab === "working"
-                                    ? (hostConfig.workingDays ?? [
-                                        0, 1, 2, 3, 4,
-                                      ])
-                                    : (hostConfig.weekendDays ?? [5, 6]);
+                                const activeDaySet = computeDaySet(dayTypeTab, hostConfig);
                                 const weekendSet = hostConfig.weekendDays ?? [
                                   5, 6,
                                 ];
@@ -8565,9 +9214,9 @@ export default function CmsVisitsPage() {
                                     >
                                       {t.bookingDaysInRange.replace(
                                         "{{type}}",
-                                        dayTypeTab === "working"
-                                          ? t.bookingWorkingDays
-                                          : t.bookingWeekendDays,
+                                        dayTypeTab === "all"
+                                          ? t.bookingAllDays
+                                          : t.bookingWorkingDays,
                                       )}
                                     </Typography>
                                     <Stack
@@ -8628,11 +9277,11 @@ export default function CmsVisitsPage() {
                                       ? t.bookingFullDayWorkingHoursInfo
                                           .replace(
                                             "{{start}}",
-                                            fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0),
+                                            fmtLocalWorkingHours(hostConfig).start,
                                           )
                                           .replace(
                                             "{{end}}",
-                                            fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0),
+                                            fmtLocalWorkingHours(hostConfig).end,
                                           )
                                       : t.bookingFullDayWorkingHoursInfo
                                           .replace("{{start}}", "8:00 AM")
@@ -8649,10 +9298,10 @@ export default function CmsVisitsPage() {
                                       const ampm = h24 < 12 ? "AM" : "PM";
                                       return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
                                     };
-                                    const s = fmt(hostConfig.start, hostConfig.startMinute ?? 0);
-                                    const e = fmt(hostConfig.end, hostConfig.endMinute ?? 0);
+                                    const s = fmt(fmtLocalWorkingHours(hostConfig).startH, fmtLocalWorkingHours(hostConfig).startM);
+                                    const e = fmt(fmtLocalWorkingHours(hostConfig).endH, fmtLocalWorkingHours(hostConfig).endM);
                                     return (
-                                      <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                                      <Typography dir="ltr" variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
                                         {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                       </Typography>
                                     );
@@ -8771,12 +9420,21 @@ export default function CmsVisitsPage() {
         {/* ── Edit Dialog ── */}
         <Dialog
           open={!!editForm}
-          onClose={() => setEditForm(null)}
+          onClose={() => {
+            setOpenSchedulePicker(null);
+            setEditForm(null);
+          }}
           maxWidth="md"
           fullWidth
           PaperProps={{ sx: { borderRadius: 4, overflow: "hidden" } }}
         >
-          <DialogHeader title="Edit Visit" onClose={() => setEditForm(null)} />
+          <DialogHeader
+            title="Edit Visit"
+            onClose={() => {
+              setOpenSchedulePicker(null);
+              setEditForm(null);
+            }}
+          />
           <Divider />
           <DialogContent sx={{ p: 2.5 }}>
             {editForm &&
@@ -8916,8 +9574,19 @@ export default function CmsVisitsPage() {
                       </Typography>
                       <DateTimeFieldFlatpickr
                         value={editForm.scheduleFrom || ""}
+                        maxDate={editForm.scheduleTo}
+                        open={openSchedulePicker === "from"}
+                        onOpenChange={(v) =>
+                          setOpenSchedulePicker(v ? "from" : null)
+                        }
                         onChange={(val) =>
-                          setEditForm({ ...editForm, scheduleFrom: val })
+                          setEditForm((prev) => ({
+                            ...prev,
+                            scheduleFrom: val,
+                            ...(editScheduleSpansMultiple(val, prev.scheduleTo)
+                              ? { allowMultiCheckin: true }
+                              : {}),
+                          }))
                         }
                         placeholder={
                           editForm.hasApproved
@@ -8942,8 +9611,19 @@ export default function CmsVisitsPage() {
                       </Typography>
                       <DateTimeFieldFlatpickr
                         value={editForm.scheduleTo || ""}
+                        minDate={editForm.scheduleFrom}
+                        open={openSchedulePicker === "to"}
+                        onOpenChange={(v) =>
+                          setOpenSchedulePicker(v ? "to" : null)
+                        }
                         onChange={(val) =>
-                          setEditForm({ ...editForm, scheduleTo: val })
+                          setEditForm((prev) => ({
+                            ...prev,
+                            scheduleTo: val,
+                            ...(editScheduleSpansMultiple(prev.scheduleFrom, val)
+                              ? { allowMultiCheckin: true }
+                              : {}),
+                          }))
                         }
                         placeholder={
                           editForm.hasApproved
@@ -9261,6 +9941,37 @@ export default function CmsVisitsPage() {
                             },
                           })),
                       )}
+
+                    {canWriteInternalNote && (
+                      <Divider sx={{ my: 0.5 }} />
+                    )}
+
+                    {canWriteInternalNote && (
+                      <Box>
+                        <Typography
+                          variant="subtitle2"
+                          fontWeight={700}
+                          sx={{ mb: 0.75, display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <ICONS.description sx={{ fontSize: "0.95rem" }} />
+                          Internal Note
+                        </Typography>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          multiline
+                          rows={3}
+                          value={editForm.internalNote ?? ""}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              internalNote: e.target.value,
+                            }))
+                          }
+                          placeholder="Private internal note — never shown to the visitor"
+                        />
+                      </Box>
+                    )}
                   </Stack>
                 );
               })()}
@@ -9277,7 +9988,10 @@ export default function CmsVisitsPage() {
             <Button
               variant="outlined"
               startIcon={<ICONS.cancel />}
-              onClick={() => setEditForm(null)}
+              onClick={() => {
+                setOpenSchedulePicker(null);
+                setEditForm(null);
+              }}
               disabled={submitting}
               sx={{ borderRadius: 30, width: { xs: "100%", sm: "auto" } }}
             >

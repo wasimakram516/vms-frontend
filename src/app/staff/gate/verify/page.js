@@ -36,6 +36,8 @@ import {
   Grid,
   Switch,
   FormControlLabel,
+  RadioGroup,
+  Radio,
 } from "@mui/material";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { useTheme } from "@mui/material/styles";
@@ -55,6 +57,7 @@ import useI18nLayout from "@/hooks/useI18nLayout";
 import gateStaffTranslations from "@/locales/gateStaff";
 import { useAuth } from "@/contexts/AuthContext";
 import { canAccessResource } from "@/utils/permissions";
+import { workingHoursToUserLocal, userTimeZone, rollOvernightEnd } from "@/utils/premiseTime";
 import { useSocket } from "@/contexts/SocketContext";
 import {
   verifyRegistrationByToken,
@@ -66,6 +69,7 @@ import {
   getCurrentlyInside,
   getRegistrations,
   getRegistrationById,
+  updateInternalNote,
 } from "@/services/registrationService";
 import { getWorkingHours } from "@/services/hostService";
 import { getAccessLevels } from "@/services/accessLevelService";
@@ -75,9 +79,39 @@ import getChipIconSpacing from "@/utils/getChipIconSpacing";
 import { resolvePastVisitBreakdown } from "@/utils/visitCount";
 import { formatActorLabel } from "@/utils/actorLabel";
 import { getRegistrationDisplayName, getRegistrationDisplayInitial } from "@/utils/registrationDisplay";
+import { countScheduledDays } from "@/utils/scheduleDayCount";
+import { markBadgesPrinted } from "@/services/activityService";
 import DialogHeader from "@/components/modals/DialogHeader";
 import VipFastTrackModal from "./VipFastTrackModal";
 import GateTodayView from "@/components/staff/GateTodayView";
+
+// Format a working-hours boundary as a readable 12-hour AM/PM string (e.g. "8:00 AM").
+const fmtHour12 = (h24, min = 0) => {
+  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  const ampm = h24 < 12 ? "AM" : "PM";
+  return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+};
+
+// Working hours are premise-time (GMT+4); show them in the viewer's timezone.
+const fmtLocalWorkingHours = (cfg) => {
+  const wh = workingHoursToUserLocal(
+    {
+      startH: cfg?.start ?? 8,
+      startM: cfg?.startMinute ?? 0,
+      endH: cfg?.end ?? 17,
+      endM: cfg?.endMinute ?? 0,
+    },
+    userTimeZone(),
+  );
+  return {
+    startH: wh.startH,
+    startM: wh.startM,
+    endH: wh.endH,
+    endM: wh.endM,
+    start: fmtHour12(wh.startH, wh.startM),
+    end: fmtHour12(wh.endH, wh.endM),
+  };
+};
 
 const STATUS_CONFIG = {
   pending: {
@@ -165,6 +199,14 @@ export default function StaffVerifyPage() {
   const canVipBypass = canAccessResource(user, "verify", { action: "vip-bypass" });
   const canTodayVisitors = canAccessResource(user, "verify", { action: "todays-visitors" });
   const canRead = canAccessResource(user, "verify", { action: "read" });
+  const canReadInternalNote = canAccessResource(user, "internal-notes", {
+    hardcodeAllowed: isSuperAdmin,
+    action: "read",
+  });
+  const canWriteInternalNote = canAccessResource(user, "internal-notes", {
+    hardcodeAllowed: isSuperAdmin,
+    action: "update",
+  });
   // Gate staff may grant the final approval at the gate ONLY when the
   // verify:approve-status permission has been granted to the staff:gate role
   // (default denied).
@@ -175,6 +217,9 @@ export default function StaffVerifyPage() {
   const isDark = mode === "dark";
   const [showScanner, setShowScanner] = useState(false);
   const [vipModalOpen, setVipModalOpen] = useState(false);
+  const [internalNoteDraft, setInternalNoteDraft] = useState("");
+  const [internalNoteDialogOpen, setInternalNoteDialogOpen] = useState(false);
+  const [internalNoteSaving, setInternalNoteSaving] = useState(false);
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
@@ -349,6 +394,44 @@ export default function StaffVerifyPage() {
     }
   };
 
+  const openInternalNoteDialog = () => {
+    if (!result?.id) return;
+    setInternalNoteDraft(
+      result.internal_note ?? result.internalNote ?? "",
+    );
+    setInternalNoteDialogOpen(true);
+  };
+
+  const handleSaveInternalNote = async () => {
+    if (!result?.id) return;
+    setInternalNoteSaving(true);
+    try {
+      const res = await updateInternalNote(
+        result.id,
+        internalNoteDraft.trim() || "",
+      );
+      if (res?.error) return;
+      const saved = (res?.internalNote ?? internalNoteDraft.trim()) || null;
+      setResult((prev) =>
+        prev
+          ? { ...prev, internal_note: saved, internalNote: saved }
+          : prev,
+      );
+      setInternalNoteDraft(saved || "");
+      setInternalNoteDialogOpen(false);
+      showMessage(t.gateNoteSaved || "Internal note saved", "success");
+    } catch (e) {
+      showMessage(
+        e?.response?.data?.message ||
+          e?.message ||
+          "Failed to save internal note",
+        "error",
+      );
+    } finally {
+      setInternalNoteSaving(false);
+    }
+  };
+
   const handleScanSuccess = useCallback(
     async (scanned) => {
       if (scanningRef.current) return;
@@ -456,6 +539,7 @@ export default function StaffVerifyPage() {
   const [vehiclePlate, setVehiclePlate] = useState("");
   const [vehiclePlateError, setVehiclePlateError] = useState("");
   const [approvalNote, setApprovalNote] = useState("");
+  const [approvalInternalNote, setApprovalInternalNote] = useState("");
   const [isVip, setIsVip] = useState(false);
   const [escortRequired, setEscortRequired] = useState(true);
   const [vipReason, setVipReason] = useState("");
@@ -463,6 +547,45 @@ export default function StaffVerifyPage() {
   const [accessLevelError, setAccessLevelError] = useState("");
   const [accessLevels, setAccessLevels] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Update the shared schedule state and auto-enable Allow Multiple Check-ins
+  // whenever the resulting schedule spans more than one day (Full Week / Full
+  // Month / Specific Days). Only ever turns it ON — staff can still toggle it
+  // off after, and a single-day schedule keeps its current value.
+  const computeDaySet = (mode, cfg) => {
+    const wd = cfg?.workingDays ?? [0, 1, 2, 3, 4];
+    const we = cfg?.weekendDays ?? [5, 6];
+    return mode === "all" ? [...new Set([...wd, ...we])] : wd;
+  };
+
+  const applySchedule = (patch) => {
+    const nextType = patch.scheduleType ?? scheduleType;
+    const nextPreset = patch.selectedPreset ?? selectedPreset;
+    const nextDays = patch.specificDays ?? specificDays;
+    const nextTab = patch.dayTypeTab ?? dayTypeTab;
+    const nextEnd = patch.specificEndDate ?? specificEndDate;
+    const nextDate = patch.scheduledDate ?? scheduledDate;
+    let weekdays = [];
+    if (nextType === "preset" && (nextPreset === "fullWeek" || nextPreset === "fullMonth")) {
+      weekdays = computeDaySet(nextTab, hostConfig);
+    } else if (nextType === "preset" && nextPreset === "specificDays") {
+      weekdays = nextDays;
+    }
+    const dayCount = countScheduledDays({
+      isPreset: nextType === "preset",
+      preset: nextPreset,
+      startDate: nextDate,
+      endDate: nextEnd,
+      weekdays,
+    });
+    setScheduleType(nextType);
+    setSelectedPreset(nextPreset);
+    setSpecificDays(nextDays);
+    setSpecificEndDate(nextEnd);
+    setScheduledDate(nextDate);
+    setDayTypeTab(nextTab);
+    if (dayCount > 1) setAllowMultiCheckin(true);
+  };
 
   // ── Time selection helpers (from CMS visits) ──
   const getAllowedHours12 = () =>
@@ -480,23 +603,42 @@ export default function StaffVerifyPage() {
     const next = { ...current, [part]: value };
     const time24 = convert12To24(next.hour12, next.minute, next.ampm);
 
+    const fmtHM = (mins) =>
+      `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+    const minsOf = (str) => {
+      const [h, m] = (str || "00:00").split(":").map(Number);
+      return h * 60 + m;
+    };
     if (type === "scheduledFrom") {
-      setScheduledFrom(time24);
+      const fromMin = minsOf(time24);
       if (scheduledTo <= time24) {
-        let [h, m] = time24.split(":").map(Number);
-        h = (h + 1) % 24;
-        setScheduledTo(
-          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
-        );
+        const target = Math.min(fromMin + 60, 23 * 60 + 55);
+        if (target > fromMin) {
+          // Push the end after the new start, capped at 11:55 PM (never 12 AM).
+          setScheduledFrom(time24);
+          setScheduledTo(fmtHM(target));
+        } else {
+          // Start is at the last slot of the day: step it back so the end can stay strictly after it.
+          setScheduledFrom(fmtHM(Math.max(fromMin - 5, 0)));
+          setScheduledTo(fmtHM(23 * 60 + 55));
+        }
+      } else {
+        setScheduledFrom(time24);
       }
     } else {
-      setScheduledTo(time24);
+      const toMin = minsOf(time24);
       if (scheduledFrom >= time24) {
-        let [h, m] = time24.split(":").map(Number);
-        h = (h - 1 + 24) % 24;
-        setScheduledFrom(
-          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
-        );
+        const lowered = Math.max(toMin - 60, 0);
+        if (lowered >= toMin) {
+          // End is at the first slot of the day: nudge it forward instead.
+          setScheduledTo(fmtHM(Math.min(toMin + 5, 23 * 60 + 55)));
+        } else {
+          // Pull the start before the new end, floored at 12:00 AM.
+          setScheduledTo(time24);
+          setScheduledFrom(fmtHM(lowered));
+        }
+      } else {
+        setScheduledTo(time24);
       }
     }
   };
@@ -645,13 +787,6 @@ export default function StaffVerifyPage() {
     return toMinutes - fromMinutes;
   };
 
-  // Format a working-hours boundary as a readable 12-hour AM/PM string (e.g. "8:00 AM").
-  const fmtHour12 = (h24, min = 0) => {
-    const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-    const ampm = h24 < 12 ? "AM" : "PM";
-    return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
-  };
-
   // Mirror the backend's outside-working-hours / outside-working-days flags for the
   // schedule currently selected in the dialog, so the gate warns the same way the
   // public booking page respects the host's working window and working days.
@@ -679,7 +814,12 @@ export default function StaffVerifyPage() {
       fromMoD = parseMoD(scheduledFrom);
       toMoD = parseMoD(scheduledTo);
     }
-    const outsideHours = fromMoD < startMoD || toMoD > endMoD;
+    const outsideHours = !(
+      fromMoD >= startMoD &&
+      fromMoD <= endMoD &&
+      toMoD >= startMoD &&
+      toMoD <= endMoD
+    );
 
     // Effective day(s) this schedule targets.
     let outsideDays = false;
@@ -688,7 +828,7 @@ export default function StaffVerifyPage() {
       scheduleType === "preset" &&
       (selectedPreset === "fullWeek" || selectedPreset === "fullMonth")
     ) {
-      const days = dayTypeTab === "working" ? workingDays : weekendDays;
+      const days = computeDaySet(dayTypeTab, hostConfig);
       offDays = days.filter((d) => weekendDays.includes(d));
       outsideDays = offDays.length > 0;
     } else if (scheduleType === "preset" && selectedPreset === "specificDays") {
@@ -727,21 +867,7 @@ export default function StaffVerifyPage() {
       );
     }
     if (info.outsideHours) {
-      // The time range must stay LTR-isolated so it does not flip in RTL.
-      parts.push(
-        <Fragment key="hours">
-          {t.approveDialogOutsideWorkingHours}
-          {" ("}
-          <Box
-            component="span"
-            dir="ltr"
-            sx={{ unicodeBidi: "isolate", whiteSpace: "nowrap" }}
-          >
-            {`${fmtHour12(info.startH, info.startM)} – ${fmtHour12(info.endH, info.endM)}`}
-          </Box>
-          {")"}
-        </Fragment>,
-      );
+      parts.push(t.approveDialogOutsideWorkingHours);
     }
 
     const joined = parts.reduce(
@@ -859,15 +985,15 @@ export default function StaffVerifyPage() {
       let detectedDayType = "working";
       const rDays = fullReg.recurring_days ?? fullReg.recurringDays ?? null;
       if (hostConfig && Array.isArray(rDays) && rDays.length > 0) {
-        const allWeekend = rDays.every((d) =>
+        const hasWeekend = rDays.some((d) =>
           (hostConfig.weekendDays ?? [5, 6]).includes(d),
         );
-        if (allWeekend) detectedDayType = "weekend";
+        if (hasWeekend) detectedDayType = "all";
       } else if (hostConfig && scheduleFrom) {
         const d = dayjs(scheduleFrom);
         const dow = d.day();
         if ((hostConfig.weekendDays ?? [5, 6]).includes(dow))
-          detectedDayType = "weekend";
+          detectedDayType = "all";
       }
       setDayTypeTab(detectedDayType);
       if (rType === "specific_days" && Array.isArray(rDays)) {
@@ -904,8 +1030,34 @@ export default function StaffVerifyPage() {
               : []
         : [];
       setSelectedAccessLevelIds(prefillIds);
+      // When approving a pending registration, auto-enable Allow Multiple
+      // Check-ins if the requested route already flags it or spans more than
+      // one day. Already-approved visits keep their stored value.
+      const seedStart = getLocalDate(scheduleFrom);
+      const seedEnd = getLocalDate(scheduleTo);
+      const seedMulti =
+        detectedType === "preset" &&
+        seedStart &&
+        countScheduledDays({
+          isPreset: true,
+          preset: detectedPreset,
+          startDate: seedStart,
+          endDate: detectedPreset === "specificDays" ? seedEnd : null,
+          weekdays:
+            detectedPreset === "fullWeek" || detectedPreset === "fullMonth"
+              ? detectedDayType === "working"
+                ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+                : (hostConfig?.weekendDays ?? [5, 6])
+              : detectedPreset === "specificDays"
+                ? Array.isArray(rDays)
+                  ? rDays
+                  : []
+                : [],
+        }) > 1;
       setAllowMultiCheckin(
-        isAdminApproved ? (fullReg.allow_multi_checkin ?? false) : false,
+        isAdminApproved
+          ? (fullReg.allow_multi_checkin ?? false)
+          : (fullReg.allow_multi_checkin || seedMulti),
       );
       const prefillParking = isAdminApproved
         ? (fullReg.allow_parking ?? false)
@@ -914,6 +1066,7 @@ export default function StaffVerifyPage() {
       setVehiclePlate(prefillParking ? (fullReg.vehicle_plate ?? "") : "");
       setVehiclePlateError("");
       setApprovalNote(isAdminApproved ? (fullReg.approval_note ?? "") : "");
+      setApprovalInternalNote(fullReg?.internal_note ?? fullReg?.internalNote ?? "");
       const prefillVip = isAdminApproved ? (fullReg.is_vip ?? false) : false;
       setIsVip(prefillVip);
       setEscortRequired(
@@ -1000,6 +1153,15 @@ export default function StaffVerifyPage() {
         toDate = scheduledDate.format("YYYY-MM-DD");
       }
 
+      // Overnight visits: end-before-start → roll the end to the next morning.
+      toDate = rollOvernightEnd({
+        fromDate,
+        toDate,
+        fromTime,
+        toTime,
+        isPreset: scheduleType === "preset",
+      });
+
       const targetStatus =
         approveTarget._pendingStatus ||
         (isSuperAdmin ? "approved" : "admin_approved");
@@ -1015,10 +1177,7 @@ export default function StaffVerifyPage() {
           };
         }
         if (selectedPreset === "fullWeek" || selectedPreset === "fullMonth") {
-          const days =
-            dayTypeTab === "working"
-              ? (hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
-              : (hostConfig?.weekendDays ?? [5, 6]);
+          const days = computeDaySet(dayTypeTab, hostConfig);
           return {
             recurringType:
               selectedPreset === "fullWeek" ? "full_week" : "full_month",
@@ -1050,6 +1209,22 @@ export default function StaffVerifyPage() {
 
       const approveResult = await updateStatus(approveTarget.id, payload);
       if (approveResult?.error) return;
+      // Internal note is optional and separately permissioned — persist it only
+      // when the current user may write it and supplied a value.
+      if (canWriteInternalNote && approvalInternalNote.trim()) {
+        const note = approvalInternalNote.trim();
+        try {
+          const res = await updateInternalNote(approveTarget.id, note);
+          const saved = (res?.internalNote ?? note) || null;
+          setResult((prev) =>
+            prev?.id === approveTarget.id
+              ? { ...prev, internal_note: saved, internalNote: saved }
+              : prev,
+          );
+        } catch {
+          // best-effort — the approval itself succeeded
+        }
+      }
       showMessage(t.gateResolveSuccess, "success");
       setApproveTarget(null);
       setApprovePastVisits(null);
@@ -1241,6 +1416,7 @@ export default function StaffVerifyPage() {
         </html>
       `);
       printWindow.document.close();
+      markBadgesPrinted([registration?.id]).catch(() => {});
     } catch (err) {
       console.error("Print error:", err);
       showMessage(t.gatePrintFailed, "error");
@@ -1348,7 +1524,10 @@ export default function StaffVerifyPage() {
     const bufferMs = (workingHours?.checkInBufferMinutes ?? 60) * 60 * 1000;
     const now = Date.now();
     const approvedFromMs = new Date(result.approved_from).getTime();
-    if (now >= approvedFromMs - bufferMs && now <= approvedFromMs + bufferMs) {
+    const approvedToMs = result.approved_to
+      ? new Date(result.approved_to).getTime()
+      : Number.POSITIVE_INFINITY;
+    if (now >= approvedFromMs - bufferMs && now <= approvedToMs + bufferMs) {
       if (resolvedId && !idVerified) {
         setShowIdVerifyDialog(true);
       } else {
@@ -1370,7 +1549,10 @@ export default function StaffVerifyPage() {
     const bufferMs = (workingHours?.checkInBufferMinutes ?? 60) * 60 * 1000;
     const now = Date.now();
     const approvedFromMs = new Date(result.approved_from).getTime();
-    if (now >= approvedFromMs - bufferMs && now <= approvedFromMs + bufferMs) {
+    const approvedToMs = result.approved_to
+      ? new Date(result.approved_to).getTime()
+      : Number.POSITIVE_INFINITY;
+    if (now >= approvedFromMs - bufferMs && now <= approvedToMs + bufferMs) {
       handleCheckInAction();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1804,7 +1986,7 @@ export default function StaffVerifyPage() {
                 {t.gateScannerUnavailable}
               </Alert>
             )}
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center" useFlexGap>
               <TextField
                 fullWidth
                 size="small"
@@ -2063,6 +2245,101 @@ export default function StaffVerifyPage() {
             />
 
             <Dialog
+              open={internalNoteDialogOpen}
+              onClose={() => {
+                if (internalNoteSaving) return;
+                setInternalNoteDraft(
+                  result?.internal_note || result?.internalNote || "",
+                );
+                setInternalNoteDialogOpen(false);
+              }}
+              maxWidth="sm"
+              fullWidth
+              PaperProps={{
+                sx: { borderRadius: 4, overflow: "hidden" },
+              }}
+            >
+              <DialogHeader
+                title={t.gateEditInternalNote || "Edit Internal Note"}
+                align={dir === "rtl" ? "right" : "left"}
+                onClose={() => {
+                  if (internalNoteSaving) return;
+                  setInternalNoteDraft(
+                    result?.internal_note || result?.internalNote || "",
+                  );
+                  setInternalNoteDialogOpen(false);
+                }}
+              />
+              <Divider />
+              <DialogContent sx={{ p: 3 }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={4}
+                  size="small"
+                  autoFocus
+                  dir="auto"
+                  placeholder={
+                    t.gateInternalNotePlaceholder ||
+                    "Private note for staff only — never shared with the visitor."
+                  }
+                  value={internalNoteDraft}
+                  onChange={(e) => setInternalNoteDraft(e.target.value)}
+                  disabled={internalNoteSaving}
+                  sx={{
+                    "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                  }}
+                />
+              </DialogContent>
+              <Divider />
+              <DialogActions
+                disableSpacing
+                sx={{
+                  p: 2.5,
+                  justifyContent: "flex-end",
+                  gap: 1,
+                  ...getStartIconSpacing(dir),
+                }}
+              >
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={internalNoteSaving}
+                  onClick={() => {
+                    setInternalNoteDraft(
+                      result?.internal_note || result?.internalNote || "",
+                    );
+                    setInternalNoteDialogOpen(false);
+                  }}
+                  startIcon={<ICONS.cancel fontSize="small" />}
+                  sx={{ borderRadius: 30 }}
+                >
+                  {t.gateCancelInternalNote || "Cancel"}
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  disabled={
+                    internalNoteSaving ||
+                    internalNoteDraft.trim() ===
+                      (result?.internal_note || result?.internalNote || "")
+                  }
+                  onClick={handleSaveInternalNote}
+                  startIcon={
+                    internalNoteSaving ? (
+                      <CircularProgress size={14} color="inherit" />
+                    ) : (
+                      <ICONS.save fontSize="small" />
+                    )
+                  }
+                  sx={{ borderRadius: 30 }}
+                >
+                  {t.gateSaveInternalNote || "Save"}
+                </Button>
+              </DialogActions>
+            </Dialog>
+
+            <Dialog
               open={!!approveTarget}
               onClose={() => {
                 setApproveTarget(null);
@@ -2103,9 +2380,10 @@ export default function StaffVerifyPage() {
                       direction="row"
                       spacing={2}
                       alignItems="center"
+                      useFlexGap
                       sx={{ justifyContent: "space-between" }}
                     >
-                      <Stack direction="row" spacing={2} alignItems="center">
+                      <Stack direction="row" spacing={2} alignItems="center" useFlexGap>
                         <Avatar
                           sx={{
                             width: 44,
@@ -2448,7 +2726,7 @@ export default function StaffVerifyPage() {
                       />
                     }
                     label={
-                      <Stack direction="row" spacing={1} alignItems="center">
+                      <Stack direction="row" spacing={1} alignItems="center" useFlexGap>
                         <Typography variant="body2">
                           {t.approveDialogAllowMultipleCheckins}
                         </Typography>
@@ -2477,7 +2755,7 @@ export default function StaffVerifyPage() {
                       />
                     }
                     label={
-                      <Stack direction="row" spacing={1} alignItems="center">
+                      <Stack direction="row" spacing={1} alignItems="center" useFlexGap>
                         <Typography variant="body2">{t.approveDialogAllowParking}</Typography>
                         <Chip
                           label={allowParking ? t.approveDialogEnabled : t.approveDialogDisabled}
@@ -2525,7 +2803,7 @@ export default function StaffVerifyPage() {
                       />
                     }
                     label={
-                      <Stack direction="row" spacing={1} alignItems="center">
+                      <Stack direction="row" spacing={1} alignItems="center" useFlexGap>
                         <Typography variant="body2">{t.approveDialogVip}</Typography>
                         <Chip
                           label={isVip ? t.approveDialogEnabled : t.approveDialogDisabled}
@@ -2567,7 +2845,7 @@ export default function StaffVerifyPage() {
                       />
                     }
                     label={
-                      <Stack direction="row" spacing={1} alignItems="center">
+                      <Stack direction="row" spacing={1} alignItems="center" useFlexGap>
                         <Typography variant="body2">{t.approveDialogEscortRequired}</Typography>
                         <Chip
                           label={escortRequired ? t.approveDialogEnabled : t.approveDialogDisabled}
@@ -2606,7 +2884,7 @@ export default function StaffVerifyPage() {
                       >
                         <DateCalendar
                           value={scheduledDate}
-                          onChange={(newDate) => setScheduledDate(newDate)}
+                          onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                           disablePast
                         />
                       </Box>
@@ -2617,7 +2895,7 @@ export default function StaffVerifyPage() {
                         {/* Toggle between Preset and Custom using Tabs */}
                         <Tabs
                           value={scheduleType}
-                          onChange={(_, value) => setScheduleType(value)}
+                          onChange={(_, value) => applySchedule({ scheduleType: value })}
                           variant="fullWidth"
                           sx={{
                             minHeight: 46,
@@ -2679,6 +2957,17 @@ export default function StaffVerifyPage() {
                               minHeight: 280,
                             }}
                           >
+                            {hostConfig && (
+                              <Typography
+                                variant="caption"
+                                color="info.main"
+                                sx={{ display: "block", mb: 1.5, fontSize: "0.68rem", direction: "ltr" }}
+                              >
+                                {t.bookingWorkingHoursInfo
+                                  .replace("{{start}}", fmtLocalWorkingHours(hostConfig).start)
+                                  .replace("{{end}}", fmtLocalWorkingHours(hostConfig).end)}
+                              </Typography>
+                            )}
                             <Stack spacing={2} sx={{ mb: 2 }}>
                               {renderTimeDropdowns(
                                 "scheduledFrom",
@@ -2753,11 +3042,13 @@ export default function StaffVerifyPage() {
                                 select
                                 size="small"
                                 value={selectedPreset || "fullDay"}
-                                onChange={(e) => {
-                                  setSelectedPreset(e.target.value);
-                                  setSpecificDays([]);
-                                  setDayTypeTab("working");
-                                }}
+                                onChange={(e) =>
+                                  applySchedule({
+                                    selectedPreset: e.target.value,
+                                    specificDays: [],
+                                    dayTypeTab: "working",
+                                  })
+                                }
                                 sx={{
                                   "& .MuiOutlinedInput-root": { borderRadius: 2 },
                                 }}
@@ -2841,6 +3132,21 @@ export default function StaffVerifyPage() {
                               <Box sx={{ mb: 2 }}>
                                 <Typography
                                   variant="caption"
+                                  fontWeight={600}
+                                  color="info.main"
+                                  sx={{
+                                    display: "block",
+                                    mb: 0.75,
+                                    fontSize: "0.68rem",
+                                  }}
+                                >
+                                  {t.bookingWorkingDays}:{" "}
+                                  {(hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+                                    .map((d) => DAY_LABELS[d])
+                                    .join(", ")}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
                                   fontWeight={700}
                                   color="text.secondary"
                                   sx={{
@@ -2852,33 +3158,22 @@ export default function StaffVerifyPage() {
                                 >
                                   {t.bookingDayType}
                                 </Typography>
-                                <Tabs
+                                <RadioGroup
+                                  row
                                   value={dayTypeTab}
-                                  onChange={(_, v) => {
-                                    setDayTypeTab(v);
-                                  }}
-                                  TabIndicatorProps={{
-                                    sx: { height: 3, borderRadius: 1 },
-                                  }}
-                                  sx={{
-                                    minHeight: 32,
-                                    "& .MuiTab-root": {
-                                      minHeight: 32,
-                                      py: 0.5,
-                                      fontSize: "0.72rem",
-                                      fontWeight: 700,
-                                    },
-                                  }}
+                                  onChange={(_, v) => applySchedule({ dayTypeTab: v })}
                                 >
-                                  <Tab
+                                  <FormControlLabel
                                     value="working"
-                                    label={t.bookingWorkingDays}
+                                    control={<Radio size="small" />}
+                                    label={t.bookingWorkingOnly}
                                   />
-                                  <Tab
-                                    value="weekend"
-                                    label={t.bookingWeekendDays}
+                                  <FormControlLabel
+                                    value="all"
+                                    control={<Radio size="small" />}
+                                    label={t.bookingWorkingPlusWeekends}
                                   />
-                                </Tabs>
+                                </RadioGroup>
                               </Box>
                             )}
     
@@ -2897,11 +3192,13 @@ export default function StaffVerifyPage() {
                                         <Box
                                           key={idx}
                                           onClick={() =>
-                                            setSpecificDays((prev) =>
-                                              active
-                                                ? prev.filter((d) => d !== idx)
-                                                : [...prev, idx],
-                                            )
+                                            applySchedule({
+                                              specificDays: active
+                                                ? specificDays.filter(
+                                                    (d) => d !== idx,
+                                                  )
+                                                : [...specificDays, idx],
+                                            })
                                           }
                                           sx={{
                                             px: 1.5,
@@ -3018,11 +3315,11 @@ export default function StaffVerifyPage() {
                                         : ""
                                     }
                                     onChange={(e) =>
-                                      setSpecificEndDate(
-                                        e.target.value
+                                      applySchedule({
+                                        specificEndDate: e.target.value
                                           ? dayjs(e.target.value)
                                           : null,
-                                      )
+                                      })
                                     }
                                     inputProps={{
                                       min: scheduledDate
@@ -3046,10 +3343,7 @@ export default function StaffVerifyPage() {
                               hostConfig &&
                               scheduledDate &&
                               (() => {
-                                const activeDaySet =
-                                  dayTypeTab === "working"
-                                    ? (hostConfig.workingDays ?? [0, 1, 2, 3, 4])
-                                    : (hostConfig.weekendDays ?? [5, 6]);
+                                const activeDaySet = computeDaySet(dayTypeTab, hostConfig);
                                 const weekendSet = hostConfig.weekendDays ?? [5, 6];
                                 const date = scheduledDate;
                                 let endDate;
@@ -3082,9 +3376,9 @@ export default function StaffVerifyPage() {
                                     >
                                       {t.bookingDaysInRange.replace(
                                         "{{type}}",
-                                        dayTypeTab === "working"
-                                          ? t.bookingWorkingDays
-                                          : t.bookingWeekendDays,
+                                        dayTypeTab === "all"
+                                          ? t.bookingAllDays
+                                          : t.bookingWorkingDays,
                                       )}
                                     </Typography>
                                     <Stack
@@ -3143,11 +3437,11 @@ export default function StaffVerifyPage() {
                                       ? t.bookingFullDayWorkingHoursInfo
                                           .replace(
                                             "{{start}}",
-                                            fmtHour12(hostConfig.start, hostConfig.startMinute ?? 0),
+                                            fmtLocalWorkingHours(hostConfig).start,
                                           )
                                           .replace(
                                             "{{end}}",
-                                            fmtHour12(hostConfig.end, hostConfig.endMinute ?? 0),
+                                            fmtLocalWorkingHours(hostConfig).end,
                                           )
                                       : t.bookingFullDayWorkingHoursInfo
                                           .replace("{{start}}", "8:00 AM")
@@ -3163,10 +3457,10 @@ export default function StaffVerifyPage() {
                                     const ampm = h24 < 12 ? "AM" : "PM";
                                     return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
                                   };
-                                  const s = fmtH12(hostConfig.start, hostConfig.startMinute ?? 0);
-                                  const e = fmtH12(hostConfig.end, hostConfig.endMinute ?? 0);
+                                  const s = fmtH12(fmtLocalWorkingHours(hostConfig).startH, fmtLocalWorkingHours(hostConfig).startM);
+                                  const e = fmtH12(fmtLocalWorkingHours(hostConfig).endH, fmtLocalWorkingHours(hostConfig).endM);
                                   return (
-                                    <Typography variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                                    <Typography dir="ltr" variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
                                       {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
                                     </Typography>
                                   );
@@ -3227,6 +3521,35 @@ export default function StaffVerifyPage() {
                     sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
                   />
                 </Box>
+                {canWriteInternalNote && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ mb: 1, fontWeight: 700, color: "text.primary" }}
+                    >
+                      {t.gateFieldInternalNote}{" "}
+                      <Typography
+                        component="span"
+                        variant="caption"
+                        color="text.secondary"
+                      >
+                        {t.approveDialogNoteOptional}
+                      </Typography>
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      maxRows={5}
+                      size="small"
+                      placeholder={t.gateInternalNotePlaceholder}
+                      value={approvalInternalNote}
+                      onChange={(e) => setApprovalInternalNote(e.target.value)}
+                      inputProps={{ maxLength: 1000 }}
+                      sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                    />
+                  </Box>
+                )}
               </DialogContent>
               <Divider />
               <DialogActions
@@ -3275,7 +3598,7 @@ export default function StaffVerifyPage() {
                   bgcolor: "background.paper",
                 }}
               >
-                <Stack direction="row" alignItems="center" spacing={2} mb={3}>
+                <Stack direction="row" alignItems="center" spacing={2} mb={3} useFlexGap>
                   <Box
                     sx={{
                       bgcolor: `${sc.color}.main`,
@@ -3941,6 +4264,16 @@ export default function StaffVerifyPage() {
                       ICONS.parking,
                     );
 
+                    const internalNoteText =
+                      result.internal_note ?? result.internalNote ?? null;
+                    if (canReadInternalNote && internalNoteText) {
+                      pushField(
+                        t.gateFieldInternalNote || "Internal Note",
+                        internalNoteText,
+                        ICONS.description,
+                      );
+                    }
+
                     return fields.map((item, idx) => (
                       <ListItem
                         key={`${item.label}-${idx}`}
@@ -3962,11 +4295,13 @@ export default function StaffVerifyPage() {
                             variant: "caption",
                             color: "text.secondary",
                             fontWeight: 600,
+                            textAlign: dir === "rtl" ? "right" : "left",
                           }}
                           secondaryTypographyProps={{
                             variant: "body1",
                             color: "text.primary",
                             fontWeight: 500,
+                            textAlign: dir === "rtl" ? "right" : "left",
                           }}
                         />
                       </ListItem>
@@ -3974,14 +4309,24 @@ export default function StaffVerifyPage() {
                   })()}
                 </List>
 
+                {canWriteInternalNote && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={openInternalNoteDialog}
+                    startIcon={<ICONS.edit fontSize="small" />}
+                    sx={{ mt: 1.5, borderRadius: 30 }}
+                  >
+                    {t.gateEditInternalNote || "Edit Internal Note"}
+                  </Button>
+                )}
+
                 <Stack spacing={2} mt={4}>
                   {(() => {
                     const status = result.status;
                     const isPending = result.status === "pending";
                     const isAdminApproved = result.status === "admin_approved";
-                    const isApproved = ["approved", "admin_approved"].includes(
-                      result.status,
-                    );
+                    const isApproved = result.status === "approved";
                     const isCheckedIn = result.status === "checked_in";
                     const isCheckedOut = result.status === "checked_out";
                     const isEnded = result.status === "visit_ended";

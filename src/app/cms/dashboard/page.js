@@ -26,6 +26,8 @@ import AppCard from "@/components/cards/AppCard";
 import LiveVisitorsCard from "@/components/dashboard/LiveVisitorsCard";
 import ExportDialog from "@/components/dashboard/ExportDialog";
 import { getDashboardStats } from "@/services/dashboardService";
+import { ACTIVITY_LABELS, ACTIVITY_STATUS, getActivityIcon } from "@/utils/activityMeta";
+import { canAccessResource } from "@/utils/permissions";
 
 const SOCKET_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
@@ -45,32 +47,6 @@ const ALL_STATUSES = [
   { key: "visit_ended",    label: "Visit Ended",    dark: "rgba(148,163,184,0.6)", light: "#94A3B8" },
   { key: "expired",        label: "Expired",        dark: "rgba(100,100,100,0.5)", light: "#9CA3AF" },
 ];
-
-const ACTIVITY_LABELS = {
-  submitted:      "New Registration",
-  admin_approved: "Admin Approved",
-  approved:       "Registration Approved",
-  rejected:       "Registration Rejected",
-  cancelled:      "Registration Cancelled",
-  nda_signed:     "NDA Signed",
-  qr_generated:   "QR Generated",
-  scanned:        "QR Scanned",
-  badge_printed:  "Badge Printed",
-  checked_in:     "Checked In",
-  checked_out:    "Checked Out",
-  visit_ended:    "Visit Ended",
-};
-
-const ACTIVITY_STATUS = {
-  submitted:      "warning",
-  admin_approved: "info",
-  approved:       "success",
-  rejected:       "error",
-  cancelled:      "error",
-  checked_in:     "success",
-  checked_out:    "info",
-  visit_ended:    "default",
-};
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -106,6 +82,7 @@ export default function CmsDashboardPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [period, setPeriod] = useState("today"); // "today" | "week" | "month" | "year" | "all"
   const socketRef = useRef(null);
+  const canViewActivity = canAccessResource(user, "activity", { hardcodeAllowed: true });
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -421,6 +398,7 @@ export default function CmsDashboardPage() {
                   (stats?.recentActivity ?? []).map((act) => {
                     const statusKey = ACTIVITY_STATUS[act.activityType] ?? "default";
                     const label = ACTIVITY_LABELS[act.activityType] ?? act.activityType;
+                    const Icon = getActivityIcon(act.activityType);
                     return (
                       <Stack key={act.id} direction="row" spacing={2} alignItems="center">
                         <Avatar
@@ -433,7 +411,7 @@ export default function CmsDashboardPage() {
                             fontSize: "0.8rem",
                           }}
                         >
-                          {act.visitorName.charAt(0).toUpperCase()}
+                          {Icon && <Icon sx={{ fontSize: 20 }} />}
                         </Avatar>
                         <Box>
                           <Typography variant="body2" fontWeight={700}>
@@ -454,9 +432,13 @@ export default function CmsDashboardPage() {
               variant="outlined"
               startIcon={<ICONS.list />}
               sx={{ mt: 4, borderRadius: 3, px: 3, py: 1, fontWeight: 700 }}
-              onClick={() => router.push("/cms/visitors")}
+              onClick={() =>
+                canViewActivity
+                  ? router.push("/cms/activity")
+                  : router.push("/cms/visitors")
+              }
             >
-              View All Visitors
+              {canViewActivity ? "View All Activity" : "View All Visitors"}
             </Button>
           </AppCard>
         </Grid>

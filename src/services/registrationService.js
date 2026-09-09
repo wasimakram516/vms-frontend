@@ -120,6 +120,7 @@ export const mapRegistration = (r) => {
     access_levels: r.accessLevels ?? [],
     vehicle_plate: r.vehiclePlate ?? null,
     approval_note: r.approvalNote ?? null,
+    internal_note: r.internalNote ?? null,
     vip_reason: r.vipReason ?? null,
     admin_approved_at: r.adminApprovedAt,
     admin_approved_by_user_id: r.adminApprovedByUserId,
@@ -196,6 +197,16 @@ export const updateRegistration = withApiHandler(
     return res.data?.data || res.data;
   },
   { showSuccess: true }
+);
+
+export const updateInternalNote = withApiHandler(
+  async (id, internalNote) => {
+    const res = await api.patch(`/registrations/${id}/internal-note`, {
+      internalNote: internalNote ?? "",
+    });
+    return res.data?.data || res.data;
+  },
+  {} // silent — the UI owns the success/error feedback
 );
 
 export const getRegistrationActivityLogs = withApiHandler(async (id) => {

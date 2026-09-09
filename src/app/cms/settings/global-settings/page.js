@@ -25,6 +25,7 @@ import {
   Chip,
   Tabs,
   Tab,
+  Alert,
 } from "@mui/material";
 import { useMessage } from "@/contexts/MessageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1107,6 +1108,12 @@ export default function HostDetailsPage() {
 
               {/* Tab 2: Schedule — Working days, weekend, hours */}
               <Box sx={{ display: modalTab === 2 ? "flex" : "none", flexDirection: "column", gap: 2, p: 2.5 }}>
+                <Alert severity="info" sx={{ borderRadius: 2 }}>
+                  Working hours and working days are defined in{" "}
+                  <b>Oman time (GMT+4)</b> — the premise's local clock. They
+                  appear on booking/approval screens in each user's own
+                  timezone.
+                </Alert>
                 {(() => {
                   const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
                   const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];

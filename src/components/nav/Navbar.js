@@ -43,7 +43,7 @@ export default function Navbar() {
     (user?.role === "admin" && user?.adminType === "kitchen") ||
     (user?.role === "staff" && user?.staffType === "kitchen");
 
-  const brandHref = isStaffArea ? "/staff" : kitchenAdmin ? "/cms/kitchen" : "/";
+  const brandHref = isStaffArea ? "/auth/login" : kitchenAdmin ? "/cms/kitchen" : "/";
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [confirmLogout, setConfirmLogout] = useState(false);

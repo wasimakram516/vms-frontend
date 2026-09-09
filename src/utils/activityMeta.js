@@ -1,0 +1,118 @@
+// labels + status palette + icons for the registration activity log types.
+// Matches the backend ActivityType enum; shared by the dashboard widget and the
+// full /cms/activity history page.
+import ICONS from "@/utils/iconUtil";
+
+export const ACTIVITY_TYPES = [
+  "submitted",
+  "admin_approved",
+  "approved",
+  "rejected",
+  "cancelled",
+  "nda_signed",
+  "qr_generated",
+  "scanned",
+  "badge_printed",
+  "checked_in",
+  "checked_out",
+  "visit_ended",
+  "overstay_detected",
+  "vip_fast_track_approved",
+  "exit_timeout_alert",
+  "parking_granted",
+  "parking_revoked",
+  "plate_updated",
+  "outside_hours",
+  "status_override",
+  "sla_escalation",
+  "badges_exported",
+  "visits_exported",
+  "visit_history_exported",
+  "internal_note",
+];
+
+// Icon per activity type — rendered in a status-tinted tile.
+export const ACTIVITY_ICONS = {
+  submitted: ICONS.assignmentOutline,
+  admin_approved: ICONS.deptApprove,
+  approved: ICONS.accepted,
+  rejected: ICONS.cancel,
+  cancelled: ICONS.highlightOff,
+  nda_signed: ICONS.description,
+  qr_generated: ICONS.qrcode,
+  scanned: ICONS.qrCodeScanner,
+  badge_printed: ICONS.print,
+  checked_in: ICONS.login,
+  checked_out: ICONS.logout,
+  visit_ended: ICONS.door,
+  overstay_detected: ICONS.warning,
+  vip_fast_track_approved: ICONS.vip,
+  exit_timeout_alert: ICONS.time,
+  parking_granted: ICONS.parking,
+  parking_revoked: ICONS.parking,
+  plate_updated: ICONS.directionsCar,
+  outside_hours: ICONS.time,
+  status_override: ICONS.sync,
+  sla_escalation: ICONS.warning,
+  badges_exported: ICONS.print,
+  visits_exported: ICONS.download,
+  visit_history_exported: ICONS.download,
+  internal_note: ICONS.description,
+};
+
+export const getActivityIcon = (type) => ACTIVITY_ICONS[type] ?? ICONS.history;
+
+export const ACTIVITY_LABELS = {
+  submitted: "New Registration",
+  admin_approved: "Admin Approved",
+  approved: "Registration Approved",
+  rejected: "Registration Rejected",
+  cancelled: "Registration Cancelled",
+  nda_signed: "NDA Signed",
+  qr_generated: "QR Generated",
+  scanned: "QR Scanned",
+  badge_printed: "Badge Printed",
+  checked_in: "Checked In",
+  checked_out: "Checked Out",
+  visit_ended: "Visit Ended",
+  overstay_detected: "Overstay Detected",
+  vip_fast_track_approved: "VIP Fast-Track Approved",
+  exit_timeout_alert: "Exit Timeout Alert",
+  parking_granted: "Parking Granted",
+  parking_revoked: "Parking Revoked",
+  plate_updated: "Vehicle Plate Updated",
+  outside_hours: "Outside Hours",
+  status_override: "Status Override",
+  sla_escalation: "SLA Escalated",
+  badges_exported: "Badges Exported",
+  visits_exported: "Visits Exported",
+  visit_history_exported: "Visit History Exported",
+  internal_note: "Internal Note",
+};
+
+export const ACTIVITY_STATUS = {
+  submitted: "warning",
+  admin_approved: "info",
+  approved: "success",
+  rejected: "error",
+  cancelled: "warning",
+  checked_in: "success",
+  checked_out: "info",
+  visit_ended: "default",
+  overstay_detected: "error",
+  vip_fast_track_approved: "info",
+  exit_timeout_alert: "warning",
+  parking_granted: "success",
+  parking_revoked: "warning",
+  plate_updated: "info",
+  outside_hours: "default",
+  status_override: "warning",
+  sla_escalation: "warning",
+  badges_exported: "info",
+  visits_exported: "info",
+  visit_history_exported: "info",
+  internal_note: "info",
+};
+
+export const getActivityLabel = (type) => ACTIVITY_LABELS[type] ?? type;
+export const getActivityStatus = (type) => ACTIVITY_STATUS[type] ?? "default";

@@ -10,6 +10,7 @@ export const PAGE_ICONS = {
   "access-levels": ICONS.key,
   fields: ICONS.form,
   analytics: ICONS.insights,
+  activity: ICONS.history,
   users: ICONS.people,
   "access-control": ICONS.security,
   "host-details": ICONS.business,
