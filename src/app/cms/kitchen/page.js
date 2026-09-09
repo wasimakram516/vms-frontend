@@ -107,7 +107,10 @@ const getGroupMemberNames = (option) => {
 const getVisitorOptionLabel = (option) => {
   const memberNames = getGroupMemberNames(option);
   if (memberNames.length > 1) {
-    return `Group Meeting (${memberNames.join(", ")})`;
+    const stored = option.meetingName || option.meeting_name || "";
+    return typeof stored === "string" && stored.trim() !== ""
+      ? stored.trim()
+      : `Group Meeting (${memberNames.join(", ")})`;
   }
   const name = option.user?.fullName || option.full_name || "Visitor";
   const org = option.organisation || option.companyName || "";

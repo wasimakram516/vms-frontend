@@ -45,6 +45,7 @@ import { useTheme } from "@mui/material/styles";
 import { pdf, Document } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import BadgePDF from "@/components/badges/BadgePDF";
+import ExpandableNote from "@/components/ExpandableNote";
 import { getDefaultBadgeTemplate } from "@/services/badgeService";
 
 import QrScanner from "@/components/QrScanner";
@@ -397,7 +398,9 @@ export default function StaffVerifyPage() {
   const openInternalNoteDialog = () => {
     if (!result?.id) return;
     setInternalNoteDraft(
-      result.internal_note ?? result.internalNote ?? "",
+      canReadInternalNote
+        ? result.internal_note ?? result.internalNote ?? ""
+        : "",
     );
     setInternalNoteDialogOpen(true);
   };
@@ -1066,7 +1069,11 @@ export default function StaffVerifyPage() {
       setVehiclePlate(prefillParking ? (fullReg.vehicle_plate ?? "") : "");
       setVehiclePlateError("");
       setApprovalNote(isAdminApproved ? (fullReg.approval_note ?? "") : "");
-      setApprovalInternalNote(fullReg?.internal_note ?? fullReg?.internalNote ?? "");
+      setApprovalInternalNote(
+        canReadInternalNote
+          ? fullReg?.internal_note ?? fullReg?.internalNote ?? ""
+          : "",
+      );
       const prefillVip = isAdminApproved ? (fullReg.is_vip ?? false) : false;
       setIsVip(prefillVip);
       setEscortRequired(
@@ -1102,18 +1109,25 @@ export default function StaffVerifyPage() {
       showMessage("Please select a date.", "warning");
       return;
     }
+    const inlineErrors = [];
     if (!selectedAccessLevelIds.length) {
-      setAccessLevelError("At least one access zone is required");
-      return;
+      const msg = "At least one access zone is required";
+      setAccessLevelError(msg);
+      inlineErrors.push(msg);
     }
     if (allowParking && !vehiclePlate.trim()) {
-      setVehiclePlateError(
-        "Vehicle plate number is required when parking is enabled",
-      );
-      return;
+      const msg =
+        "Vehicle plate number is required when parking is enabled";
+      setVehiclePlateError(msg);
+      inlineErrors.push(msg);
     }
     if (isVip && !vipReason.trim()) {
-      setVipReasonError("A reason is required when marking a visitor as VIP");
+      const msg = "A reason is required when marking a visitor as VIP";
+      setVipReasonError(msg);
+      inlineErrors.push(msg);
+    }
+    if (inlineErrors.length > 0) {
+      showMessage(inlineErrors.join(", "), "error");
       return;
     }
     setSubmitting(true);
@@ -2321,6 +2335,8 @@ export default function StaffVerifyPage() {
                   size="small"
                   disabled={
                     internalNoteSaving ||
+                    (!canReadInternalNote &&
+                      internalNoteDraft.trim() === "") ||
                     internalNoteDraft.trim() ===
                       (result?.internal_note || result?.internalNote || "")
                   }
@@ -4074,6 +4090,18 @@ export default function StaffVerifyPage() {
 
                     // Group meeting → surface every member on the result card
                     if (isGroupResult) {
+                      const storedName =
+                        result.meetingName || result.meeting_name || "";
+                      if (
+                        typeof storedName === "string" &&
+                        storedName.trim() !== ""
+                      ) {
+                        pushField(
+                          t.gateFieldMeetingName || "Meeting Name",
+                          storedName.trim(),
+                          ICONS.event,
+                        );
+                      }
                       pushField(
                         t.gateFieldGroupMembers || "Group Meeting Members",
                         result.participants.map((p) => p.fullName).join(", "),
@@ -4267,11 +4295,11 @@ export default function StaffVerifyPage() {
                     const internalNoteText =
                       result.internal_note ?? result.internalNote ?? null;
                     if (canReadInternalNote && internalNoteText) {
-                      pushField(
-                        t.gateFieldInternalNote || "Internal Note",
-                        internalNoteText,
-                        ICONS.description,
-                      );
+                      fields.push({
+                        icon: ICONS.description,
+                        label: t.gateFieldInternalNote || "Internal Note",
+                        value: <ExpandableNote text={internalNoteText} />,
+                      });
                     }
 
                     return fields.map((item, idx) => (
@@ -4298,6 +4326,7 @@ export default function StaffVerifyPage() {
                             textAlign: dir === "rtl" ? "right" : "left",
                           }}
                           secondaryTypographyProps={{
+                            component: "div",
                             variant: "body1",
                             color: "text.primary",
                             fontWeight: 500,

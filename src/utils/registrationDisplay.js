@@ -8,9 +8,17 @@ export const getGroupMemberNames = (reg) => {
     .filter((n) => typeof n === "string" && n.trim() !== "");
 };
 
+// Optional stored meeting name for group meetings (empty/whitespace = none).
+export const getStoredMeetingName = (reg) => {
+  const raw = reg?.meetingName ?? reg?.meeting_name;
+  return typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
+};
+
 export const getRegistrationDisplayName = (reg, fallback = "Visitor") => {
   const members = getGroupMemberNames(reg);
-  if (members.length > 1) return `Group Meeting (${members.join(", ")})`;
+  if (members.length > 1) {
+    return getStoredMeetingName(reg) || `Group Meeting (${members.join(", ")})`;
+  }
   return (
     reg?.full_name ||
     reg?.fullName ||
@@ -23,7 +31,6 @@ export const getRegistrationDisplayName = (reg, fallback = "Visitor") => {
 export const getRegistrationDisplayInitial = (reg, fallback = "?") => {
   const members = getGroupMemberNames(reg);
   const name =
-    (members[0]?.fullName || reg?.full_name || reg?.fullName || "").trim() ||
-    fallback;
+    (members[0] || reg?.full_name || reg?.fullName || "").trim() || fallback;
   return name.charAt(0).toUpperCase();
 };

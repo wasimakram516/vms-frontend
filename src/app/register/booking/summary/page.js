@@ -354,7 +354,12 @@ export default function SummaryPage() {
     ...(deptName ? [{ label: t.summaryDepartment, value: translatedDynamic.dept || deptName }] : []),
     ...(purposeText ? [{ label: t.summaryPurpose, value: translatedDynamic.purpose || purposeText }] : []),
     ...(groupMembers.length > 1
-      ? [{ label: t.summaryGroupMembers, value: groupMembers.join(", ") }]
+      ? [
+          ...((registration?.meetingName || registration?.meeting_name)
+            ? [{ label: t.summaryMeetingName, value: registration.meetingName || registration.meeting_name }]
+            : []),
+          { label: t.summaryGroupMembers, value: groupMembers.join(", ") },
+        ]
       : []),
   ];
 

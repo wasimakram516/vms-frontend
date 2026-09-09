@@ -6,6 +6,7 @@ import {
   Button,
   Stack,
   Typography,
+  Chip,
   Divider,
   MenuItem,
   TextField,
@@ -720,7 +721,11 @@ export default function BookingPage() {
             <Box sx={{ p: 2, borderRadius: 3, bgcolor: "info.main", color: "info.contrastText", display: "flex", alignItems: "flex-start", gap: 1.5 }}>
               <ICONS.group sx={{ mt: 0.2, fontSize: 20, flexShrink: 0 }} />
               <Box>
-                <Typography variant="body2" fontWeight={700}>{t.groupMeetingEditTitle}</Typography>
+                <Typography variant="body2" fontWeight={700}>
+                  {activeRegistration?.meetingName ||
+                    activeRegistration?.meeting_name ||
+                    t.groupMeetingEditTitle}
+                </Typography>
                 <Typography variant="caption">{t.groupMeetingEditDesc}</Typography>
               </Box>
             </Box>
@@ -1096,7 +1101,7 @@ export default function BookingPage() {
                         );
                       })()}
 
-                      {/* ── Week / Month bracket-day preview ── */}
+                      {/* ── Week / Month bracket-day preview (matches CMS approval dialog) ── */}
                       {(selectedPreset === "fullWeek" || selectedPreset === "fullMonth") && hasValidBookingDate && (() => {
                         const activeDaySet = computeDaySet(dayTypeTab, hostConfig);
                         const weekendSet = hostConfig?.weekendDays ?? [5, 6];
@@ -1110,30 +1115,31 @@ export default function BookingPage() {
                           if (activeDaySet.includes(cur.day())) days.push(cur);
                           cur = cur.add(1, "day");
                         }
-                        const label = dayTypeTab === "all" ? t.bookingAllDays : t.bookingWorkingDays;
-                        return (
-                          <Box sx={{ mb: 2, p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.6rem" }}>
-                              {label} {t.bookingInBracket}
+                        return days.length > 0 ? (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                              {t.bookingDaysInRange.replace(
+                                "{{type}}",
+                                dayTypeTab === "all" ? t.bookingAllDays : t.bookingWorkingDays,
+                              )}
                             </Typography>
                             <Stack direction="row" flexWrap="wrap" sx={{ gap: 0.5 }}>
-                              {days.length > 0 ? days.map((d) => {
+                              {days.map((d) => {
                                 const isOff = weekendSet.includes(d.day());
                                 return (
-                                  <Box key={d.format("YYYY-MM-DD")} sx={{
-                                    px: 1, py: 0.4, borderRadius: 1, fontSize: "0.7rem", fontWeight: 700,
-                                    bgcolor: isOff ? "warning.main" : "primary.main",
-                                    color: isOff ? "warning.contrastText" : "primary.contrastText",
-                                  }}>
-                                    {DAY_LABELS[d.day()]} {d.format("D")}
-                                  </Box>
+                                  <Chip
+                                    key={d.format("YYYY-MM-DD")}
+                                    label={`${DAY_LABELS[d.day()]} ${d.format("DD")}`}
+                                    size="small"
+                                    color={isOff ? "warning" : "primary"}
+                                    variant="outlined"
+                                    sx={{ fontWeight: 600, fontSize: "0.65rem", height: 20 }}
+                                  />
                                 );
-                              }) : (
-                                <Typography variant="caption" color="text.secondary">No {label.toLowerCase()} in this range.</Typography>
-                              )}
+                              })}
                             </Stack>
                           </Box>
-                        );
+                        ) : null;
                       })()}
 
                       {/* ── Full Day: no time input, just show working hours info ── */}

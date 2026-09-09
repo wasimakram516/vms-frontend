@@ -64,6 +64,7 @@ const gateStaff = {
     // Gate result fields
     gateFieldName: "Name",
     gateFieldGroupMembers: "Group Meeting Members",
+    gateFieldMeetingName: "Meeting Name",
     gateFieldCompany: "Company",
     gateFieldPurpose: "Purpose",
     gateFieldIdType: "ID Type",
@@ -322,6 +323,7 @@ const gateStaff = {
     // Gate result fields
     gateFieldName: "الاسم",
     gateFieldGroupMembers: "أعضاء الاجتماع الجماعي",
+    gateFieldMeetingName: "اسم الاجتماع",
     gateFieldCompany: "الشركة",
     gateFieldPurpose: "الغرض",
     gateFieldIdType: "نوع الهوية",
@@ -415,7 +417,7 @@ const gateStaff = {
     bookingDayType: "تصنيف الأيام",
     bookingDaysInRange: "{{type}} ضمن النطاق",
     bookingFullDayWorkingHoursInfo: "يوم كامل: يشمل ساعات العمل ({{start}} – {{end}}).",
-    bookingWorkingHoursInfo: "ساعات العمل: {{start}} – {{end}}",
+    bookingWorkingHoursInfo: "ساعات العمل: \u2066{{start}} – {{end}}\u2069",
 
     // Approve dialog
     approveDialogTitle: "موافقة وجدولة",

@@ -263,6 +263,15 @@ export default function HistoryVisitCard({
 
       {isGroupMeeting && (
         <Box sx={{ mb: 2 }}>
+          {(visit.meetingName || visit.meeting_name) && (
+            <Typography
+              variant="body2"
+              fontWeight={700}
+              sx={{ mb: 0.5, overflowWrap: "anywhere", wordBreak: "break-word" }}
+            >
+              {visit.meetingName || visit.meeting_name}
+            </Typography>
+          )}
           <Typography
             variant="caption"
             color="text.secondary"

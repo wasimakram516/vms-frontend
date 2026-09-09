@@ -45,6 +45,7 @@ import {
   getActivityStatus,
 } from "@/utils/activityMeta";
 import ICONS from "@/utils/iconUtil";
+import ExpandableNote from "@/components/ExpandableNote";
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -244,6 +245,9 @@ export default function ActivityPage() {
     action: "read",
   });
   const canReadVisitors = canAccessResource(user, "visitors", {
+    action: "read",
+  });
+  const canReadInternalNote = canAccessResource(user, "internal-notes", {
     action: "read",
   });
   // Cards below 1100px wide; aligned table at 1100px and above.
@@ -532,28 +536,27 @@ export default function ActivityPage() {
               <Box
                 sx={{
                   px: { xs: 2, md: 3 },
-                  py: 1.25,
+                  py: 2.75,
                   borderBottom: "1px solid",
                   borderColor: "divider",
-                  bgcolor: isDark
-                    ? "rgba(255,255,255,0.03)"
-                    : "rgba(0,0,0,0.02)",
+                  bgcolor: theme.palette.background.highlight,
                   display: "grid",
                   gridTemplateColumns: LOG_GRID,
                   gap: 1.5,
+                  alignItems: "center",
                 }}
               >
                 {LOG_COLUMNS.map((h) => (
                   <Typography
                     key={h}
-                    variant="overline"
+                    component="div"
                     sx={{
-                      fontSize: "0.62rem",
-                      lineHeight: 1.2,
-                      color: "text.secondary",
+                      fontSize: "0.75rem",
+                      lineHeight: 1.4,
+                      color: "text.primary",
                       textTransform: "uppercase",
-                      letterSpacing: 0.7,
-                      fontWeight: 800,
+                      letterSpacing: "0.04em",
+                      fontWeight: 700,
                       textAlign: h === "Time" ? "right" : "left",
                     }}
                   >
@@ -579,9 +582,7 @@ export default function ActivityPage() {
                       gap: 1.5,
                       alignItems: "center",
                       "&:hover": {
-                        bgcolor: isDark
-                          ? "rgba(255,255,255,0.03)"
-                          : "rgba(0,0,0,0.02)",
+                        bgcolor: theme.palette.background.subtle,
                       },
                     }}
                   >
@@ -619,19 +620,19 @@ export default function ActivityPage() {
                     <Box sx={{ minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>
                       {Array.isArray(act.groupMembers) &&
                       act.groupMembers.length > 0 ? (
-                        <Box>
-                          {act.groupMembers.map((m, i) => (
-                            <Typography
-                              key={`${m.name}-${i}`}
-                              variant="body2"
-                              fontWeight={700}
-                              sx={{ lineHeight: 1.4, overflowWrap: "anywhere", wordBreak: "break-word" }}
-                            >
-                              {m.name}
-                              {m.idNo ? ` (${m.idNo})` : ""}
-                            </Typography>
-                          ))}
-                        </Box>
+                        <Typography
+                          variant="body2"
+                          fontWeight={700}
+                          sx={{ lineHeight: 1.4, overflowWrap: "anywhere", wordBreak: "break-word" }}
+                        >
+                          {act.meetingName?.trim() || "Group Meeting"} (
+                          {act.groupMembers
+                            .map(
+                              (m) =>
+                                `${m.name}${m.idNo ? ` - ${m.idNo}` : ""}`,
+                            )
+                            .join(", ")})
+                        </Typography>
                       ) : (
                         <>
                           <Typography
@@ -698,7 +699,11 @@ export default function ActivityPage() {
 
                     {/* Details — the log message is the star */}
                     <Box sx={{ minWidth: 0 }}>
-                      {act.notes ? (
+                      {act.activityType === "internal_note" &&
+                      canReadInternalNote &&
+                      act.metadata?.internalNote ? (
+                        <ExpandableNote text={act.metadata.internalNote} />
+                      ) : act.notes ? (
                         <Typography
                           variant="body2"
                           color="text.secondary"
@@ -820,9 +825,7 @@ export default function ActivityPage() {
                         gap: 1.25,
                         borderBottom: "1px solid",
                         borderColor: "divider",
-                        bgcolor: isDark
-                          ? "rgba(255,255,255,0.03)"
-                          : "rgba(0,0,0,0.02)",
+                        bgcolor: theme.palette.background.highlight,
                       }}
                     >
                       <Box
@@ -940,19 +943,19 @@ export default function ActivityPage() {
                               <FieldLabel>Visitor</FieldLabel>
                               {Array.isArray(act.groupMembers) &&
                               act.groupMembers.length > 0 ? (
-                                <Box>
-                                  {act.groupMembers.map((m, i) => (
-                                    <Typography
-                                      key={`${m.name}-${i}`}
-                                      variant="body2"
-                                      fontWeight={700}
-                                      sx={{ lineHeight: 1.4 }}
-                                    >
-                                      {m.name}
-                                      {m.idNo ? ` (${m.idNo})` : ""}
-                                    </Typography>
-                                  ))}
-                                </Box>
+                                <Typography
+                                  variant="body2"
+                                  fontWeight={700}
+                                  sx={{ lineHeight: 1.4, overflowWrap: "anywhere", wordBreak: "break-word" }}
+                                >
+                                  {act.meetingName?.trim() || "Group Meeting"} (
+                                  {act.groupMembers
+                                    .map(
+                                      (m) =>
+                                        `${m.name}${m.idNo ? ` - ${m.idNo}` : ""}`,
+                                    )
+                                    .join(", ")})
+                                </Typography>
                               ) : (
                                 <>
                                   <Typography variant="body2" fontWeight={700}>
@@ -1028,7 +1031,11 @@ export default function ActivityPage() {
                             {(act.notes || metaLines.length > 0) && (
                               <Row>
                                 <FieldLabel>Details</FieldLabel>
-                                {act.notes && (
+                                {act.activityType === "internal_note" &&
+                                canReadInternalNote &&
+                                act.metadata?.internalNote ? (
+                                  <ExpandableNote text={act.metadata.internalNote} />
+                                ) : act.notes ? (
                                   <Typography
                                     variant="body2"
                                     color="text.secondary"
@@ -1036,7 +1043,7 @@ export default function ActivityPage() {
                                   >
                                     {act.notes}
                                   </Typography>
-                                )}
+                                ) : null}
                                 {metaLines.length > 0 && (
                                   <Stack
                                     direction="row"

@@ -256,6 +256,9 @@ export default function VisitorsPage() {
     hardcodeAllowed: true,
     action: "create",
   });
+  const canReadInternalNote = canAccessResource(user, "internal-notes", {
+    action: "read",
+  });
 
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -877,7 +880,7 @@ export default function VisitorsPage() {
               fullWidth
               size="small"
               variant="outlined"
-              placeholder="Search by name, email, phone or ID card..."
+              placeholder="Search visitors..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -1201,6 +1204,7 @@ export default function VisitorsPage() {
           visitorId={selected?.id}
           seed={selected}
           onClose={closeProfileDialog}
+          canReadInternalNote={canReadInternalNote}
         />
 
         {/* ── Edit Visitor Dialog ── */}

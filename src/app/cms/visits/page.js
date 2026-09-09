@@ -59,6 +59,7 @@ import CountryPicker from "@/components/CountryPicker";
 import { formatPhoneNumberForDisplay, phoneMatchesQuery } from "@/utils/countryCodes";
 import { getDefaultBadgeTemplate } from "@/services/badgeService";
 import BadgePDF from "@/components/badges/BadgePDF";
+import ExpandableNote from "@/components/ExpandableNote";
 
 import {
   getRegistrations,
@@ -328,53 +329,6 @@ function getOverrideTargets(currentStatus, role, normalAllowed, canOverride) {
   return role === "superadmin"
     ? targets
     : targets.filter((s) => s !== "approved");
-}
-
-function ExpandableNote({ text = "", maxLines = 3 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [overflowing, setOverflowing] = useState(false);
-  const innerRef = useRef(null);
-  const clampRef = useRef(null);
-
-  useEffect(() => {
-    const inner = innerRef.current;
-    const clamp = clampRef.current;
-    if (!inner || !clamp) return;
-    setOverflowing(inner.scrollHeight > clamp.clientHeight + 1);
-  }, [text]);
-
-  if (!text) return null;
-  return (
-    <Box>
-      <Typography
-        ref={clampRef}
-        component="div"
-        variant="body2"
-        color="text.primary"
-        sx={{
-          position: "relative",
-          overflow: "hidden",
-          overflowWrap: "anywhere",
-          wordBreak: "break-word",
-          whiteSpace: "pre-wrap",
-          display: expanded ? "block" : "-webkit-box",
-          WebkitLineClamp: expanded ? "unset" : maxLines,
-          WebkitBoxOrient: "vertical",
-        }}
-      >
-        <span ref={innerRef}>{text}</span>
-      </Typography>
-      {overflowing && (
-        <Button
-          size="small"
-          onClick={() => setExpanded((p) => !p)}
-          sx={{ mt: 0.5, p: 0, minWidth: 0, textTransform: "none" }}
-        >
-          {expanded ? "Show less" : "Show more"}
-        </Button>
-      )}
-    </Box>
-  );
 }
 
 function InfoItem({ label, value, icon, sx = {} }) {
@@ -671,6 +625,8 @@ function resolveVisitName(row) {
       ? row.participants
       : [];
   if (participants.length > 1) {
+    const stored = row.meetingName || row.meeting_name || "";
+    if (typeof stored === "string" && stored.trim() !== "") return stored.trim();
     const names = participants
       .map((p) => p.fullName)
       .filter(Boolean)
@@ -743,6 +699,8 @@ const buildEditForm = (reg, fields = []) => {
       ? (reg.escort_required ?? reg.escortRequired ?? true)
       : true,
     internalNote: reg.internal_note ?? reg.internalNote ?? "",
+    meetingName: reg.meeting_name ?? reg.meetingName ?? "",
+    isGroupMeeting: (reg.participants?.length ?? 0) > 1,
     fieldValues: fvMap,
   };
 };
@@ -958,6 +916,8 @@ export default function CmsVisitsPage() {
 
   // ── New Request (admin-created visit) ──
   const [newVisitOpen, setNewVisitOpen] = useState(false);
+  const [visitorSearchInput, setVisitorSearchInput] = useState("");
+  const [visitorMenuOpen, setVisitorMenuOpen] = useState(false);
   const [visitorOptions, setVisitorOptions] = useState([]);
   const [visitorOptionsLoading, setVisitorOptionsLoading] = useState(false);
   const [selectedVisitors, setSelectedVisitors] = useState([]);
@@ -966,6 +926,7 @@ export default function CmsVisitsPage() {
   const [newPurposeOther, setNewPurposeOther] = useState("");
   const [newNdaAccepted, setNewNdaAccepted] = useState(false);
   const [newGroupMeeting, setNewGroupMeeting] = useState(false);
+  const [newMeetingName, setNewMeetingName] = useState("");
   // Map: visitorId → true (NDA needed) | false (NDA valid)
   const [ndaStatusMap, setNdaStatusMap] = useState({});
   const [newVisitSubmitting, setNewVisitSubmitting] = useState(false);
@@ -1953,7 +1914,11 @@ export default function CmsVisitsPage() {
       setVehiclePlate(prefillParking ? (fullReg.vehicle_plate ?? "") : "");
       setVehiclePlateError("");
       setApprovalNote(isAdminApproved ? (fullReg.approval_note ?? "") : "");
-      setApprovalInternalNote(fullReg?.internal_note ?? fullReg?.internalNote ?? "");
+      setApprovalInternalNote(
+        canReadInternalNote
+          ? fullReg?.internal_note ?? fullReg?.internalNote ?? ""
+          : "",
+      );
       const prefillVip = isAdminApproved ? (fullReg.is_vip ?? false) : false;
       setIsVip(prefillVip);
       setEscortRequired(
@@ -1987,18 +1952,25 @@ export default function CmsVisitsPage() {
       showMessage("Please select a date.", "warning");
       return;
     }
+    const inlineErrors = [];
     if (!selectedAccessLevelIds.length) {
-      setAccessLevelError("At least one access zone is required");
-      return;
+      const msg = "At least one access zone is required";
+      setAccessLevelError(msg);
+      inlineErrors.push(msg);
     }
     if (allowParking && !vehiclePlate.trim()) {
-      setVehiclePlateError(
-        "Vehicle plate number is required when parking is enabled",
-      );
-      return;
+      const msg =
+        "Vehicle plate number is required when parking is enabled";
+      setVehiclePlateError(msg);
+      inlineErrors.push(msg);
     }
     if (isVip && !vipReason.trim()) {
-      setVipReasonError("A reason is required when marking a visitor as VIP");
+      const msg = "A reason is required when marking a visitor as VIP";
+      setVipReasonError(msg);
+      inlineErrors.push(msg);
+    }
+    if (inlineErrors.length > 0) {
+      showMessage(inlineErrors.join(", "), "error");
       return;
     }
     setSubmitting(true);
@@ -2191,6 +2163,9 @@ export default function CmsVisitsPage() {
       const payload = {
         fieldValues: editForm.fieldValues,
       };
+      if (editForm.isGroupMeeting) {
+        payload.meetingName = editForm.meetingName?.trim() || null;
+      }
       if (editForm.hasApproved) {
         if (editForm.scheduleFrom) payload.approvedFrom = editForm.scheduleFrom;
         if (editForm.scheduleTo) payload.approvedTo = editForm.scheduleTo;
@@ -2260,8 +2235,11 @@ export default function CmsVisitsPage() {
     setNewPurposeOther("");
     setNewNdaAccepted(false);
     setNewGroupMeeting(false);
+    setNewMeetingName("");
     setNdaStatusMap({});
     setNewVisitAccessLevelError("");
+    setVisitorSearchInput("");
+    setVisitorMenuOpen(false);
     setSelectedAccessLevelIds([]);
     setAllowMultiCheckin(false);
     setAllowParking(false);
@@ -2348,12 +2326,19 @@ export default function CmsVisitsPage() {
       showMessage("Select a date", "warning");
       return;
     }
+    const inlineErrors = [];
     if (!selectedAccessLevelIds.length) {
-      setNewVisitAccessLevelError("At least one access zone is required");
-      return;
+      const msg = "At least one access zone is required";
+      setNewVisitAccessLevelError(msg);
+      inlineErrors.push(msg);
     }
     if (isVip && !vipReason.trim()) {
-      setVipReasonError("A reason is required when marking as VIP");
+      const msg = "A reason is required when marking as VIP";
+      setVipReasonError(msg);
+      inlineErrors.push(msg);
+    }
+    if (inlineErrors.length > 0) {
+      showMessage(inlineErrors.join(", "), "error");
       return;
     }
 
@@ -2424,6 +2409,7 @@ export default function CmsVisitsPage() {
     const payload = {
       userIds: selectedVisitors.map((v) => v.id),
       groupAsMeeting: newGroupMeeting || undefined,
+      meetingName: newMeetingName.trim() || undefined,
       departmentId: newDepartmentId,
       purposeOfVisit: purposeOfVisit || undefined,
       ndaAccepted: newNdaAccepted || undefined,
@@ -2567,32 +2553,28 @@ export default function CmsVisitsPage() {
       showMessage("Please select a date", "warning");
       return;
     }
-    if (
-      (batchTargetStatus === "admin_approved" ||
-        batchTargetStatus === "approved") &&
-      !selectedAccessLevelIds.length
-    ) {
-      setBatchAccessLevelError("At least one access zone is required");
-      return;
+    const isApproving =
+      batchTargetStatus === "admin_approved" ||
+      batchTargetStatus === "approved";
+    const inlineErrors = [];
+    if (isApproving && !selectedAccessLevelIds.length) {
+      const msg = "At least one access zone is required";
+      setBatchAccessLevelError(msg);
+      inlineErrors.push(msg);
     }
-    if (
-      (batchTargetStatus === "admin_approved" ||
-        batchTargetStatus === "approved") &&
-      allowParking &&
-      !vehiclePlate.trim()
-    ) {
-      setVehiclePlateError(
-        "Vehicle plate number is required when parking is enabled",
-      );
-      return;
+    if (isApproving && allowParking && !vehiclePlate.trim()) {
+      const msg =
+        "Vehicle plate number is required when parking is enabled";
+      setVehiclePlateError(msg);
+      inlineErrors.push(msg);
     }
-    if (
-      (batchTargetStatus === "admin_approved" ||
-        batchTargetStatus === "approved") &&
-      isVip &&
-      !vipReason.trim()
-    ) {
-      setVipReasonError("A reason is required when marking as VIP");
+    if (isApproving && isVip && !vipReason.trim()) {
+      const msg = "A reason is required when marking as VIP";
+      setVipReasonError(msg);
+      inlineErrors.push(msg);
+    }
+    if (inlineErrors.length > 0) {
+      showMessage(inlineErrors.join(", "), "error");
       return;
     }
 
@@ -2917,6 +2899,15 @@ export default function CmsVisitsPage() {
 
   const isAdminApprovedTarget =
     isSuperAdmin && approveTarget?.status === "admin_approved";
+  const approvalTargetStatus =
+    approveTarget?._pendingStatus ||
+    (isSuperAdmin ? "approved" : "admin_approved");
+  const approvalCfg = STATUS_CONFIG[approvalTargetStatus] || {
+    label: "Approve",
+    color: "success",
+    icon: <ICONS.check />,
+  };
+  const approvalLabel = ACTION_LABELS[approvalTargetStatus] || approvalCfg.label;
   const slotLabel = isAdminApprovedTarget ? "Approved Slot" : "Requested Slot";
   const slotFrom = isAdminApprovedTarget
     ? approveTarget?.approved_from
@@ -2938,6 +2929,79 @@ export default function CmsVisitsPage() {
     getLocalTime(slotFrom) || getLocalTime(slotTo)
       ? `${slotFrom ? formatTime(slotFrom) : "-"} - ${slotTo ? formatTime(slotTo) : "-"}`
       : "-";
+
+  const rowActions = (
+    <>
+      <Button
+        variant="outlined"
+        startIcon={<ICONS.filter />}
+        onClick={() => setFilterModalOpen(true)}
+        sx={{ whiteSpace: "nowrap" }}
+      >
+        Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+      </Button>
+      <Button
+        variant="outlined"
+        color="success"
+        startIcon={
+          exportingXlsx ? (
+            <CircularProgress size={18} />
+          ) : (
+            <ICONS.download />
+          )
+        }
+        onClick={handleExportCsvBulk}
+        disabled={filtered.length === 0 || exportingXlsx || selectMode}
+        sx={{ whiteSpace: "nowrap", opacity: selectMode ? 0.5 : 1 }}
+      >
+        {exportingXlsx ? "Exporting…" : "Export All"}
+      </Button>
+      <Button
+        variant="outlined"
+        startIcon={
+          exportingBadges ? (
+            <CircularProgress size={18} />
+          ) : (
+            <ICONS.print />
+          )
+        }
+        onClick={async () => {
+          if (!filtered.length) {
+            showMessage("No visits to export", "warning");
+            return;
+          }
+          setExportingBadges(true);
+          try {
+            const ids = filtered.map((r) => r?.id).filter(Boolean);
+            if (ids.length) {
+              const logRes = await markBadgesExported(ids);
+              if (logRes?.error) {
+                console.warn(
+                  "[Badges] bulk badge export logging failed:",
+                  logRes?.message,
+                );
+              }
+            }
+            await exportAllBadges(
+              filtered,
+              badgeTemplate,
+              `badges_${new Date().toISOString().split("T")[0]}.pdf`,
+            );
+            showMessage("Badges exported", "success");
+          } catch {
+            showMessage("Badge export failed", "error");
+          } finally {
+            setExportingBadges(false);
+          }
+        }}
+        disabled={
+          filtered.length === 0 || exportingBadges || selectMode
+        }
+      >
+        {exportingBadges ? "Exporting…" : "Badges"}
+      </Button>
+    </>
+  );
 
   if (loading && !hasLoadedOnce)
     return <LoadingState cardMaxWidth={400} skeletonLines={3} />;
@@ -3122,10 +3186,14 @@ export default function CmsVisitsPage() {
           ))}
           {datePreset === "custom" && (
             <Stack
-              direction="row"
+              direction={{ xs: "column", sm: "row" }}
               spacing={1}
-              alignItems="center"
-              sx={{ flexWrap: "wrap", gap: 1 }}
+              alignItems={{ xs: "stretch", sm: "center" }}
+              sx={{
+                flexWrap: "wrap",
+                gap: 1,
+                width: { xs: "100%", md: "auto" },
+              }}
             >
               <Box sx={{ width: { xs: "100%", sm: 180 } }}>
                 <DateTimeFieldFlatpickr
@@ -3154,101 +3222,55 @@ export default function CmsVisitsPage() {
               </Box>
             </Stack>
           )}
-        </Stack>
 
-        <TextField
-          fullWidth
-          size="small"
-          variant="outlined"
-          placeholder="Search name, email, ID, purpose..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(0);
-          }}
-          InputProps={{
-            startAdornment: (
-              <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} />
-            ),
-          }}
-          sx={{ mb: 2 }}
-        />
+          {/* Desktop: Filter / Export All / Badges sit on the right of the date filters */}
+          <Box
+            sx={{
+              display: { xs: "none", md: "flex" },
+              flex: 1,
+              justifyContent: "flex-end",
+              gap: 1,
+              alignItems: "center",
+            }}
+          >
+            {rowActions}
+          </Box>
+        </Stack>
 
         <ListToolbar
           showingCount={pagedRows.length}
           totalCount={totalCount || filtered.length}
+          searchSlot={
+            <TextField
+              fullWidth
+              size="small"
+              variant="outlined"
+              placeholder="Search name, email, ID, purpose..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+              InputProps={{
+                startAdornment: (
+                  <ICONS.search fontSize="small" sx={{ mr: 1, opacity: 0.6 }} />
+                ),
+              }}
+              sx={{ maxWidth: { md: 600 } }}
+            />
+          }
           actionsSlot={
             <>
-              <Button
-                variant="outlined"
-                startIcon={<ICONS.filter />}
-                onClick={() => setFilterModalOpen(true)}
-                sx={{ minWidth: { md: 120 }, whiteSpace: "nowrap", height: 40 }}
-              >
-                Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
-              </Button>
-              <Button
-                variant="outlined"
-                color="success"
-                startIcon={
-                  exportingXlsx ? (
-                    <CircularProgress size={18} />
-                  ) : (
-                    <ICONS.download />
-                  )
-                }
-                onClick={handleExportCsvBulk}
-                disabled={filtered.length === 0 || exportingXlsx || selectMode}
-                sx={{ whiteSpace: "nowrap", opacity: selectMode ? 0.5 : 1 }}
-              >
-                {exportingXlsx ? "Exporting…" : "Export All"}
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={
-                  exportingBadges ? (
-                    <CircularProgress size={18} />
-                  ) : (
-                    <ICONS.print />
-                  )
-                }
-                onClick={async () => {
-                  if (!filtered.length) {
-                    showMessage("No visits to export", "warning");
-                    return;
-                  }
-                  setExportingBadges(true);
-                  try {
-                    // One activity entry for the whole badge-PDF export (not
-                    // one per visitor). Runs before the PDF so it's never skipped.
-                    const ids = filtered.map((r) => r?.id).filter(Boolean);
-                    if (ids.length) {
-                      const logRes = await markBadgesExported(ids);
-                      if (logRes?.error) {
-                        console.warn(
-                          "[Badges] bulk badge export logging failed:",
-                          logRes?.message,
-                        );
-                      }
-                    }
-                    await exportAllBadges(
-                      filtered,
-                      badgeTemplate,
-                      `badges_${new Date().toISOString().split("T")[0]}.pdf`,
-                    );
-                    showMessage("Badges exported", "success");
-                  } catch {
-                    showMessage("Badge export failed", "error");
-                  } finally {
-                    setExportingBadges(false);
-                  }
+              <Box
+                sx={{
+                  display: { xs: "flex", md: "none" },
+                  flexDirection: { xs: "column", sm: "row" },
+                  gap: { xs: 1.5, sm: 1 },
+                  width: { xs: "100%", sm: "auto" },
                 }}
-                disabled={
-                  filtered.length === 0 || exportingBadges || selectMode
-                }
               >
-                {exportingBadges ? "Exporting…" : "Badges"}
-              </Button>
+                {rowActions}
+              </Box>
               <FormControl
                 size="small"
                 sx={{ minWidth: { xs: "100%", sm: 160 } }}
@@ -3408,7 +3430,8 @@ export default function CmsVisitsPage() {
                               noWrap
                               sx={{ lineHeight: 1.2 }}
                             >
-                              Group Meeting ({row.participants.length})
+                              {row.meetingName ||
+                                `Group Meeting (${row.participants.length})`}
                             </Typography>
                           ) : (
                             <ClickableVisitorName
@@ -3435,7 +3458,7 @@ export default function CmsVisitsPage() {
                             onClick={(e) => e.stopPropagation()}
                             size="small"
                             sx={{ p: 0.5, ml: "auto" }}
-                            color="primary"
+                            color="success"
                           />
                         )}
                       </Stack>
@@ -3894,7 +3917,11 @@ export default function CmsVisitsPage() {
                                   } else if (canWriteInternalNote) {
                                     setInternalNoteTarget(row);
                                     setInternalNoteDraft(
-                                      row.internal_note || row.internalNote || "",
+                                      canReadInternalNote
+                                        ? row.internal_note ||
+                                            row.internalNote ||
+                                            ""
+                                        : "",
                                     );
                                     setInternalNoteDialogOpen(true);
                                   }
@@ -4006,6 +4033,17 @@ export default function CmsVisitsPage() {
                     </Typography>
                     <Autocomplete
                       multiple
+                      disableCloseOnSelect
+                      open={visitorMenuOpen}
+                      onOpen={() => setVisitorMenuOpen(true)}
+                      onClose={(event, reason) => {
+                        if (reason === "blur" && visitorDialog.open) return;
+                        setVisitorMenuOpen(false);
+                      }}
+                      inputValue={visitorSearchInput}
+                      onInputChange={(event, value) =>
+                        setVisitorSearchInput(value)
+                      }
                       options={visitorOptions}
                       loading={visitorOptionsLoading}
                       value={selectedVisitors}
@@ -4120,6 +4158,7 @@ export default function CmsVisitsPage() {
                             </Stack>
                             <IconButton
                               size="small"
+                              onMouseDown={(e) => e.preventDefault()}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 openVisitorDetails(opt.id, opt);
@@ -5172,7 +5211,7 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                             onChange={(e) =>
                               setNewGroupMeeting(e.target.checked)
                             }
-                            color="primary"
+                            color="success"
                           />
                         }
                         label={
@@ -5191,6 +5230,19 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                           </Stack>
                         }
                       />
+                      {newGroupMeeting && (
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Meeting Name (Optional)"
+                          placeholder="e.g. Board Meeting"
+                          value={newMeetingName}
+                          onChange={(e) => setNewMeetingName(e.target.value)}
+                          inputProps={{ maxLength: 100 }}
+                          helperText="Leave empty to default to “Group Meeting”."
+                          sx={{ mt: 1 }}
+                        />
+                      )}
                     </Box>
                   )}
                 </Stack>
@@ -5764,7 +5816,8 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                                 fontWeight={700}
                                 sx={{ textAlign: { xs: "center", sm: "left" } }}
                               >
-                                Group Meeting ({selected.participants.length})
+                                {selected.meetingName ||
+                                  `Group Meeting (${selected.participants.length})`}
                               </Typography>
 ) : (
                               <ClickableVisitorName
@@ -6295,17 +6348,25 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                             Internal Note
                           </Typography>
                         </Box>
-                        <Typography
-                          variant="body2"
-                          color="text.primary"
-                          sx={{
-                            overflowWrap: "anywhere",
-                            wordBreak: "break-word",
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
-                          {selected.internal_note || selected.internalNote || "No internal note"}
-                        </Typography>
+                        {selected.internal_note || selected.internalNote ? (
+                          <ExpandableNote
+                            text={
+                              selected.internal_note || selected.internalNote
+                            }
+                          />
+                        ) : (
+                          <Typography
+                            variant="body2"
+                            color="text.primary"
+                            sx={{
+                              overflowWrap: "anywhere",
+                              wordBreak: "break-word",
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            No internal note
+                          </Typography>
+                        )}
                       </Box>
                     )}
 
@@ -6590,6 +6651,8 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
               size="small"
               disabled={
                 internalNoteSaving ||
+                (!canReadInternalNote &&
+                  internalNoteDraft.trim() === "") ||
                 internalNoteDraft.trim() ===
                   (internalNoteTarget?.internal_note ||
                     internalNoteTarget?.internalNote ||
@@ -6736,7 +6799,16 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                             </Box>
                           );
                         })()}
-                        {log.notes && (
+                        {log.activityType === "internal_note" &&
+                        log.metadata?.internalNote &&
+                        canReadInternalNote ? (
+                          <Box sx={{ mt: 0.75 }}>
+                            <ExpandableNote
+                              text={log.metadata.internalNote}
+                              maxLines={4}
+                            />
+                          </Box>
+                        ) : log.notes ? (
                           <Typography
                             variant="body2"
                             color="text.secondary"
@@ -6744,7 +6816,7 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                           >
                             {log.notes}
                           </Typography>
-                        )}
+                        ) : null}
                       </Box>
                     </Box>
                   );
@@ -6769,7 +6841,7 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
         >
           <DialogHeader
             title={
-              isSuperAdmin && approveTarget?.status === "admin_approved"
+              approvalTargetStatus === "approved"
                 ? "Final Approve & Schedule"
                 : "Approve & Schedule"
             }
@@ -7988,13 +8060,13 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
             </Button>
             <Button
               variant="contained"
-              color="success"
-              startIcon={<ICONS.check />}
+              color={approvalCfg.color || "success"}
+              startIcon={approvalCfg.icon}
               onClick={handleApprove}
               disabled={!scheduledDate || submitting}
               sx={{ borderRadius: 30, px: 4, fontWeight: 700, width: { xs: "100%", sm: "auto" } }}
             >
-              {isSuperAdmin ? "Final Approve" : "Approve"}
+              {approvalLabel}
             </Button>
           </DialogActions>
         </Dialog>
@@ -8205,11 +8277,13 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                         // Group meetings have no single owner — each member is
                         // listed individually and opens their own details.
                         userId: isGroup ? null : keyId,
-                        name:
-                          groupNames ||
-                          row?.full_name ||
-                          row?.fullName ||
-                          "Visitor",
+                        name: isGroup
+                          ? `${row?.meetingName?.trim() || "Group Meeting"}${
+                              groupNames ? ` (${groupNames})` : ""
+                            }`
+                          : row?.full_name ||
+                            row?.fullName ||
+                            "Visitor",
                         members: isGroup
                           ? row.participants
                               .map((p) => ({
@@ -9267,14 +9341,14 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
                                   <ICONS.info
                                     sx={{ fontSize: 16, color: "info.main" }}
                                   />
-                                  <Typography
-                                    variant="caption"
-                                    fontWeight={700}
-                                    color="text.secondary"
-                                    sx={{ fontSize: 12 }}
-                                  >
-                                    {hostConfig
-                                      ? t.bookingFullDayWorkingHoursInfo
+                               <Typography
+                                  variant="caption"
+                                  fontWeight={700}
+                                  color="text.secondary"
+                                  sx={{ fontSize: 12 }}
+                                >
+                                  {hostConfig
+                                    ? t.bookingFullDayWorkingHoursInfo
                                           .replace(
                                             "{{start}}",
                                             fmtLocalWorkingHours(hostConfig).start,
@@ -9556,6 +9630,37 @@ onChange={(newDate) => applySchedule({ scheduledDate: newDate })}
 
                 return (
                   <Stack spacing={2}>
+                    {editForm.isGroupMeeting && (
+                      <Box>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          fontWeight={700}
+                          sx={{
+                            textTransform: "uppercase",
+                            letterSpacing: 0.5,
+                            display: "block",
+                            mb: 1,
+                          }}
+                        >
+                          Meeting Name
+                        </Typography>
+                        <TextField
+                          fullWidth
+                          value={editForm.meetingName || ""}
+                          placeholder="e.g. Board Meeting"
+                          inputProps={{ maxLength: 100 }}
+                          helperText="Leave empty to keep the default “Group Meeting” label."
+                          onChange={(e) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              meetingName: e.target.value,
+                            }))
+                          }
+                          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                        />
+                      </Box>
+                    )}
                     <Box>
                       <Typography
                         variant="caption"

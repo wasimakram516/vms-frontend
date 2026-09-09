@@ -29,6 +29,7 @@ import { logVisitHistoryExported } from "@/services/activityService";
 import { formatDateTimeWithLocale } from "@/utils/dateUtils";
 import { formatActorLabel } from "@/utils/actorLabel";
 import HistoryVisitCard from "@/components/visitors/HistoryVisitCard";
+import ExpandableNote from "@/components/ExpandableNote";
 
 const ACTIVITY_LABELS = {
   submitted: "New Registration",
@@ -120,7 +121,13 @@ function mergeFieldValuesAcrossHistory(registrations) {
 
 const INITIAL_TIMELINE = { open: false, visitId: null, visitorName: "" };
 
-export default function VisitorDetailsDialog({ open, visitorId, seed, onClose }) {
+export default function VisitorDetailsDialog({
+  open,
+  visitorId,
+  seed,
+  onClose,
+  canReadInternalNote = false,
+}) {
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const [visitor, setVisitor] = useState(null);
@@ -760,7 +767,16 @@ export default function VisitorDetailsDialog({ open, visitorId, seed, onClose })
                           </Box>
                         );
                       })()}
-                      {log.notes && (
+                      {log.activityType === "internal_note" &&
+                        log.metadata?.internalNote &&
+                        canReadInternalNote ? (
+                        <Box sx={{ mt: 0.75 }}>
+                          <ExpandableNote
+                            text={log.metadata.internalNote}
+                            maxLines={4}
+                          />
+                        </Box>
+                      ) : log.notes ? (
                         <Typography
                           variant="body2"
                           color="text.secondary"
@@ -768,7 +784,7 @@ export default function VisitorDetailsDialog({ open, visitorId, seed, onClose })
                         >
                           {log.notes}
                         </Typography>
-                      )}
+                      ) : null}
                     </Box>
                   </Box>
                 );
