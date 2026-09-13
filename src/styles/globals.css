@@ -18,7 +18,6 @@ body {
   height: 100%;
   width: 100%;
   overflow-x: hidden;
-  user-select: none;
   display: flex;
   flex-direction: column;
 }
