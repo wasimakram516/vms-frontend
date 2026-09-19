@@ -36,6 +36,9 @@ import ICONS from "@/utils/iconUtil";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
 import getChipIconSpacing from "@/utils/getChipIconSpacing";
 import CountryPicker from "@/components/CountryPicker";
+import CountryCodeSelector from "@/components/CountryCodeSelector";
+import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode } from "@/utils/countryCodes";
+import { validateField } from "@/utils/validationUtils";
 import { getVipFastTrackFields, createVipRegistration, updateStatus } from "@/services/registrationService";
 import { useMessage } from "@/contexts/MessageContext";
 import { useColorMode } from "@/contexts/ThemeContext";
@@ -111,7 +114,7 @@ function iconForField(fieldKey, label) {
 
 // ── Field renderer ────────────────────────────────────────────────────────────
 
-function DynamicField({ field, value, error, isForcedRequired, onChange }) {
+function DynamicField({ field, value, error, isForcedRequired, onChange, phoneIsoCode, onPhoneIsoChange, lang }) {
   const fieldKey = field.fieldKey || field.field_key;
   const inputType = (field.inputType || field.input_type || "text").toLowerCase();
   const isRequired = field.isVipRequired || field.is_vip_required || isForcedRequired;
@@ -173,6 +176,32 @@ function DynamicField({ field, value, error, isForcedRequired, onChange }) {
     );
   }
 
+  if (inputType === "phone") {
+    return (
+      <TextField
+        fullWidth
+        size="small"
+        label={field.label}
+        type="tel"
+        value={value ?? ""}
+        onChange={(e) => onChange(fieldKey, e.target.value)}
+        required={isRequired}
+        error={Boolean(error)}
+        helperText={error}
+        autoComplete="off"
+        InputProps={{
+          startAdornment: (
+            <CountryCodeSelector
+              value={phoneIsoCode}
+              onChange={(iso) => onPhoneIsoChange(fieldKey, iso)}
+              lang={lang}
+            />
+          ),
+        }}
+      />
+    );
+  }
+
   if (inputType === "country") {
     return (
       <CountryPicker
@@ -216,12 +245,13 @@ function DynamicField({ field, value, error, isForcedRequired, onChange }) {
 export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
   const { showMessage } = useMessage();
   const { mode } = useColorMode();
-  const { t, dir } = useI18nLayout(gateStaffTranslations);
+  const { t, dir, language: lang } = useI18nLayout(gateStaffTranslations);
   const isDark = mode === "dark";
 
   const [fields, setFields] = useState([]);
   const [loadingFields, setLoadingFields] = useState(true);
   const [fieldValues, setFieldValues] = useState({});
+  const [phoneIsoCodes, setPhoneIsoCodes] = useState({});
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
@@ -234,6 +264,7 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
     if (!open) return;
     setLoadingFields(true);
     setFieldValues({});
+    setPhoneIsoCodes({});
     setErrors({});
     setRegistered(null);
     getVipFastTrackFields()
@@ -264,6 +295,10 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
     return forced;
   }, [fields, visibleFieldIds, fieldValues]);
 
+  const handlePhoneIsoChange = (key, iso) => {
+    setPhoneIsoCodes((prev) => ({ ...prev, [key]: iso }));
+  };
+
   const handleChange = (key, value) => {
     setFieldValues((prev) => {
       const next = { ...prev, [key]: value };
@@ -289,12 +324,33 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
   const validate = () => {
     const newErrors = {};
     fields
-      .filter((f) => visibleFieldIds.has(f.id) && (f.isVipRequired || f.is_vip_required || forcedRequiredIds.has(f.id)))
+      .filter((f) => visibleFieldIds.has(f.id))
       .forEach((f) => {
         const key = f.fieldKey || f.field_key;
         const val = fieldValues[key];
-        const isEmpty = val == null || (typeof val === "string" && !val.trim()) || (Array.isArray(val) && !val.length);
-        if (isEmpty) newErrors[key] = t.fieldRequired.replace("{{field}}", f.label);
+        const inputType = (f.inputType || f.input_type || "text").toLowerCase();
+        const isRequired =
+          f.isVipRequired ||
+          f.is_vip_required ||
+          forcedRequiredIds.has(f.id);
+        const isoCode =
+          inputType === "phone"
+            ? phoneIsoCodes[key] || DEFAULT_ISO_CODE
+            : undefined;
+
+        const error = validateField(
+          {
+            ...f,
+            inputName: key,
+            inputType,
+            required: isRequired,
+            label: f.label,
+          },
+          val,
+          { isoCode }
+        );
+
+        if (error) newErrors[key] = error;
       });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -304,16 +360,37 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      // Only send values for visible fields
+      // Only send values for visible fields; store phone values without the
+      // dial prefix (matching the new-visitor /register/details flow) and
+      // carry the matching ISO code so the API saves it on the account and
+      // the registration.
       const visibleValues = {};
+      let phoneIsoCode = null;
       fields.filter((f) => visibleFieldIds.has(f.id)).forEach((f) => {
         const key = f.fieldKey || f.field_key;
-        if (fieldValues[key] != null && fieldValues[key] !== "") {
-          visibleValues[key] = fieldValues[key];
+        const raw = fieldValues[key];
+        if (raw == null || raw === "") return;
+
+        const inputType = (f.inputType || f.input_type || "text").toLowerCase();
+        if (inputType === "phone") {
+          const iso = phoneIsoCodes[key] || DEFAULT_ISO_CODE;
+          if (!phoneIsoCode) phoneIsoCode = iso;
+
+          let phone = String(raw).trim();
+          if (phone.startsWith("+")) {
+            const dial = getCountryCodeByIsoCode(iso)?.code || "";
+            phone = dial && phone.startsWith(dial)
+              ? phone.slice(dial.length)
+              : phone.replace(/^\+/, "");
+          }
+          visibleValues[key] = phone;
+          return;
         }
+
+        visibleValues[key] = raw;
       });
 
-      const result = await createVipRegistration(visibleValues);
+      const result = await createVipRegistration(visibleValues, phoneIsoCode);
       if (result?.id) {
         setRegistered(result);
       }
@@ -378,6 +455,9 @@ export default function VipFastTrackModal({ open, onClose, onCheckedIn }) {
                       error={errors[f.fieldKey || f.field_key]}
                       isForcedRequired={forcedRequiredIds.has(f.id)}
                       onChange={handleChange}
+                      phoneIsoCode={phoneIsoCodes[f.fieldKey || f.field_key] || DEFAULT_ISO_CODE}
+                      onPhoneIsoChange={handlePhoneIsoChange}
+                      lang={lang}
                     />
                   ))}
               </Stack>
