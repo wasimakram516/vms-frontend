@@ -239,8 +239,11 @@ export const checkNdaValidity = withApiHandler(async (email) => {
 });
 
 export const createVipRegistration = withApiHandler(
-  async (fieldValues) => {
-    const { data } = await api.post("/registrations/vip-fast-track", { fieldValues });
+  async (fieldValues, phoneIsoCode) => {
+    const { data } = await api.post("/registrations/vip-fast-track", {
+      fieldValues,
+      phoneIsoCode,
+    });
     return data?.data ?? data;
   },
   { showSuccess: true }

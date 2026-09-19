@@ -1,3 +1,5 @@
+import { COUNTRY_CODES, DEFAULT_ISO_CODE } from "@/utils/countryCodes";
+
 /**
  * Shared post-verification handler for all returning-visitor paths.
  * Mirrors the success logic that was previously inline in /register/otp/page.js
@@ -51,19 +53,6 @@ export async function applyReturningVerification(res, { setFlowState, setVisitor
                 ...res.lastFieldValues,
             };
 
-            const isoCode =
-                res.phoneIsoCode ||
-                res.phone_iso_code ||
-                res.isoCode ||
-                res.iso_code ||
-                res.user?.iso_code ||
-                res.user?.isoCode ||
-                res.user?.phoneIsoCode ||
-                res.user?.phone_iso_code;
-            if (isoCode) {
-                newData.phoneIsoCode = isoCode;
-            }
-
             if (res.user?.fullName && !newData.dynamicFields.full_name) {
                 newData.dynamicFields.full_name = res.user.fullName;
             }
@@ -72,6 +61,33 @@ export async function applyReturningVerification(res, { setFlowState, setVisitor
             }
             if (res.user?.phone && !newData.dynamicFields.phone) {
                 newData.dynamicFields.phone = res.user.phone;
+            }
+        }
+
+        // Always resolve phoneIsoCode — never leave it undefined/empty so that
+        // the booking payload always carries a valid ISO code when a phone is
+        // present in fieldValues.  Mirrors the new-visitor /details page logic.
+        const rawIso =
+            res.phoneIsoCode ||
+            res.phone_iso_code ||
+            res.isoCode ||
+            res.iso_code ||
+            res.user?.iso_code ||
+            res.user?.isoCode ||
+            res.user?.phoneIsoCode ||
+            res.user?.phone_iso_code ||
+            "";
+        const isoCode = String(rawIso).trim().toLowerCase() || null;
+
+        if (isoCode) {
+            newData.phoneIsoCode = isoCode;
+        } else {
+            const phone = newData.phone || "";
+            if (phone.startsWith("+")) {
+                const match = COUNTRY_CODES.find((cc) => phone.startsWith(cc.code));
+                newData.phoneIsoCode = match ? match.isoCode : DEFAULT_ISO_CODE;
+            } else {
+                newData.phoneIsoCode = DEFAULT_ISO_CODE;
             }
         }
 
