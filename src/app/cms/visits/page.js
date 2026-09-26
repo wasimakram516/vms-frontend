@@ -49,6 +49,7 @@ import { useMessage } from "@/contexts/MessageContext";
 import { useSocket } from "@/contexts/SocketContext";
 import { useAuth } from "@/contexts/AuthContext";
 import useI18nLayout from "@/hooks/useI18nLayout";
+import useDebouncedValue from "@/hooks/useDebouncedValue";
 import registrationTranslations from "@/locales/registration";
 import { pdf, Document } from "@react-pdf/renderer";
 import QRCode from "qrcode";
@@ -73,7 +74,6 @@ import {
   getEligibleVisitors,
   adminCreateVisits,
   checkNdaValidity,
-  mapRegistration,
 } from "@/services/registrationService";
 import { getWorkingHours } from "@/services/hostService";
 import { getAccessLevels } from "@/services/accessLevelService";
@@ -89,7 +89,12 @@ import {
   convert12To24,
 } from "@/utils/dateUtils";
 import { getKitchenOrdersForRegistration as getKitchenOrders } from "@/services/kitchenService";
-import { validateRequired } from "@/utils/validationUtils";
+import {
+  firstError,
+  validateCustomFieldValues,
+  validateRequired,
+} from "@/utils/validationUtils";
+import { validateSafeText } from "@/utils/safeText";
 import { countPastVisits, resolvePastVisitBreakdown } from "@/utils/visitCount";
 import { formatActorLabel } from "@/utils/actorLabel";
 import { getRegistrationDisplayName, getRegistrationDisplayInitial } from "@/utils/registrationDisplay";
@@ -113,6 +118,49 @@ import ClickableVisitorName from "@/components/visitors/ClickableVisitorName";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
 import { workingHoursToUserLocal, userTimeZone, rollOvernightEnd } from "@/utils/premiseTime";
+
+/** Convert the time filter UI state to an HH:mm value for the API. */
+const to24HourFilter = (filter) => {
+  if (!filter?.enabled || !filter.hour12) return undefined;
+  let hour = Number.parseInt(filter.hour12, 10);
+  if (!Number.isInteger(hour) || hour < 1 || hour > 12) return undefined;
+  if (filter.ampm === "PM" && hour < 12) hour += 12;
+  if (filter.ampm === "AM" && hour === 12) hour = 0;
+  const minute = Number.parseInt(filter.minute, 10) || 0;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+};
+
+/** Resolve a visit-created date preset into API date boundaries. */
+const getVisitDateRange = (preset, customFrom, customTo) => {
+  if (preset === "custom") {
+    return {
+      from: customFrom ? dayjs(customFrom).format("YYYY-MM-DD") : null,
+      to: customTo ? dayjs(customTo).format("YYYY-MM-DD") : null,
+    };
+  }
+  const now = dayjs();
+  switch (preset) {
+    case "today":
+      return { from: now.format("YYYY-MM-DD"), to: now.format("YYYY-MM-DD") };
+    case "week":
+      return {
+        from: now.startOf("week").format("YYYY-MM-DD"),
+        to: now.endOf("week").format("YYYY-MM-DD"),
+      };
+    case "month":
+      return {
+        from: now.startOf("month").format("YYYY-MM-DD"),
+        to: now.endOf("month").format("YYYY-MM-DD"),
+      };
+    case "year":
+      return {
+        from: now.startOf("year").format("YYYY-MM-DD"),
+        to: now.endOf("year").format("YYYY-MM-DD"),
+      };
+    default:
+      return { from: null, to: null };
+  }
+};
 
 // Format a working-hours boundary as a readable 12-hour AM/PM string (e.g. "8:00 AM").
 const fmtHour12 = (h24, min = 0) => {
@@ -762,8 +810,9 @@ export default function CmsVisitsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const visitsRequestRef = useRef(null);
 
   // ── Filters ──
   const [statusFilter, setStatusFilter] = useState("all");
@@ -954,25 +1003,67 @@ export default function CmsVisitsPage() {
   const fetchVisits = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     else setIsListRefreshing(true);
+    visitsRequestRef.current?.abort();
+    const controller = new AbortController();
+    visitsRequestRef.current = controller;
     try {
-      const BATCH_SIZE = 50;
-      const result = await getRegistrations(null, {}, undefined, { page: 1, limit: BATCH_SIZE });
+      const createdRange = getVisitDateRange(
+        datePreset,
+        customFrom,
+        customTo,
+      );
+      const result = await getRegistrations(
+        statusFilter === "all" ? null : statusFilter,
+        createdRange,
+        undefined,
+        {
+          page: page + 1,
+          limit: rowsPerPage,
+          search: debouncedSearch || undefined,
+          signal: controller.signal,
+          vipFastTrackOnly,
+          groupMeetingOnly,
+          requestedDateFrom: requestDateFrom || undefined,
+          requestedDateTo: requestDateTo || undefined,
+          requestedTime: to24HourFilter(requestTimeFilter),
+          approvedDateFrom: approvedDateFrom || undefined,
+          approvedDateTo: approvedDateTo || undefined,
+          approvedTime: to24HourFilter(approvedTimeFilter),
+        },
+      );
+      if (controller.signal.aborted || result?.error) return;
       setRows(result.data || []);
       setTotalCount(result.total || 0);
-      if (result.total > BATCH_SIZE) {
-        setIsStreaming(true);
-      }
       if (!quiet) setHasLoadedOnce(true);
     } catch {
       if (!quiet) setHasLoadedOnce(true);
     } finally {
-      setLoading(false);
-      setIsListRefreshing(false);
+      if (visitsRequestRef.current === controller) {
+        setLoading(false);
+        setIsListRefreshing(false);
+      }
     }
-  }, []);
+  }, [
+    approvedDateFrom,
+    approvedDateTo,
+    approvedTimeFilter,
+    customFrom,
+    customTo,
+    datePreset,
+    debouncedSearch,
+    groupMeetingOnly,
+    page,
+    requestDateFrom,
+    requestDateTo,
+    requestTimeFilter,
+    rowsPerPage,
+    statusFilter,
+    vipFastTrackOnly,
+  ]);
 
   useEffect(() => {
     fetchVisits();
+    return () => visitsRequestRef.current?.abort();
   }, [fetchVisits]);
 
   // ── Load configs ──
@@ -1010,31 +1101,14 @@ export default function CmsVisitsPage() {
     handleOpenProfile({ id: deepVisitId });
   }, [deepVisitId]);
   useEffect(() => {
-    const unsubNew = on("registration:new", (newReg) => {
-      if (!newReg?.id) {
-        fetchVisits(true);
-        return;
-      }
-      const mapped = mapRegistration(newReg);
-      setRows((prev) => {
-        const exists = prev.some((r) => r.id === mapped.id);
-        if (exists) return prev;
-        return [mapped, ...prev];
-      });
-    });
+    const unsubNew = on("registration:new", () => fetchVisits(true));
 
     const unsubUpdated = on("registration:updated", (updatedReg) => {
       if (!updatedReg?.id) return;
-      const mapped = mapRegistration(updatedReg);
-      setRows((prev) =>
-        prev.map((r) => (r.id === mapped.id ? { ...r, ...mapped } : r)),
-      );
-      if (selected?.id === mapped.id) {
-        setSelected((prev) => (prev ? { ...prev, ...mapped } : prev));
-      }
+      fetchVisits(true);
       // Refresh activity logs if the timeline modal is open for this registration
-      if (timelineVisitIdRef.current === mapped.id) {
-        getRegistrationActivityLogs(mapped.id).then((logs) => {
+      if (timelineVisitIdRef.current === updatedReg.id) {
+        getRegistrationActivityLogs(updatedReg.id).then((logs) => {
           setTimelineLogs(Array.isArray(logs) ? logs : []);
         });
       }
@@ -1057,25 +1131,10 @@ export default function CmsVisitsPage() {
       }
     });
 
-    const unsubProgress = on("registrations:progress", (payload) => {
-      if (payload.data?.length) {
-        const mapped = payload.data.map(mapRegistration);
-        setRows((prev) => {
-          const existing = new Set(prev.map((r) => r.id));
-          const fresh = mapped.filter((r) => !existing.has(r.id));
-          return fresh.length ? [...prev, ...fresh] : prev;
-        });
-      }
-      if (payload.loaded >= payload.total) {
-        setIsStreaming(false);
-      }
-    });
-
     return () => {
       unsubNew?.();
       unsubUpdated?.();
       unsubOverstay?.();
-      unsubProgress?.();
     };
   }, [on, fetchVisits, selected?.id]);
 
@@ -1263,10 +1322,7 @@ export default function CmsVisitsPage() {
     approvedTimeFilter,
   ]);
 
-  const pagedRows = useMemo(() => {
-    const start = page * rowsPerPage;
-    return filtered.slice(start, start + rowsPerPage);
-  }, [filtered, page, rowsPerPage]);
+  const pagedRows = filtered;
 
   const activeFiltersCount =
     (statusFilter !== "all" ? 1 : 0) +
@@ -2156,6 +2212,15 @@ export default function CmsVisitsPage() {
       dayjs(editForm.scheduleFrom).isAfter(dayjs(editForm.scheduleTo))
     ) {
       showMessage("From date & time must be before the To date & time", "error");
+      return;
+    }
+    const textError =
+      firstError(validateCustomFieldValues(activeCustomFields, editForm.fieldValues)) ||
+      validateSafeText(editForm.meetingName, "Meeting name", 100) ||
+      validateSafeText(editForm.vehiclePlate, "Vehicle plate", 20) ||
+      validateSafeText(editForm.vipReason, "VIP reason", 500);
+    if (textError) {
+      showMessage(textError, "error");
       return;
     }
     setSubmitting(true);
@@ -3239,7 +3304,7 @@ export default function CmsVisitsPage() {
 
         <ListToolbar
           showingCount={pagedRows.length}
-          totalCount={totalCount || filtered.length}
+          totalCount={totalCount}
           searchSlot={
             <TextField
               fullWidth
@@ -3962,10 +4027,10 @@ export default function CmsVisitsPage() {
           </ResponsiveCardGrid>
         )}
 
-        {filtered.length > rowsPerPage && (
+        {totalCount > rowsPerPage && (
           <Box display="flex" justifyContent="center" mt={4}>
             <Pagination
-              count={Math.ceil(filtered.length / rowsPerPage)}
+              count={Math.ceil(totalCount / rowsPerPage)}
               page={page + 1}
               onChange={(e, v) => setPage(v - 1)}
               color="primary"

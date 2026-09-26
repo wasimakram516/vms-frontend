@@ -29,18 +29,18 @@ import {
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
 import { getFields } from "@/services/registrationService";
-import { getDepartments } from "@/services/departmentService";
+import { getPublicDepartments } from "@/services/departmentService";
 import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import CountryPicker from "@/components/CountryPicker";
-import RichTextEditor from "@/components/RichTextEditor";
 import LoadingState from "@/components/LoadingState";
 import NoDataAvailable from "@/components/NoDataAvailable";
 import NdaTemplateContent from "@/components/NdaTemplateContent";
 import { DEFAULT_ISO_CODE, getCountryCodeByIsoCode, DEFAULT_COUNTRY_CODE, COUNTRY_CODES } from "@/utils/countryCodes";
 import { validateField } from "@/utils/validationUtils";
+import { FIELD_MAX_LENGTHS, htmlToPlainText } from "@/utils/safeText";
 import useI18nLayout from "@/hooks/useI18nLayout";
 import registrationTranslations from "@/locales/registration";
 import { filterPhoneInput, filterNumberInput, onKeyPressNumeric, onKeyPressPhone } from "@/utils/phoneUtils";
@@ -119,7 +119,7 @@ export default function DetailsPage() {
   }, [visitorData.phoneIsoCode]);
 
   useEffect(() => {
-    getDepartments(true).then((res) => {
+    getPublicDepartments().then((res) => {
       if (!Array.isArray(res)) return;
       setDepartments(res);
       // Pre-fetch Arabic names so the toggle is instant
@@ -406,6 +406,11 @@ export default function DetailsPage() {
       const inputType = (f.input_type || f.inputType || "text").toLowerCase();
       const val = processedFields[fieldKey];
 
+      // Older textarea values were saved as rich-text HTML; submit plain text.
+      if (inputType === "textarea" && val) {
+        processedFields[fieldKey] = htmlToPlainText(val);
+      }
+
       if (inputType === "phone" && val) {
         const isoCode = visitorData.countryIsoCodes?.[fieldKey] || DEFAULT_ISO_CODE;
         const country = getCountryCodeByIsoCode(isoCode);
@@ -627,10 +632,15 @@ export default function DetailsPage() {
                       <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: error ? "error.main" : "text.secondary" }}>
                         {getFieldLabel(f)} {isRequired && "*"}
                       </Typography>
-                      <RichTextEditor
-                        value={val}
-                        onChange={(html) => handleFieldChange(fieldKey, html)}
+                      <TextField
+                        fullWidth
+                        multiline
+                        minRows={3}
+                        value={htmlToPlainText(val) || ""}
+                        onChange={(e) => handleFieldChange(fieldKey, e.target.value)}
                         placeholder={getFieldLabel(f)}
+                        error={Boolean(error)}
+                        inputProps={{ maxLength: FIELD_MAX_LENGTHS.textarea }}
                       />
                       {error && <FormHelperText error>{error}</FormHelperText>}
                     </Box>
@@ -659,30 +669,6 @@ export default function DetailsPage() {
                       helperText={error}
                       lang={isRtl ? "ar" : "en"}
                     />
-                  );
-                }
-
-                if (inputType === "file") {
-                  return (
-                    <Box key={f.id || fieldKey}>
-                      <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: error ? "error.main" : "text.secondary" }}>
-                        {getFieldLabel(f)} {isRequired && "*"}
-                      </Typography>
-                      <TextField
-                        fullWidth
-                        type="file"
-                        onChange={(e) => handleFieldChange(fieldKey, e.target.files[0])}
-                        error={Boolean(error)}
-                        helperText={error}
-                        size="medium"
-                        inputProps={{ accept: "*/*" }}
-                        sx={{
-                          "& .MuiOutlinedInput-root": {
-                            borderRadius: 30,
-                          },
-                        }}
-                      />
-                    </Box>
                   );
                 }
 

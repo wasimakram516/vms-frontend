@@ -34,8 +34,14 @@ export const mapUserToFrontend = (user) => ({
   companyName: user.companyName || user.company_name || null,
 });
 
-export const getAllUsers = withApiHandler(async (role, { page, limit, search } = {}) => {
-  const res = await api.get("/users", { params: { role, page, limit, search } });
+export const getAllUsers = withApiHandler(async (
+  role,
+  { page, limit, search, staffType, adminType, signal } = {},
+) => {
+  const res = await api.get("/users", {
+    params: { role, page, limit, search, staffType, adminType },
+    signal,
+  });
   const raw = res.data?.data || res.data || {};
   if (Array.isArray(raw)) {
     const mapped = raw.map(mapUserToFrontend);
@@ -45,8 +51,11 @@ export const getAllUsers = withApiHandler(async (role, { page, limit, search } =
   return { data: { data: items, total: raw.total || 0, page: raw.page || 1, limit: raw.limit || 50 } };
 });
 
-export const getVisitorUsers = withApiHandler(async ({ page, limit, search } = {}) => {
-  const res = await api.get("/users/for-visitors", { params: { page, limit, search } });
+export const getVisitorUsers = withApiHandler(async ({ page, limit, search, signal } = {}) => {
+  const res = await api.get("/users/for-visitors", {
+    params: { page, limit, search },
+    signal,
+  });
   const raw = res.data?.data || res.data || {};
   if (Array.isArray(raw)) {
     const mapped = raw.map(mapUserToFrontend);

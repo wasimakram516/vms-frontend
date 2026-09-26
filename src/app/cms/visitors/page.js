@@ -39,7 +39,12 @@ import { useSocket } from "@/contexts/SocketContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import CountryPicker from "@/components/CountryPicker";
-import { isPhoneField } from "@/utils/validationUtils";
+import {
+  firstError,
+  isPhoneField,
+  validateCustomFieldValues,
+} from "@/utils/validationUtils";
+import { validateSafeText } from "@/utils/safeText";
 import {
   formatPhoneNumberForDisplay,
   DEFAULT_ISO_CODE,
@@ -66,7 +71,7 @@ import {
   pickIdType,
   pickCountry,
 } from "@/utils/customFieldUtils";
-import { getVisitorUsers, getVisitorUserById, updateVisitorUser, createVisitorUser, mapUserToFrontend } from "@/services/userService";
+import { getVisitorUsers, getVisitorUserById, updateVisitorUser, createVisitorUser } from "@/services/userService";
 import {
   getRegistrations,
   getRegistrationActivityLogs,
@@ -79,8 +84,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
 import { validatePhone } from "@/utils/validationUtils";
-import { visitorMatchesQuery } from "@/utils/visitorSearch";
 import { formatActorLabel } from "@/utils/actorLabel";
+import useDebouncedValue from "@/hooks/useDebouncedValue";
 
 const STATUS_CONFIG = {
   pending: {
@@ -264,11 +269,12 @@ export default function VisitorsPage() {
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isListRefreshing, setIsListRefreshing] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(12);
   const [totalCount, setTotalCount] = useState(0);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const visitorsRequestRef = useRef(null);
 
   const [selected, setSelected] = useState(null);
   const [editModal, setEditModal] = useState(null);
@@ -329,25 +335,33 @@ export default function VisitorsPage() {
   const fetchVisitors = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     else setIsListRefreshing(true);
+    visitorsRequestRef.current?.abort();
+    const controller = new AbortController();
+    visitorsRequestRef.current = controller;
     try {
-      const BATCH_SIZE = 50;
-      const result = await getVisitorUsers({ page: 1, limit: BATCH_SIZE });
+      const result = await getVisitorUsers({
+        page,
+        limit: rowsPerPage,
+        search: debouncedSearch || undefined,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || result?.error) return;
       setAllRows(result.data || []);
       setTotalCount(result.total || 0);
-      if (result.total > BATCH_SIZE) {
-        setIsStreaming(true);
-      }
       if (!quiet) setHasLoadedOnce(true);
     } catch {
       if (!quiet) setHasLoadedOnce(true);
     } finally {
-      setLoading(false);
-      setIsListRefreshing(false);
+      if (visitorsRequestRef.current === controller) {
+        setLoading(false);
+        setIsListRefreshing(false);
+      }
     }
-  }, []);
+  }, [debouncedSearch, page, rowsPerPage]);
 
   useEffect(() => {
     fetchVisitors();
+    return () => visitorsRequestRef.current?.abort();
   }, [fetchVisitors]);
 
   useEffect(() => {
@@ -495,64 +509,18 @@ export default function VisitorsPage() {
 
   // ── Socket progressive loading ──
   useEffect(() => {
-    const unsub = on("visitors:progress", (payload) => {
-      if (payload.data?.length) {
-        const mapped = payload.data.map(mapUserToFrontend);
-        setAllRows((prev) => {
-          const existing = new Set(prev.map((v) => v.id));
-          const fresh = mapped.filter((v) => !existing.has(v.id));
-          return fresh.length ? [...prev, ...fresh] : prev;
-        });
-      }
-      if (payload.loaded >= payload.total) {
-        setIsStreaming(false);
-      }
-    });
-    return unsub;
-  }, [on]);
-
-  useEffect(() => {
-    const unsubNew = on("visitor:new", (newVisitor) => {
-      if (!newVisitor?.id) {
-        fetchVisitors({ silent: true });
-        return;
-      }
-      setAllRows((prev) => {
-        const exists = prev.some((v) => v.id === newVisitor.id);
-        if (exists) return prev;
-        return [newVisitor, ...prev];
-      });
-    });
-
-    const unsubUpdated = on("visitor:updated", (updatedVisitor) => {
-      if (!updatedVisitor?.id) return;
-      setAllRows((prev) =>
-        prev.map((v) =>
-          v.id === updatedVisitor.id ? { ...v, ...updatedVisitor } : v,
-        ),
-      );
-      if (selected?.id === updatedVisitor.id) {
-        setSelected((prev) => (prev ? { ...prev, ...updatedVisitor } : prev));
-      }
-    });
+    const refresh = () => fetchVisitors(true);
+    const unsubNew = on("visitor:new", refresh);
+    const unsubUpdated = on("visitor:updated", refresh);
 
     return () => {
       unsubNew?.();
       unsubUpdated?.();
     };
-  }, [on, fetchVisitors, selected?.id]);
+  }, [on, fetchVisitors]);
 
-  const filtered = useMemo(
-    () => allRows.filter((v) => visitorMatchesQuery(v, search)),
-    [allRows, search],
-  );
-
-  const pagedRows = useMemo(() => {
-    const start = (page - 1) * rowsPerPage;
-    return filtered.slice(start, start + rowsPerPage);
-  }, [filtered, page, rowsPerPage]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
+  const pagedRows = allRows;
+  const totalPages = Math.max(1, Math.ceil(totalCount / rowsPerPage));
 
   const handleOpenDetail = (visitor) => {
     setSelected(visitor);
@@ -670,6 +638,13 @@ export default function VisitorsPage() {
     const activePhoneErrors = Object.values(phoneErrors).filter(Boolean);
     if (activePhoneErrors.length > 0) {
       showMessage("Please fix invalid phone numbers before saving.", "warning");
+      return;
+    }
+    const textError =
+      validateSafeText(editForm.fullName, "Full name", 200) ||
+      firstError(validateCustomFieldValues(activeCustomFields, editForm.fieldValues));
+    if (textError) {
+      showMessage(textError, "error");
       return;
     }
     setSubmitting(true);
@@ -874,7 +849,7 @@ export default function VisitorsPage() {
 
         <ListToolbar
           showingCount={pagedRows.length}
-          totalCount={totalCount || filtered.length}
+          totalCount={totalCount}
           searchSlot={
             <TextField
               fullWidth
@@ -1178,7 +1153,7 @@ export default function VisitorsPage() {
           ))}
         </ResponsiveCardGrid>
 
-        {filtered.length === 0 && !loading && (
+        {pagedRows.length === 0 && !loading && (
           <NoDataAvailable
             message={
               search ? "No visitors match your search" : "No visitors found"

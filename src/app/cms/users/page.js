@@ -46,7 +46,6 @@ import {
   createAdminUser,
   createSuperAdminUser,
   assignUserDepartments,
-  mapUserToFrontend,
 } from "@/services/userService";
 import { getDepartments } from "@/services/departmentService";
 import { getRolePagePermissions, getUserPageOverrides, setUserPageOverrides } from "@/services/permissionService";
@@ -63,8 +62,9 @@ import RecordMetadata from "@/components/RecordMetadata";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
-import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay, phoneMatchesQuery } from "@/utils/countryCodes";
+import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay } from "@/utils/countryCodes";
 import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
+import useDebouncedValue from "@/hooks/useDebouncedValue";
 
 const CREATABLE_ROLES = ["superadmin", "admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
@@ -112,8 +112,9 @@ export default function UsersPage() {
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(12);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
+  const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300);
+  const usersRequestRef = useRef(null);
 
   const defaultForm = {
     full_name: "",
@@ -165,33 +166,7 @@ export default function UsersPage() {
       .filter((item) => item.overrides.length > 0);
   }
 
-  useEffect(() => {
-    fetchUsers();
-    getDepartments().then((res) => {
-      if (Array.isArray(res)) setAllDepartments(res);
-    });
-  }, []);
-
   // ── Socket progressive loading ──
-  useEffect(() => {
-    if (!socket) return;
-    const handler = (payload) => {
-      if (payload.data?.length) {
-        const mapped = payload.data.map(mapUserToFrontend);
-        setUsers((prev) => {
-          const existing = new Set(prev.map((u) => u.id));
-          const fresh = mapped.filter((u) => !existing.has(u.id));
-          return fresh.length ? [...prev, ...fresh] : prev;
-        });
-      }
-      if (payload.loaded >= payload.total) {
-        setIsStreaming(false);
-      }
-    };
-    socket.on("visitors:progress", handler);
-    return () => socket.off("visitors:progress", handler);
-  }, [socket]);
-
   // Load base role page permissions whenever the create form's role/type changes
   useEffect(() => {
     if (isEditMode) return;
@@ -251,20 +226,54 @@ export default function UsersPage() {
     };
   }, [socket, isEditMode, selectedUserId, form.role, form.staff_type, form.adminType]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
+    usersRequestRef.current?.abort();
+    const controller = new AbortController();
+    usersRequestRef.current = controller;
     try {
-      const BATCH_SIZE = 50;
-      const result = await getAllUsers(undefined, { page: 1, limit: BATCH_SIZE });
+      const result = await getAllUsers(
+        roleFilter === "all" ? undefined : roleFilter,
+        {
+          page: page + 1,
+          limit: rowsPerPage,
+          search: debouncedSearch || undefined,
+          staffType:
+            roleFilter === "staff" && staffTypeFilter !== "all"
+              ? staffTypeFilter
+              : undefined,
+          adminType:
+            roleFilter === "admin" && adminTypeFilter !== "all"
+              ? adminTypeFilter
+              : undefined,
+          signal: controller.signal,
+        },
+      );
+      if (controller.signal.aborted || result?.error) return;
       setUsers(result.data || []);
       setTotalCount(result.total || 0);
-      if (result.total > BATCH_SIZE) {
-        setIsStreaming(true);
-      }
     } finally {
-      setLoading(false);
+      if (usersRequestRef.current === controller) setLoading(false);
     }
-  };
+  }, [
+    adminTypeFilter,
+    debouncedSearch,
+    page,
+    roleFilter,
+    rowsPerPage,
+    staffTypeFilter,
+  ]);
+
+  useEffect(() => {
+    fetchUsers();
+    return () => usersRequestRef.current?.abort();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    getDepartments().then((res) => {
+      if (Array.isArray(res)) setAllDepartments(res);
+    });
+  }, []);
 
   const handleOpenCreate = () => {
     setForm(defaultForm);
@@ -345,7 +354,7 @@ export default function UsersPage() {
     if (emailError) newErrors.email = emailError;
 
     if (!isEditMode) {
-      const passwordError = validateField({ label: "Password", required: true }, form.password);
+      const passwordError = validateField({ label: "Password", required: true, inputType: "password" }, form.password);
       if (passwordError) newErrors.password = passwordError;
     }
 
@@ -440,23 +449,7 @@ export default function UsersPage() {
   const filteredUsers = useMemo(() => {
     if (!Array.isArray(users)) return [];
     const filtered = users.filter((u) => {
-      if (u.role === "dev") return false;
-      const matchSearch =
-        (u.full_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.email ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        phoneMatchesQuery(u.phone, searchQuery, u.iso_code) ||
-        (u.idNo != null && String(u.idNo).toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchRole = roleFilter === "all" || u.role === roleFilter;
-      const matchStaffType =
-        roleFilter !== "staff" || 
-        staffTypeFilter === "all" || 
-        (u.staff_type && u.staff_type === staffTypeFilter);
-      const matchAdminType =
-        roleFilter !== "admin" ||
-        adminTypeFilter === "all" ||
-        (u.adminType && u.adminType === adminTypeFilter) ||
-        (!u.adminType && adminTypeFilter === "departmental"); // fallback for old records
-      return matchSearch && matchRole && matchStaffType && matchAdminType;
+      return u.role !== "dev";
     });
 
     // Sort by role order: superadmin, admin, staff, visitor
@@ -481,14 +474,11 @@ export default function UsersPage() {
       
       return aOrder - bOrder;
     });
-  }, [users, searchQuery, roleFilter, staffTypeFilter, adminTypeFilter]);
+  }, [users]);
 
   const pagedUsers = useMemo(() => {
-    return filteredUsers.slice(
-      page * rowsPerPage,
-      page * rowsPerPage + rowsPerPage,
-    );
-  }, [filteredUsers, page, rowsPerPage]);
+    return filteredUsers;
+  }, [filteredUsers]);
 
   const pagedGroupedUsers = useMemo(() => {
     const groups = {
@@ -608,7 +598,7 @@ export default function UsersPage() {
 
       <ListToolbar
         showingCount={pagedUsers.length}
-        totalCount={totalCount || filteredUsers.length}
+        totalCount={totalCount}
         searchSlot={
           <TextField
             fullWidth
@@ -1105,9 +1095,9 @@ export default function UsersPage() {
       )}
 
       <Box display="flex" justifyContent="center" mt={4}>
-        {filteredUsers.length > rowsPerPage && (
+        {totalCount > rowsPerPage && (
           <Pagination
-            count={Math.ceil(filteredUsers.length / rowsPerPage)}
+            count={Math.ceil(totalCount / rowsPerPage)}
             page={page + 1}
             onChange={(e, v) => setPage(v - 1)}
             color="primary"
