@@ -1,6 +1,7 @@
 ﻿import api from "./api";
 import axios from "axios";
 import withApiHandler from "@/utils/withApiHandler";
+import { showGlobalMessage } from "@/contexts/MessageContext";
 import {
   getStoredToken,
   getStoredUser,
@@ -98,6 +99,34 @@ export const verifyPassword = withApiHandler(
   },
   { silent: true },
 );
+
+// SuperAdmin only. Immediately revokes every refresh session for one account
+// and force-disconnects any live socket connection it currently holds.
+// Feedback is shaped by the actual result rather than a blanket success
+// toast: revoking an account that already had no active session is a no-op
+// on the backend (and never creates an audit entry for it), so the admin
+// should be told that plainly instead of hearing "Session revoked" for
+// something that didn't happen.
+export const revokeUserSessions = withApiHandler(async (userId) => {
+  const res = await api.post(`/auth/sessions/revoke/${userId}`);
+  const result = res.data?.data || res.data;
+  const count = Number(result?.revokedSessionCount) || 0;
+  showGlobalMessage(
+    count > 0
+      ? `Session revoked — ${count} active session${count === 1 ? "" : "s"} ended.`
+      : "No active session found for this account — nothing to revoke.",
+    count > 0 ? "success" : "info",
+  );
+  return result;
+});
+
+// SuperAdmin only. One row per account that currently holds a live,
+// non-revoked session — used to show who is logged in and let a SuperAdmin
+// end their session.
+export const getActiveSessions = withApiHandler(async () => {
+  const res = await api.get("/auth/sessions/active");
+  return res.data?.data || res.data || [];
+});
 
 // Re-fetch /auth/me to get fresh permissions.
 // Call this on app mount and after any permission assignment.
