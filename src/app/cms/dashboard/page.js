@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Box,
   Paper,
@@ -20,7 +20,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { motion } from "framer-motion";
 import { BarChart, PieChart } from "@mui/x-charts";
-import { io } from "socket.io-client";
 import ICONS from "@/utils/iconUtil";
 import AppCard from "@/components/cards/AppCard";
 import LiveVisitorsCard from "@/components/dashboard/LiveVisitorsCard";
@@ -28,10 +27,7 @@ import ExportDialog from "@/components/dashboard/ExportDialog";
 import { getDashboardStats } from "@/services/dashboardService";
 import { ACTIVITY_LABELS, ACTIVITY_STATUS, getActivityIcon } from "@/utils/activityMeta";
 import { canAccessResource } from "@/utils/permissions";
-
-const SOCKET_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
-  "http://localhost:4000";
+import { useSocket } from "@/contexts/SocketContext";
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -81,7 +77,7 @@ export default function CmsDashboardPage() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [period, setPeriod] = useState("today"); // "today" | "week" | "month" | "year" | "all"
-  const socketRef = useRef(null);
+  const { on } = useSocket();
   const canViewActivity = canAccessResource(user, "activity", { hardcodeAllowed: true });
 
   useEffect(() => {
@@ -118,17 +114,15 @@ export default function CmsDashboardPage() {
 
   // Refresh on any registration socket event
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
-    socketRef.current = socket;
-
     const refresh = () => fetchStats(period, { silent: true });
-    socket.on("registration:new", refresh);
-    socket.on("registration:updated", refresh);
-    socket.on("dashboard:live-update", refresh);
-    socket.on("dashboard:stats-update", refresh);
-
-    return () => socket.disconnect();
-  }, [fetchStats, period]);
+    const unsubscribe = [
+      on("registration:new", refresh),
+      on("registration:updated", refresh),
+      on("dashboard:live-update", refresh),
+      on("dashboard:stats-update", refresh),
+    ];
+    return () => unsubscribe.forEach((off) => off?.());
+  }, [fetchStats, on, period]);
 
   // Build stat cards from live data
   const statCards = [

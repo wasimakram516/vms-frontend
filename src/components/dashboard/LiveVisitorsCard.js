@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -13,13 +13,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import OpenInFullIcon from "@mui/icons-material/OpenInFull";
-import { io } from "socket.io-client";
 import AppCard from "@/components/cards/AppCard";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { getLiveVisitors } from "@/services/dashboardService";
 import LiveVisitorsModal from "./LiveVisitorsModal";
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:4000";
+import { useSocket } from "@/contexts/SocketContext";
 
 export default function LiveVisitorsCard() {
   const { mode } = useColorMode();
@@ -29,7 +27,7 @@ export default function LiveVisitorsCard() {
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const socketRef = useRef(null);
+  const { on } = useSocket();
 
   const fetchLive = useCallback(async ({ silent = false } = {}) => {
     const showInitialLoading = !hasLoadedOnce && !silent;
@@ -50,17 +48,10 @@ export default function LiveVisitorsCard() {
 
   // Socket subscription 
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
-    socketRef.current = socket;
-
-    socket.on("dashboard:live-update", () => {
+    return on("dashboard:live-update", () => {
       fetchLive({ silent: true });
     });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [fetchLive]);
+  }, [fetchLive, on]);
 
   const total = data?.total ?? 0;
 

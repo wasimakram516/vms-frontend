@@ -220,11 +220,7 @@ function OrderingContent() {
 
     const unsubUpdate = on("registration:updated", (updatedReg) => {
       if (!updatedReg?.id) return;
-      const mappedReg = mapRegistration(updatedReg);
-      setResList((prev) => {
-        const updated = prev.map((r) => (r.id === mappedReg.id ? mappedReg : r)).filter((r) => r?.status === "checked_in");
-        return updated.length > 0 ? updated : prev.filter((r) => r?.status === "checked_in");
-      });
+      fetchCheckedInRegistrations({ silent: true });
       
       // Auto-clear selection if the selected visitor is no longer checked in
       setSelectedVisitor(prev => {
@@ -236,11 +232,8 @@ function OrderingContent() {
     });
 
     const unsubNew = on("registration:new", (newReg) => {
-      if (!newReg?.id || newReg.status !== "checked_in") return;
-      setResList((prev) => {
-        const exists = prev.some((r) => r.id === newReg.id);
-        return exists ? prev.map((r) => (r.id === newReg.id ? { ...r, ...newReg } : r)) : [newReg, ...prev];
-      });
+      if (!newReg?.id) return;
+      fetchCheckedInRegistrations({ silent: true });
     });
 
     return () => {

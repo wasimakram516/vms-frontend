@@ -40,23 +40,6 @@ export const SocketProvider = ({ children }) => {
   const isRealtimeRoute =
     pathname?.startsWith("/cms") || pathname?.startsWith("/staff");
 
-  const canSeeNewRegistration = (registration, user) => {
-    if (user?.role === "superadmin") return true;
-    if (user?.role !== "admin") return false;
-
-    const registrationDepartmentId =
-      registration?.departmentId ||
-      registration?.department_id ||
-      registration?.department?.id;
-    if (!registrationDepartmentId) return false;
-
-    const departmentIds = Array.isArray(user?.departments)
-      ? user.departments.map((dept) => dept.id).filter(Boolean)
-      : [];
-
-    return departmentIds.includes(registrationDepartmentId);
-  };
-
   const shouldNotifyFinalApproval = (registration, user) => {
     if (user?.role !== "superadmin") return false;
     if (registration?.status !== "admin_approved") return false;
@@ -74,11 +57,9 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     const syncToken = () => setStoredToken(AuthStorage.getStoredToken());
 
-    window.addEventListener("storage", syncToken);
     window.addEventListener("auth-storage-changed", syncToken);
 
     return () => {
-      window.removeEventListener("storage", syncToken);
       window.removeEventListener("auth-storage-changed", syncToken);
     };
   }, []);
@@ -117,13 +98,8 @@ export const SocketProvider = ({ children }) => {
 
     newSocket.on("registration:new", (registration) => {
       const user = AuthStorage.getStoredUser();
-      const isAuthorized = canSeeNewRegistration(registration, user);
-
-      if (isAuthorized) {
-        showMessageRef.current?.(
-          `New registration: ${registration.user?.fullName || "Visitor"}`,
-          "success",
-        );
+      if (registration?.id && ["superadmin", "admin"].includes(user?.role)) {
+        showMessageRef.current?.("A new registration is available.", "success");
       }
     });
 
@@ -131,7 +107,7 @@ export const SocketProvider = ({ children }) => {
       const user = AuthStorage.getStoredUser();
       if (shouldNotifyFinalApproval(registration, user)) {
         showMessageRef.current?.(
-          `Dept approval received: ${registration.user?.fullName || "Visitor"} is awaiting final approval.`,
+          "A department-approved registration is awaiting final approval.",
           "info",
         );
       }

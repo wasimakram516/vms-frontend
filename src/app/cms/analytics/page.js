@@ -12,7 +12,6 @@ import {
 } from "@mui/material";
 import { useMessage } from "@/contexts/MessageContext";
 import { motion } from "framer-motion";
-import { io } from "socket.io-client";
 import { useAuth } from "@/contexts/AuthContext";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import AppCard from "@/components/cards/AppCard";
@@ -25,12 +24,9 @@ import PeakHoursSection from "./sections/PeakHoursSection";
 import FunnelSection    from "./sections/FunnelSection";
 import ApprovalSection  from "./sections/ApprovalSection";
 import DurationSection  from "./sections/DurationSection";
+import { useSocket } from "@/contexts/SocketContext";
 
 // ── Socket URL (strip /api/v1 from the API base) ─────────────────────────────
-const SOCKET_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
-  "http://localhost:4000";
-
 // ── Date helpers (local timezone) ─────────────────────────────────────────────
 function toDateStr(date) {
   const y = date.getFullYear();
@@ -108,6 +104,7 @@ export default function AnalyticsPage() {
 
 function AnalyticsContent() {
   const { showMessage } = useMessage();
+  const { on } = useSocket();
 
   // ── Date range state ────────────────────────────────────────────────────────
   const [activePreset, setActivePreset] = useState("30d");
@@ -136,12 +133,10 @@ function AnalyticsContent() {
 
   // ── Socket subscription ─────────────────────────────────────────────────────
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
-    socket.on("analytics:update", ({ trigger }) => {
+    return on("analytics:update", ({ trigger }) => {
       setLastTrigger({ type: trigger, ts: Date.now() });
     });
-    return () => socket.disconnect();
-  }, []);
+  }, [on]);
 
   // ── Preset selection ────────────────────────────────────────────────────────
   const handlePreset = useCallback((key) => {
