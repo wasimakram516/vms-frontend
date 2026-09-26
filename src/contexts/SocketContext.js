@@ -91,6 +91,26 @@ export const SocketProvider = ({ children }) => {
       setConnected(false);
     });
 
+    // The server force-closes this socket the moment the session is revoked
+    // (admin action, password change, deactivation) or the access token's
+    // own expiry is reached — the socket is never left authenticated on a
+    // stale credential. Log out immediately rather than silently retrying a
+    // connection whose token the server will keep rejecting.
+    const handleForcedDisconnect = (reason) => {
+      showMessageRef.current?.(
+        reason === "session:expired"
+          ? "Your session has expired. Please log in again."
+          : "Your session was ended by an administrator. Please log in again.",
+        "warning",
+      );
+      AuthStorage.clearStoredAuthData();
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth/login";
+      }
+    };
+    newSocket.on("session:revoked", () => handleForcedDisconnect("session:revoked"));
+    newSocket.on("session:expired", () => handleForcedDisconnect("session:expired"));
+
     newSocket.on("connect_error", (error) => {
       console.warn("Socket connection warning:", error?.message || error);
       setConnected(false);
