@@ -6,6 +6,7 @@ import {
   getStoredUser,
   setStoredAuthData,
   clearStoredAuthData,
+  runSingleRefresh,
 } from "@/utils/authStorage";
 
 const API_BASE_URL =
@@ -59,7 +60,7 @@ export const login = withApiHandler(
 
     return { token: accessToken, user };
   },
-  { showSuccess: true }
+  { showSuccess: true },
 );
 
 export const logout = async (redirectTo) => {
@@ -77,18 +78,26 @@ export const logout = async (redirectTo) => {
   }
 };
 
-export const refreshToken = withApiHandler(async () => {
-  const res = await api.post("/auth/refresh");
-  const token = res.data?.accessToken || res.data?.data?.accessToken;
-  if (token) setStoredAuthData(token, getStoredUser());
-  return token;
-}, { silent: true });
+const requestRefreshToken = withApiHandler(
+  async () => {
+    const res = await api.post("/auth/refresh");
+    const token = res.data?.accessToken || res.data?.data?.accessToken;
+    if (token) setStoredAuthData(token, getStoredUser());
+    return token;
+  },
+  { silent: true },
+);
+
+export const refreshToken = () => runSingleRefresh(requestRefreshToken);
 
 // Verify the current user's password before a sensitive action (e.g. logout).
-export const verifyPassword = withApiHandler(async (password) => {
-  const res = await api.post("/auth/verify-password", { password });
-  return res.data?.data || res.data || { valid: true };
-}, { silent: true });
+export const verifyPassword = withApiHandler(
+  async (password) => {
+    const res = await api.post("/auth/verify-password", { password });
+    return res.data?.data || res.data || { valid: true };
+  },
+  { silent: true },
+);
 
 // Re-fetch /auth/me to get fresh permissions.
 // Call this on app mount and after any permission assignment.
@@ -110,4 +119,3 @@ export const refreshUser = async () => {
     return null;
   }
 };
-
