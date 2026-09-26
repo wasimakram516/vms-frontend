@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import {
   Box,
+  Button,
   Chip,
   Dialog,
+  DialogActions,
   DialogContent,
   Divider,
   Stack,
@@ -14,8 +17,16 @@ import ICONS from "@/utils/iconUtil";
 import { getActivityDisplayLabel } from "@/utils/activityMeta";
 import { parseUserAgent } from "@/utils/userAgent";
 import DialogHeader from "@/components/modals/DialogHeader";
+import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
+import { useAuth } from "@/contexts/AuthContext";
+import { revokeUserSessions } from "@/services/authService";
 
 const AUTH_ACTIVITY_TYPES = new Set(["login", "logout"]);
+const SESSION_REVOKED_TYPE = "session_revoked";
+
+/** Convert a stored session-revocation scope code into readable text. */
+const formatRevocationScope = (scope) =>
+  scope === "privileged" ? "Privileged session revocation" : "Single account";
 
 /** Make loopback addresses explicit during local development. */
 const formatIpAddress = (ipAddress) => {
@@ -89,10 +100,34 @@ export default function ActivityDetailsDialog({
   onClose,
   detailLines = [],
 }) {
+  const { user: currentUser } = useAuth() || {};
+  const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
   const metadata = activity?.metadata ?? {};
   const isAuthenticationEvent = AUTH_ACTIVITY_TYPES.has(activity?.activityType);
+  const isSessionRevokedEvent = activity?.activityType === SESSION_REVOKED_TYPE;
   const result = metadata.result;
   const client = parseUserAgent(metadata.userAgent);
+
+  // Revoking from a historical *login* entry ends that account's current
+  // sessions, not "undoes" the specific past login — there is no per-login
+  // session to target individually, only the account's live ones.
+  const canRevokeFromThisEvent =
+    currentUser?.role === "superadmin" &&
+    activity?.activityType === "login" &&
+    result === "success" &&
+    Boolean(activity?.actorUserId) &&
+    activity.actorUserId !== currentUser?.id;
+
+  const handleConfirmRevoke = async () => {
+    const result = await revokeUserSessions(activity.actorUserId);
+    setRevokeConfirmOpen(false);
+    // The action is done — there's nothing further to review on this specific
+    // historical login entry, and the Activity Logs list already refreshes
+    // itself in real time with the new "Session Revoked" record. Leave the
+    // dialog open on failure so the SuperAdmin can see the error and retry
+    // without re-finding this same login entry.
+    if (!result?.error) onClose?.();
+  };
 
   return (
     <Dialog
@@ -165,7 +200,7 @@ export default function ActivityDetailsDialog({
             }}
           >
             <DetailField
-              label={isAuthenticationEvent ? "Account" : "Subject"}
+              label={isAuthenticationEvent || isSessionRevokedEvent ? "Account" : "Subject"}
               value={activity?.visitorName ?? "Not available"}
             />
             <DetailField label="Performed by" value={activity?.actorName} />
@@ -211,6 +246,34 @@ export default function ActivityDetailsDialog({
                   fullWidth
                 />
               </>
+            ) : isSessionRevokedEvent ? (
+              <>
+                <DetailField label="Role" value={metadata.subjectRole} />
+                <DetailField label="Revoked by" value={metadata.performedByName} />
+                <DetailField
+                  label="Scope"
+                  value={formatRevocationScope(metadata.scope)}
+                />
+                <DetailField
+                  label="Sessions ended"
+                  value={metadata.revokedSessionCount}
+                />
+                <DetailField
+                  label="Source IP address"
+                  value={formatIpAddress(metadata.ipAddress)}
+                  monospace
+                />
+                <DetailField label="Browser" value={client.browser} />
+                <DetailField
+                  label="Operating system"
+                  value={client.operatingSystem}
+                />
+                <DetailField
+                  label="Application request ID"
+                  value={metadata.requestId}
+                  monospace
+                />
+              </>
             ) : (
               detailLines.map(({ label, value }) => (
                 <DetailField key={label} label={label} value={value} />
@@ -225,6 +288,28 @@ export default function ActivityDetailsDialog({
           </Box>
         </Stack>
       </DialogContent>
+      {canRevokeFromThisEvent && (
+        <DialogActions sx={{ px: { xs: 2.5, sm: 3.5 }, py: 2 }}>
+          <Button
+            color="warning"
+            variant="outlined"
+            startIcon={<ICONS.logout fontSize="small" />}
+            onClick={() => setRevokeConfirmOpen(true)}
+          >
+            Revoke Session
+          </Button>
+        </DialogActions>
+      )}
+
+      <ConfirmationDialog
+        open={revokeConfirmOpen}
+        onClose={() => setRevokeConfirmOpen(false)}
+        onConfirm={handleConfirmRevoke}
+        title="Revoke Session"
+        message={`This will immediately end every active login for ${activity?.actorName || "this account"}, including any realtime connection already open, and require them to sign in again. Their account stays active. Continue?`}
+        confirmButtonText="Revoke Session"
+        confirmButtonIcon={<ICONS.logout fontSize="small" />}
+      />
     </Dialog>
   );
 }

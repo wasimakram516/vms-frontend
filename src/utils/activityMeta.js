@@ -31,6 +31,7 @@ export const ACTIVITY_TYPES = [
   "internal_note",
   "login",
   "logout",
+  "session_revoked",
 ];
 
 // Icon per activity type — rendered in a status-tinted tile.
@@ -62,6 +63,7 @@ export const ACTIVITY_ICONS = {
   internal_note: ICONS.description,
   login: ICONS.login,
   logout: ICONS.logout,
+  session_revoked: ICONS.lock,
 };
 
 export const getActivityIcon = (type) => ACTIVITY_ICONS[type] ?? ICONS.history;
@@ -94,6 +96,7 @@ export const ACTIVITY_LABELS = {
   internal_note: "Internal Note",
   login: "Login",
   logout: "Logout",
+  session_revoked: "Session Revoked",
 };
 
 export const ACTIVITY_STATUS = {
@@ -120,6 +123,7 @@ export const ACTIVITY_STATUS = {
   internal_note: "info",
   login: "success",
   logout: "default",
+  session_revoked: "warning",
 };
 
 export const getActivityLabel = (type) => ACTIVITY_LABELS[type] ?? type;
