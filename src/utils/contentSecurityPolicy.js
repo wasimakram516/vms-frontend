@@ -13,6 +13,20 @@ const toOrigin = (value) => {
   }
 };
 
+/**
+ * CSP `connect-src` matches by scheme: an `http(s)://` entry does not also
+ * permit a `ws(s)://` connection to that same host, even though browsers
+ * negotiate the WebSocket transport against the identical origin. Without
+ * this, every WebSocket upgrade is silently blocked by CSP itself — the
+ * socket never reports a CSP violation as its failure reason, just a generic
+ * transport error, which made this easy to miss.
+ */
+const toWebSocketVariant = (origin) => {
+  if (origin?.startsWith("https://")) return `wss://${origin.slice(8)}`;
+  if (origin?.startsWith("http://")) return `ws://${origin.slice(7)}`;
+  return null;
+};
+
 /** Normalize a comma-separated origin allowlist and discard invalid values. */
 const parseOrigins = (value) =>
   Array.from(new Set((value || "").split(",").map(toOrigin).filter(Boolean)));
@@ -36,6 +50,7 @@ export const buildContentSecurityPolicy = ({
         "'self'",
         apiOrigin,
         websocketOrigin,
+        toWebSocketVariant(websocketOrigin),
         ...trustedMediaOrigins,
         "https://fonts.gstatic.com",
         TURNSTILE_ORIGIN,

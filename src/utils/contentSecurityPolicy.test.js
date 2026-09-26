@@ -31,6 +31,47 @@ describe("buildContentSecurityPolicy", () => {
     expect(policy).toContain("upgrade-insecure-requests");
   });
 
+  it("allows the ws(s) transport for an http(s)-scheme websocket host", () => {
+    // NEXT_PUBLIC_WEBSOCKET_HOST is conventionally http(s) (it's what
+    // socket.io-client's constructor takes), but the browser's actual
+    // WebSocket upgrade connects over ws(s) — a distinct CSP connect-src
+    // scheme. Without both, the browser blocks the upgrade itself and the
+    // socket only ever reports a generic transport error, never a CSP
+    // violation, which is what made this easy to miss.
+    const httpsPolicy = buildContentSecurityPolicy({
+      nonce: "test-nonce",
+      isDevelopment: false,
+      apiUrl: "https://api.sentry.sinan.om/api/v1",
+      websocketUrl: "https://api.sentry.sinan.om",
+      mediaOrigins: "",
+    });
+    expect(httpsPolicy).toContain("https://api.sentry.sinan.om");
+    expect(httpsPolicy).toContain("wss://api.sentry.sinan.om");
+
+    const httpPolicy = buildContentSecurityPolicy({
+      nonce: "dev-nonce",
+      isDevelopment: true,
+      apiUrl: "http://localhost:4000/api/v1",
+      websocketUrl: "http://localhost:4000",
+      mediaOrigins: "",
+    });
+    expect(httpPolicy).toContain("http://localhost:4000");
+    expect(httpPolicy).toContain("ws://localhost:4000");
+  });
+
+  it("does not duplicate the origin when it is already ws(s)-scheme", () => {
+    const policy = buildContentSecurityPolicy({
+      nonce: "test-nonce",
+      isDevelopment: false,
+      apiUrl: "https://api.sentry.sinan.om/api/v1",
+      websocketUrl: "wss://api.sentry.sinan.om",
+      mediaOrigins: "",
+    });
+    expect(
+      policy.match(/wss:\/\/api\.sentry\.sinan\.om/g),
+    ).toHaveLength(1);
+  });
+
   it("permits development evaluation without weakening production", () => {
     const developmentPolicy = buildContentSecurityPolicy({
       nonce: "dev-nonce",
