@@ -15,14 +15,14 @@ export const getFields = withApiHandler(async () => {
   );
 });
 
-export const sendOtp = withApiHandler(async (target) => {
-  const { data } = await api.post("/auth/otp/send", { target });
+export const sendOtp = withApiHandler(async (target, turnstileToken) => {
+  const { data } = await api.post("/auth/otp/send", { target, turnstileToken });
   return data;
 });
 
-export const sendOtpSilently = async (target) => {
+export const sendOtpSilently = async (target, turnstileToken) => {
   try {
-    const { data } = await api.post("/auth/otp/send", { target });
+    const { data } = await api.post("/auth/otp/send", { target, turnstileToken });
     return data;
   } catch (err) {
     const message =
@@ -46,13 +46,32 @@ export const verifyOtp = withApiHandler(async (target, code) => {
   return data;
 });
 
+/** Verify the OTP bound to the HttpOnly returning-ID challenge cookie. */
+export const verifyIdChallengeOtp = withApiHandler(async (code) => {
+  const { data } = await api.post("/auth/otp/verify-id-challenge", { code });
+  if (data?.success) {
+    return { success: true, ...data.data };
+  }
+  return data;
+});
+
+/** Resend an OTP without exposing the challenge's real email target. */
+export const resendIdChallengeOtp = withApiHandler(async (turnstileToken) => {
+  const { data } = await api.post("/auth/otp/resend-id-challenge", { turnstileToken });
+  return data;
+});
+
 /**
  * Match a returning visitor by their ID custom-field values + phone number.
  * No OTP code is required — the match itself is the verification.
  * On success returns the same shape as verifyOtp (user, lastFieldValues, activeRegistration, …).
  */
-export const verifyReturningById = withApiHandler(async (fieldValues, phone) => {
-  const { data } = await api.post("/auth/otp/verify-by-id", { fieldValues, phone });
+export const verifyReturningById = withApiHandler(async (fieldValues, phone, turnstileToken) => {
+  const { data } = await api.post("/auth/otp/verify-by-id", {
+    fieldValues,
+    phone,
+    turnstileToken,
+  });
   if (data?.success) {
     return {
       success: true,
@@ -143,7 +162,25 @@ export const mapRegistration = (r) => {
   return mapped;
 };
 
-export const getRegistrations = withApiHandler(async (status = null, { from, to } = {}, userId, { page, limit, search } = {}) => {
+export const getRegistrations = withApiHandler(async (
+  status = null,
+  { from, to } = {},
+  userId,
+  {
+    page,
+    limit,
+    search,
+    signal,
+    vipFastTrackOnly,
+    groupMeetingOnly,
+    requestedDateFrom,
+    requestedDateTo,
+    requestedTime,
+    approvedDateFrom,
+    approvedDateTo,
+    approvedTime,
+  } = {},
+) => {
   const params = {};
   if (status && status !== "all") params.status = status;
   if (from) params.from = from;
@@ -152,7 +189,15 @@ export const getRegistrations = withApiHandler(async (status = null, { from, to 
   if (page) params.page = page;
   if (limit) params.limit = limit;
   if (search) params.search = search;
-  const res = await api.get("/registrations", { params });
+  if (vipFastTrackOnly) params.vipFastTrackOnly = true;
+  if (groupMeetingOnly) params.groupMeetingOnly = true;
+  if (requestedDateFrom) params.requestedDateFrom = requestedDateFrom;
+  if (requestedDateTo) params.requestedDateTo = requestedDateTo;
+  if (requestedTime) params.requestedTime = requestedTime;
+  if (approvedDateFrom) params.approvedDateFrom = approvedDateFrom;
+  if (approvedDateTo) params.approvedDateTo = approvedDateTo;
+  if (approvedTime) params.approvedTime = approvedTime;
+  const res = await api.get("/registrations", { params, signal });
   const raw = res.data?.data || res.data || {};
   const isPaginated = !!(page || limit || search);
 
@@ -233,8 +278,8 @@ export async function exportVisitorHistoryCsv(registrationId) {
   URL.revokeObjectURL(url);
 }
 
-export const checkNdaValidity = withApiHandler(async (email) => {
-  const { data } = await api.get("/nda-templates/public/validity-check", { params: { email } });
+export const checkNdaValidity = withApiHandler(async () => {
+  const { data } = await api.get("/nda-templates/public/validity-check");
   return data?.data || data;
 });
 

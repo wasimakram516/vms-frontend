@@ -97,7 +97,7 @@ const registration = {
     // OTP page
     otpMobileSubheading: "Verify Identity",
     otpHeading: "Verify Identity",
-    otpSubtitle: "We've sent a 4-digit code to",
+    otpSubtitle: "We've sent a 6-digit code to",
     otpYourDevice: "your device",
     otpVerifying: "Verifying...",
     otpVerify: "Verify",
@@ -233,7 +233,7 @@ const registration = {
     // OTP page
     otpMobileSubheading: "التحقق من الهوية",
     otpHeading: "التحقق من الهوية",
-    otpSubtitle: "أرسلنا رمزاً مكوناً من 4 أرقام إلى",
+    otpSubtitle: "أرسلنا رمزاً مكوناً من 6 أرقام إلى",
     otpYourDevice: "جهازك",
     otpVerifying: "جارٍ التحقق...",
     otpVerify: "تحقق",
