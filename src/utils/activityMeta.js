@@ -29,6 +29,8 @@ export const ACTIVITY_TYPES = [
   "visits_exported",
   "visit_history_exported",
   "internal_note",
+  "login",
+  "logout",
 ];
 
 // Icon per activity type — rendered in a status-tinted tile.
@@ -58,6 +60,8 @@ export const ACTIVITY_ICONS = {
   visits_exported: ICONS.download,
   visit_history_exported: ICONS.download,
   internal_note: ICONS.description,
+  login: ICONS.login,
+  logout: ICONS.logout,
 };
 
 export const getActivityIcon = (type) => ACTIVITY_ICONS[type] ?? ICONS.history;
@@ -88,6 +92,8 @@ export const ACTIVITY_LABELS = {
   visits_exported: "Visits Exported",
   visit_history_exported: "Visit History Exported",
   internal_note: "Internal Note",
+  login: "Login",
+  logout: "Logout",
 };
 
 export const ACTIVITY_STATUS = {
@@ -112,7 +118,20 @@ export const ACTIVITY_STATUS = {
   visits_exported: "info",
   visit_history_exported: "info",
   internal_note: "info",
+  login: "success",
+  logout: "default",
 };
 
 export const getActivityLabel = (type) => ACTIVITY_LABELS[type] ?? type;
-export const getActivityStatus = (type) => ACTIVITY_STATUS[type] ?? "default";
+
+/** Distinguish rejected login attempts while retaining one filter category. */
+export const getActivityDisplayLabel = (type, metadata) =>
+  type === "login" && metadata?.result === "failed"
+    ? "Failed Login"
+    : getActivityLabel(type);
+
+/** Resolve the palette status, including failed authentication attempts. */
+export const getActivityStatus = (type, metadata) =>
+  type === "login" && metadata?.result === "failed"
+    ? "error"
+    : (ACTIVITY_STATUS[type] ?? "default");
