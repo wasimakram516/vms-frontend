@@ -57,5 +57,8 @@ describe("TurnstileWidget", () => {
 
     view.unmount();
     expect(removeTurnstile).toHaveBeenCalledWith("widget-1");
-  }, 15_000);
+    // 30s: this test forces a fresh module import via vi.resetModules() (to
+    // pick up the stubbed env var) on every run, which is slow enough under a
+    // fully parallel CI worker load that 15s intermittently wasn't enough.
+  }, 30_000);
 });
