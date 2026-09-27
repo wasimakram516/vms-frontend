@@ -27,7 +27,7 @@ import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import ConfirmationDialog from "@/components/modals/ConfirmationDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMessage } from "@/contexts/MessageContext";
-import { getNdaForms, deleteNdaAcceptance, resendNdaToHost, resendNdaToVisitor } from "@/services/ndaAcceptanceService";
+import { getNdaForms, deleteNdaAcceptance, resendNdaToHost, resendNdaToVisitor, getNdaDownloadUrl } from "@/services/ndaAcceptanceService";
 import { formatDateTimeWithLocale } from "@/utils/dateUtils";
 import { phoneMatchesQuery } from "@/utils/countryCodes";
 
@@ -90,6 +90,20 @@ export default function NdaFormsPage() {
       showMessage(`${label} failed`, "error");
     } finally {
       setActionLoading((p) => ({ ...p, [`${id}-${action}`]: false }));
+    }
+  };
+
+  const handleDownload = async (id) => {
+    setActionLoading((p) => ({ ...p, [`${id}-download`]: true }));
+    try {
+      const res = await getNdaDownloadUrl(id);
+      const url = res?.url;
+      if (!url) throw new Error("No download URL returned");
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      showMessage("Failed to get download link", "error");
+    } finally {
+      setActionLoading((p) => ({ ...p, [`${id}-download`]: false }));
     }
   };
 
@@ -249,8 +263,8 @@ export default function NdaFormsPage() {
                           size="small"
                           variant="contained"
                           startIcon={<ICONS.download fontSize="small" />}
-                          href={form.ndaFormUrl}
-                          download
+                          onClick={() => handleDownload(form.id)}
+                          disabled={!!actionLoading[`${form.id}-download`]}
                           sx={{ borderRadius: 30, fontSize: "0.72rem" }}
                         >
                           Download
