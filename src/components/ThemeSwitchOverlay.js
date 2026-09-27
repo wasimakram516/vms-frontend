@@ -249,7 +249,7 @@ function OverlayInner({ targetMode, onMidpoint, onRequestExit }) {
       onRequestExitRef.current?.();
     }
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const isDark = targetMode === "dark";

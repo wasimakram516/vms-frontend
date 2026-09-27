@@ -275,7 +275,7 @@ export function applyLightModeToClone(clonedDoc) {
     }
 
     if (s.backdropFilter) s.backdropFilter = "none";
-    // eslint-disable-next-line dot-notation
+     
     if (s["webkitBackdropFilter"]) s["webkitBackdropFilter"] = "none";
   });
 

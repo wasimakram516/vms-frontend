@@ -194,7 +194,7 @@ export default function ReturningVisitorPage() {
     }
 
     return () => { cancelled = true; };
-  }, [allFields, isRtl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allFields, isRtl]);  
 
   // ── Compute ID subtree + phone field + full name field ──────────────────────
   const { idSubtreeFields, phoneField, fullNameField } = useMemo(() => {
