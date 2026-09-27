@@ -24,3 +24,8 @@ export const resendNdaToVisitor = withApiHandler(async (id) => {
   const res = await api.post(`/nda-templates/acceptances/${id}/resend-visitor`);
   return res.data;
 });
+
+export const getNdaDownloadUrl = withApiHandler(async (id) => {
+  const res = await api.get(`/nda-templates/acceptances/${id}/download-url`);
+  return res.data;
+});
