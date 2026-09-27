@@ -36,7 +36,12 @@ export default function DialogHeader({
         </Typography>
 
         {onClose && !disableClose ? (
-          <IconButton onClick={onClose} size="small" sx={{ flexShrink: 0 }}>
+          <IconButton
+            aria-label="Close"
+            onClick={onClose}
+            size="small"
+            sx={{ flexShrink: 0 }}
+          >
             <ICONS.close fontSize="small" />
           </IconButton>
         ) : null}

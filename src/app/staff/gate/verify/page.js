@@ -1573,7 +1573,7 @@ export default function StaffVerifyPage() {
   }, [idVerified]);
 
   useEffect(() => {
-    const unsub = on("registration:updated", (updatedReg) => {
+    const unsub = on("registration:updated", async (updatedReg) => {
       // Ignore events that don't belong to the registration currently on screen.
       if (
         !currentRegistrationIdRef.current ||
@@ -1581,18 +1581,20 @@ export default function StaffVerifyPage() {
       )
         return;
 
+      const refreshed = await getRegistrationById(updatedReg.id);
+      if (!refreshed || refreshed.error) return;
       const isAccessible = ["approved", "checked_in", "checked_out"].includes(
-        updatedReg.status,
+        refreshed.status,
       );
       const mappedReg = {
-        ...mapRegistration(updatedReg),
+        ...mapRegistration(refreshed),
         notApproved: !isAccessible,
       };
       setResult(mappedReg);
 
       // Fetch activity logs for timestamps (check-in, check-out, visit-ended)
       if (
-        ["checked_in", "checked_out", "visit_ended"].includes(updatedReg.status)
+        ["checked_in", "checked_out", "visit_ended"].includes(refreshed.status)
       ) {
         getRegistrationActivityLogs(updatedReg.id).then((logs) => {
         if (Array.isArray(logs)) setActivityLogs(logs);

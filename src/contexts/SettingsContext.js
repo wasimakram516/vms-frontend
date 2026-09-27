@@ -48,28 +48,7 @@ export const SettingsProvider = ({ children }) => {
 
   // Listen for real-time updates from server
   const socketEvents = useMemo(() => ({
-    host_settings_updated: (updatedData) => {
-      if (updatedData) {
-        const mapped = {
-          id: updatedData.id,
-          name: updatedData.name,
-          email: updatedData.email,
-          phone: updatedData.phone,
-          address: updatedData.address,
-          website: updatedData.website,
-          logoUrl: updatedData.logoUrl,
-          contactPersonName: updatedData.contactPersonName,
-          contactPersonEmail: updatedData.contactPersonEmail,
-          contactPersonPhone: updatedData.contactPersonPhone,
-          isKitchenModuleEnabled: updatedData.isKitchenModuleEnabled,
-          created_at: updatedData.createdAt,
-          updated_at: updatedData.updatedAt,
-        };
-        setHostSettings(mapped);
-      } else {
-        refreshSettings();
-      }
-    }
+    host_settings_updated: refreshSettings,
   }), [refreshSettings]);
 
   useSocket(socketEvents);

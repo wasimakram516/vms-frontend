@@ -58,6 +58,7 @@ export const uploadMediaFiles = async ({ files, onProgress }) => {
       const auth = await requestUploadAuthorization({
         fileName: upload.file.name,
         fileType: upload.file.type || "application/octet-stream",
+        fileSize: upload.file.size,
       });
 
       const uploadUrl = auth?.uploadUrl || auth?.uploadURL;
@@ -67,7 +68,7 @@ export const uploadMediaFiles = async ({ files, onProgress }) => {
 
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl, true);
+        xhr.open("POST", uploadUrl, true);
 
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable) {
@@ -100,11 +101,12 @@ export const uploadMediaFiles = async ({ files, onProgress }) => {
           reject(new Error("Network error during upload."));
         };
 
-        Object.entries(auth.headers || {}).forEach(([name, value]) => {
-          if (value) xhr.setRequestHeader(name, value);
+        const formData = new FormData();
+        Object.entries(auth.fields || {}).forEach(([name, value]) => {
+          formData.append(name, value);
         });
-
-        xhr.send(upload.file);
+        formData.append("file", upload.file);
+        xhr.send(formData);
       });
 
       return auth.fileUrl;

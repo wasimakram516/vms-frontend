@@ -11,25 +11,37 @@ import {
 } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
-import { sendOtp, verifyOtp, checkNdaValidity } from "@/services/registrationService";
+import {
+  sendOtp,
+  verifyOtp,
+  verifyIdChallengeOtp,
+  resendIdChallengeOtp,
+  checkNdaValidity,
+} from "@/services/registrationService";
 import { applyReturningVerification } from "@/utils/returningFlow";
 import useI18nLayout from "@/hooks/useI18nLayout";
 import registrationTranslations from "@/locales/registration";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
+import TurnstileWidget, {
+  isTurnstileEnabled,
+} from "@/components/TurnstileWidget";
+import { TURNSTILE_ACTIONS } from "@/constants/turnstile";
 
-const OTP_LENGTH = 4;
+const OTP_LENGTH = 6;
 
 export default function RegisterOtpPage() {
   const router = useRouter();
-  const { visitorData, setVisitorData, setFlowState } = useVisitor();
+  const { visitorData, flowState, setVisitorData, setFlowState } = useVisitor();
   const { t, isArabic: isRtl } = useI18nLayout(registrationTranslations);
   const dir = isRtl ? "rtl" : "ltr";
   const [otp, setOtp] = useState(() => Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(60);
   const [resending, setResending] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const inputRefs = useRef([]);
 
   useEffect(() => {
@@ -50,17 +62,26 @@ export default function RegisterOtpPage() {
   }, [resendTimer]);
 
   const handleResend = async () => {
-    if (resendTimer > 0 || resending || !visitorData.identity) return;
+    if (
+      resendTimer > 0 ||
+      resending ||
+      !visitorData.identity ||
+      (isTurnstileEnabled && !turnstileToken)
+    ) return;
 
     setResending(true);
     try {
-      const res = await sendOtp(visitorData.identity);
+      const res = flowState.otpChallengeMode === "returning-id"
+        ? await resendIdChallengeOtp(turnstileToken)
+        : await sendOtp(visitorData.identity, turnstileToken);
       if (!res.error) {
         setResendTimer(60);
         setOtp(Array(OTP_LENGTH).fill(""));
         inputRefs.current[0]?.focus();
       }
     } finally {
+      setTurnstileToken("");
+      setTurnstileResetKey((value) => value + 1);
       setResending(false);
     }
   };
@@ -121,7 +142,9 @@ export default function RegisterOtpPage() {
 
     setLoading(true);
     try {
-      const res = await verifyOtp(visitorData.identity, code);
+      const res = flowState.otpChallengeMode === "returning-id"
+        ? await verifyIdChallengeOtp(code)
+        : await verifyOtp(visitorData.identity, code);
       if (!res.error && res.success) {
         await applyReturningVerification(res, { setFlowState, setVisitorData, router, checkNdaValidity });
       } else {
@@ -201,6 +224,14 @@ export default function RegisterOtpPage() {
           {loading ? t.otpVerifying : t.otpVerify}
         </Button>
 
+        {resendTimer <= 0 && (
+          <TurnstileWidget
+            action={TURNSTILE_ACTIONS.OTP_SEND}
+            onTokenChange={setTurnstileToken}
+            resetKey={turnstileResetKey}
+          />
+        )}
+
         <Typography variant="caption" color="text.secondary" align="center">
           {t.otpNoCode}{" "}
           <Typography
@@ -208,8 +239,18 @@ export default function RegisterOtpPage() {
             variant="caption"
             onClick={handleResend}
             sx={{
-              color: resendTimer > 0 || resending ? "text.disabled" : "primary.main",
-              cursor: resendTimer > 0 || resending ? "default" : "pointer",
+              color:
+                resendTimer > 0 ||
+                resending ||
+                (isTurnstileEnabled && !turnstileToken)
+                  ? "text.disabled"
+                  : "primary.main",
+              cursor:
+                resendTimer > 0 ||
+                resending ||
+                (isTurnstileEnabled && !turnstileToken)
+                  ? "default"
+                  : "pointer",
               fontWeight: 700,
               "&:hover": { textDecoration: resendTimer > 0 || resending ? "none" : "underline" }
             }}

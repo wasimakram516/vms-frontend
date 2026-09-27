@@ -4,6 +4,11 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 
 vi.mock("next/headers", () => ({
+  headers: vi.fn(() =>
+    Promise.resolve({
+      get: (name) => (name === "x-nonce" ? "test-nonce" : null),
+    }),
+  ),
   cookies: vi.fn(() =>
     Promise.resolve({
       get: (name) => {
@@ -14,6 +19,10 @@ vi.mock("next/headers", () => ({
       },
     }),
   ),
+}));
+
+vi.mock("@mui/material-nextjs/v16-appRouter", () => ({
+  AppRouterCacheProvider: ({ children }) => <>{children}</>,
 }));
 
 vi.mock("next/font/google", () => ({
@@ -74,11 +83,10 @@ describe("RootLayout — no-translate + declared language", () => {
     expect(html).toMatch(/<html[^>]*dir="rtl"[^>]*>/);
   });
 
-  it("extends the pre-hydration script to sync lang and dir from localStorage", async () => {
-    document.cookie = "sinan-lang=ar; path=/";
+  it("does not inject an inline pre-hydration script", async () => {
     const html = await renderRootLayout();
-    expect(html).toContain("setAttribute('lang',l)");
-    expect(html).toContain("setAttribute('dir',l==='ar'?'rtl':'ltr')");
+    expect(html).not.toContain("dangerouslySetInnerHTML");
+    expect(html).not.toContain("localStorage.getItem");
   });
 
   it("honors the language choice written by the in-app switcher (end-to-end cookie contract)", async () => {

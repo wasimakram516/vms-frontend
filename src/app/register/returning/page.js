@@ -20,7 +20,6 @@ import {
   sendOtpSilently,
   getFields,
   verifyReturningById,
-  checkNdaValidity,
 } from "@/services/registrationService";
 import { useColorMode } from "@/contexts/ThemeContext";
 import useI18nLayout from "@/hooks/useI18nLayout";
@@ -28,7 +27,7 @@ import registrationTranslations from "@/locales/registration";
 import ICONS from "@/utils/iconUtil";
 import VisitorLayout from "@/components/layout/VisitorLayout";
 import DynamicCustomField from "@/components/DynamicCustomField";
-import { validateEmail } from "@/utils/validationUtils";
+import { validateEmail, validateFieldText } from "@/utils/validationUtils";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
 import {
   ID_ALIASES,
@@ -42,12 +41,15 @@ import {
   getChildFieldIds,
   getArLabel,
 } from "@/utils/customFieldUtils";
-import { applyReturningVerification } from "@/utils/returningFlow";
 import { filterPhoneInput } from "@/utils/phoneUtils";
 import { validatePhone } from "@/utils/validationUtils";
 import { DEFAULT_ISO_CODE } from "@/utils/countryCodes";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
 import { translateBatch } from "@/services/translationService";
+import TurnstileWidget, {
+  isTurnstileEnabled,
+} from "@/components/TurnstileWidget";
+import { TURNSTILE_ACTIONS } from "@/constants/turnstile";
 
 export default function ReturningVisitorPage() {
   const router = useRouter();
@@ -66,6 +68,8 @@ export default function ReturningVisitorPage() {
   );
   const [emailError, setEmailError] = useState("");
   const [otpRequestError, setOtpRequestError] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
 
   // ── ID tab state ─────────────────────────────────────────────────────────────
   const [allFields, setAllFields] = useState([]);
@@ -237,11 +241,12 @@ export default function ReturningVisitorPage() {
   const handleEmailNext = async () => {
     const err = validateEmailField(email);
     if (err) { setEmailError(err); return; }
+    if (isTurnstileEnabled && !turnstileToken) return;
     const finalIdentity = email.trim().toLowerCase();
     setLoading(true);
     setOtpRequestError("");
     try {
-      const res = await sendOtpSilently(finalIdentity);
+      const res = await sendOtpSilently(finalIdentity, turnstileToken);
       if (!res.error) {
         setVisitorData((p) => ({ ...p, identity: finalIdentity, email: finalIdentity }));
         setFlowState((prev) => ({ ...prev, isReturning: true, currentStep: "otp" }));
@@ -250,6 +255,8 @@ export default function ReturningVisitorPage() {
         setOtpRequestError(res.message || t.returningOtpError);
       }
     } finally {
+      setTurnstileToken("");
+      setTurnstileResetKey((value) => value + 1);
       setLoading(false);
     }
   };
@@ -281,8 +288,11 @@ export default function ReturningVisitorPage() {
       const isRequired = f.isRequired || f.is_required || forcedRequiredIds.has(f.id);
       const val = idFieldValues[key];
 
+      const textErr = validateFieldText({ inputType, label: f.label, inputName: key }, val);
       if (isRequired && !val) {
         errs[key] = t.fieldRequired.replace("{{field}}", f.label);
+      } else if (textErr) {
+        errs[key] = textErr;
       } else if (inputType === "phone" && val) {
         const iso = phoneIsoCodes[key] || DEFAULT_ISO_CODE;
         const phoneErr = validatePhone(val, iso);
@@ -329,21 +339,33 @@ export default function ReturningVisitorPage() {
       if (__standalonePhone) setStandalonePhoneError(__standalonePhone);
       return;
     }
+    if (isTurnstileEnabled && !turnstileToken) return;
 
     setIdLoading(true);
     try {
       const phone = resolvePhone();
-      const res = await verifyReturningById(idFieldValues, phone);
-      if (!res.error && res.success) {
-        await applyReturningVerification(res, {
-          setFlowState,
-          setVisitorData,
-          router,
-          checkNdaValidity,
-        });
+      const res = await verifyReturningById(
+        idFieldValues,
+        phone,
+        turnstileToken,
+      );
+      if (!res.error && res.success && res.otpRequired) {
+        setVisitorData((previous) => ({
+          ...previous,
+          identity: res.maskedTarget || t.otpYourDevice,
+        }));
+        setFlowState((previous) => ({
+          ...previous,
+          isReturning: true,
+          otpChallengeMode: "returning-id",
+          currentStep: "otp",
+        }));
+        router.push("/register/otp");
       }
       // On error: withApiHandler already showed the global snackbar (inactive / not found)
     } finally {
+      setTurnstileToken("");
+      setTurnstileResetKey((value) => value + 1);
       setIdLoading(false);
     }
   };
@@ -443,11 +465,17 @@ export default function ReturningVisitorPage() {
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: 4 } }}
               onKeyDown={(e) => e.key === "Enter" && handleEmailNext()}
             />
+            <TurnstileWidget
+              key="otp-send"
+              action={TURNSTILE_ACTIONS.OTP_SEND}
+              onTokenChange={setTurnstileToken}
+              resetKey={turnstileResetKey}
+            />
             <Button
               variant="contained"
               fullWidth
               size="large"
-              disabled={loading}
+              disabled={loading || (isTurnstileEnabled && !turnstileToken)}
               onClick={handleEmailNext}
               startIcon={loading ? <CircularProgress size={24} color="inherit" /> : <ICONS.email />}
               sx={{ py: 1.8, borderRadius: 30, fontWeight: 700, ...getStartIconSpacing(dir) }}
@@ -568,11 +596,20 @@ export default function ReturningVisitorPage() {
                   />
                 )}
 
+                <TurnstileWidget
+                  key="returning-id"
+                  action={TURNSTILE_ACTIONS.RETURNING_ID}
+                  onTokenChange={setTurnstileToken}
+                  resetKey={turnstileResetKey}
+                />
+
                 <Button
                   variant="contained"
                   fullWidth
                   size="large"
-                  disabled={idLoading}
+                  disabled={
+                    idLoading || (isTurnstileEnabled && !turnstileToken)
+                  }
                   onClick={handleIdSubmit}
                   startIcon={idLoading ? <CircularProgress size={24} color="inherit" /> : <ICONS.badge />}
                   sx={{ py: 1.8, borderRadius: 30, fontWeight: 700, ...getStartIconSpacing(dir) }}

@@ -1,5 +1,10 @@
 import axios from "axios";
-import { getStoredToken, setStoredAuthData, clearStoredAuthData } from "@/utils/authStorage";
+import {
+  getStoredToken,
+  setStoredAuthData,
+  clearStoredAuthData,
+  runSingleRefresh,
+} from "@/utils/authStorage";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
@@ -31,7 +36,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 api.interceptors.response.use(
@@ -49,6 +54,9 @@ api.interceptors.response.use(
     const PUBLIC_URLS = [
       "/auth/otp/send",
       "/auth/otp/verify",
+      "/auth/otp/verify-by-id",
+      "/auth/otp/verify-id-challenge",
+      "/auth/otp/resend-id-challenge",
       "/nda-templates/public",
       "/registrations/form/fields",
       "/registrations/check-nda",
@@ -56,7 +64,8 @@ api.interceptors.response.use(
     ];
     const isPublicRoute =
       PUBLIC_URLS.some((u) => originalRequest.url?.includes(u)) ||
-      (originalRequest.method === "post" && /\/registrations$/.test(originalRequest.url));
+      (originalRequest.method === "post" &&
+        /\/registrations$/.test(originalRequest.url));
 
     if (isPublicRoute) {
       return Promise.reject(error);
@@ -77,19 +86,21 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const res = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
+        const newAccessToken = await runSingleRefresh(async () => {
+          const res = await axios.post(
+            `${API_BASE_URL}/auth/refresh`,
+            {},
+            { withCredentials: true },
+          );
+          const token = res.data?.accessToken || res.data?.data?.accessToken;
+          if (!token) throw new Error("No access token returned from refresh");
+          setStoredAuthData(token, null);
+          return token;
+        });
 
-        const newAccessToken = res.data?.accessToken || res.data?.data?.accessToken;
-
-        if (!newAccessToken) {
+        if (typeof newAccessToken !== "string") {
           throw new Error("No access token returned from refresh");
         }
-
-        setStoredAuthData(newAccessToken, null);
 
         processQueue(null, newAccessToken);
 
@@ -116,7 +127,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;

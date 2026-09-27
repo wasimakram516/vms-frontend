@@ -1,4 +1,5 @@
 import { validatePhoneNumber } from "./phoneValidation";
+import { DEFAULT_MAX_LENGTH, FIELD_MAX_LENGTHS, validateSafeText } from "./safeText";
 
 export const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -30,9 +31,12 @@ export const validateSelectValue = (value, allowedValues, fieldName) => {
   return null;
 };
 
+const NUMBER_PATTERN = /^-?\d+(?:\.\d+)?$/;
+
 export const validateNumber = (value, fieldName) => {
-  if (value && isNaN(Number(value))) {
-    return "Must be a valid number";
+  if (value === "" || value == null) return null;
+  if (!NUMBER_PATTERN.test(String(value).trim())) {
+    return `${fieldName || "Value"} must be a number`;
   }
   return null;
 };
@@ -76,9 +80,60 @@ export const validateUrl = (value, fieldName) => {
 
 export const validateDate = (value, fieldName) => {
   if (!value) return null;
-  const date = new Date(value);
-  if (isNaN(date.getTime())) {
-    return `${fieldName} must be a valid date`;
+  const normalized = String(value).trim();
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(normalized) ||
+    isNaN(new Date(`${normalized}T00:00:00Z`).getTime())
+  ) {
+    return `${fieldName} must be a valid date (YYYY-MM-DD)`;
+  }
+  return null;
+};
+
+export const validateTime = (value, fieldName) => {
+  if (!value) return null;
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value).trim())) {
+    return `${fieldName} must be a valid time (HH:mm)`;
+  }
+  return null;
+};
+
+export const validateCountry = (value, fieldName) => {
+  if (!value) return null;
+  if (!/^[A-Za-z]{2}$/.test(String(value).trim())) {
+    return `${fieldName} must be a valid 2-letter country code`;
+  }
+  return null;
+};
+
+export const validateCheckboxValues = (value, allowedValues, fieldName) => {
+  if (value == null || value === "") return null;
+  const items = Array.isArray(value) ? value : [value];
+  if (
+    new Set(items).size !== items.length ||
+    (allowedValues && items.some((item) => !allowedValues.includes(item)))
+  ) {
+    return `${fieldName}: please choose one of the available options`;
+  }
+  return null;
+};
+
+/** Input types whose values are never plain text shown back to staff. */
+const SAFE_TEXT_EXEMPT_TYPES = new Set(["password", "file"]);
+
+/**
+ * Apply the backend markup rule and per-type length limit to a field value,
+ * including every item of a multi-value (checkbox) field.
+ */
+export const validateFieldText = (field, value) => {
+  const inputType = String(field.inputType || "text").toLowerCase();
+  if (SAFE_TEXT_EXEMPT_TYPES.has(inputType)) return null;
+  const label = field.label || field.inputName || "This field";
+  const maxLength = FIELD_MAX_LENGTHS[inputType] ?? DEFAULT_MAX_LENGTH;
+  const items = Array.isArray(value) ? value : [value];
+  for (const item of items) {
+    const err = validateSafeText(item, label, maxLength);
+    if (err) return err;
   }
   return null;
 };
@@ -91,6 +146,9 @@ export const validateField = (field, value, options = {}) => {
     const err = validateRequired(value, field.label || field.inputName);
     if (err) errors.push(err);
   }
+
+  const textError = validateFieldText(field, value);
+  if (textError) errors.push(textError);
 
   if (field.inputType === "email" || field.inputName?.toLowerCase().includes("email")) {
     const err = validateEmail(value, field.label || field.inputName);
@@ -121,8 +179,23 @@ export const validateField = (field, value, options = {}) => {
     if (err) errors.push(err);
   }
 
-  if (field.inputType === "date" || field.inputType === "datetime") {
+  if (field.inputType === "date") {
     const err = validateDate(value, field.label || field.inputName);
+    if (err) errors.push(err);
+  }
+
+  if (field.inputType === "time") {
+    const err = validateTime(value, field.label || field.inputName);
+    if (err) errors.push(err);
+  }
+
+  if (field.inputType === "country") {
+    const err = validateCountry(value, field.label || field.inputName);
+    if (err) errors.push(err);
+  }
+
+  if (field.inputType === "checkbox") {
+    const err = validateCheckboxValues(value, field.values, field.label || field.inputName);
     if (err) errors.push(err);
   }
 
@@ -144,6 +217,39 @@ export const validateField = (field, value, options = {}) => {
 
   return errors.length > 0 ? errors[0] : null;
 };
+
+const normalizeFieldKey = (key = "") => String(key).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Apply the markup and length rules to every value of a custom-field map, using
+ * each field's configured type and label. Used by edit forms that submit a
+ * whole `fieldValues` object rather than validating one rendered input.
+ * @param {Array<object>} customFields - Field definitions (camelCase or snake_case).
+ * @param {Record<string, unknown>} values - Submitted field values keyed by field key.
+ * @returns {Record<string, string>} Error message per offending key (empty when valid).
+ */
+export const validateCustomFieldValues = (customFields = [], values = {}) => {
+  const fieldsByKey = new Map(
+    customFields.map((f) => [normalizeFieldKey(f.fieldKey || f.field_key), f]),
+  );
+  const errors = {};
+  Object.entries(values || {}).forEach(([key, value]) => {
+    const field = fieldsByKey.get(normalizeFieldKey(key));
+    const error = validateFieldText(
+      {
+        inputName: key,
+        inputType: field?.inputType || field?.input_type || "text",
+        label: field?.label || key,
+      },
+      value,
+    );
+    if (error) errors[key] = error;
+  });
+  return errors;
+};
+
+/** Return the first message from an error map, or null. */
+export const firstError = (errors) => Object.values(errors || {})[0] || null;
 
 export const validateForm = (fields, values, options = {}) => {
   const errors = {};
@@ -172,6 +278,12 @@ export default {
   validatePattern,
   validateUrl,
   validateDate,
+  validateTime,
+  validateCountry,
+  validateCheckboxValues,
+  validateFieldText,
+  validateCustomFieldValues,
+  firstError,
   validateField,
   validateForm,
 };

@@ -1079,7 +1079,7 @@ export default function HostDetailsPage() {
                         </Tooltip>
                       )}
                     </Stack>
-                    <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleLogoSelect} />
+                    <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden onChange={handleLogoSelect} />
                   </Box>
                 </Box>
 
