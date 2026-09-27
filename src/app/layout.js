@@ -1,6 +1,8 @@
 import "../styles/globals.css";
 import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { Comfortaa, Noto_Kufi_Arabic } from "next/font/google";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import ClientRoot from "./ClientRoot";
 import Navbar from "@/components/nav/Navbar";
 import { Box } from "@mui/material";
@@ -55,8 +57,10 @@ export const metadata = {
 
 export default async function RootLayout({ children }) {
   const cookieStore = await cookies();
+  const requestHeaders = await headers();
   const saved = cookieStore.get("sinan-lang")?.value;
   const initialLang = saved === "ar" ? "ar" : "en";
+  const nonce = requestHeaders.get("x-nonce") || undefined;
 
   return (
     <html
@@ -68,28 +72,25 @@ export default async function RootLayout({ children }) {
     >
       <head>
         <meta name="google" content="notranslate" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{var l=localStorage.getItem('sinan-lang');if(l==='ar'||l==='en'){document.documentElement.setAttribute('lang',l);document.documentElement.setAttribute('dir',l==='ar'?'rtl':'ltr');}}catch(e){}`
-          }}
-        />
       </head>
       <body translate="no">
-        <ClientRoot initialLang={initialLang}>
-          <Navbar />
-          <Box 
-            component="main" 
-            sx={{ 
-              height: "100vh",
-              pt: "64px", 
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {children}
-          </Box>
-        </ClientRoot>
+        <AppRouterCacheProvider options={{ key: "mui", nonce }}>
+          <ClientRoot initialLang={initialLang}>
+            <Navbar />
+            <Box
+              component="main"
+              sx={{
+                height: "100vh",
+                pt: "64px",
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {children}
+            </Box>
+          </ClientRoot>
+        </AppRouterCacheProvider>
       </body>
     </html>
   );

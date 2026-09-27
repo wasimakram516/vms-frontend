@@ -2,6 +2,7 @@
 
 import { Box, Stack, Typography } from "@mui/material";
 import { ndaDocToHtml } from "@/utils/ndaDocUtils";
+import { sanitizeRichHtml } from "@/utils/sanitizeRichHtml";
 
 const richTextSx = {
   fontSize: 12,
@@ -67,13 +68,22 @@ const richTextSx = {
 function HtmlBlock({ html }) {
   if (!html?.trim()) return null;
 
-  return <Box sx={richTextSx} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <Box
+      sx={richTextSx}
+      dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(html) }}
+    />
+  );
 }
 
 export default function NdaTemplateContent({ template }) {
   if (!template) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.8 }}>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ lineHeight: 1.8 }}
+      >
         No active NDA template is available right now.
       </Typography>
     );
@@ -81,10 +91,10 @@ export default function NdaTemplateContent({ template }) {
 
   const preambleHtml = Array.isArray(template.preamble)
     ? ndaDocToHtml(template.preamble)
-    : (template.preamble || "");
+    : template.preamble || "";
   const bodyHtml = Array.isArray(template.body)
     ? ndaDocToHtml(template.body)
-    : (template.body || "");
+    : template.body || "";
 
   return (
     <Stack spacing={2.5}>

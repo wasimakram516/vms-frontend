@@ -6,6 +6,11 @@ export const getDepartments = withApiHandler(async (activeOnly = false) => {
   return res.data?.data || res.data || [];
 });
 
+export const getPublicDepartments = withApiHandler(async () => {
+  const res = await api.get("/departments/public");
+  return res.data?.data || res.data || [];
+});
+
 export const createDepartment = withApiHandler(
   async (payload) => {
     const res = await api.post("/departments", payload);

@@ -1,3 +1,5 @@
+import { sanitizeRichHtml } from "@/utils/sanitizeRichHtml";
+
 function extractSegments(el, defaultFontSize = null) {
   const segs = [];
 
@@ -5,7 +7,9 @@ function extractSegments(el, defaultFontSize = null) {
     const hexM = style.match(/color\s*:\s*(#[0-9a-fA-F]{3,6})/i);
     if (hexM) return hexM[1];
     // Matches both rgb() and rgba() — alpha channel is discarded.
-    const rgbM = style.match(/color\s*:\s*rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    const rgbM = style.match(
+      /color\s*:\s*rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i,
+    );
     if (rgbM) {
       const r = parseInt(rgbM[1]).toString(16).padStart(2, "0");
       const g = parseInt(rgbM[2]).toString(16).padStart(2, "0");
@@ -49,9 +53,7 @@ function extractSegments(el, defaultFontSize = null) {
       tag === "i" ||
       /font-style\s*:\s*italic/i.test(style);
     const newUnderline =
-      underline ||
-      tag === "u" ||
-      /text-decoration[^;]*underline/i.test(style);
+      underline || tag === "u" || /text-decoration[^;]*underline/i.test(style);
     const newStrike =
       strike ||
       tag === "s" ||
@@ -72,7 +74,15 @@ function extractSegments(el, defaultFontSize = null) {
     if (sizeM) newFontSize = parseFloat(sizeM[1]);
 
     for (const child of node.childNodes) {
-      walk(child, newBold, newItalic, newUnderline, newStrike, newColor, newFontSize);
+      walk(
+        child,
+        newBold,
+        newItalic,
+        newUnderline,
+        newStrike,
+        newColor,
+        newFontSize,
+      );
     }
   }
 
@@ -100,7 +110,7 @@ export function htmlToNdaDoc(html) {
   if (!html?.trim()) return [];
 
   const div = document.createElement("div");
-  div.innerHTML = html;
+  div.innerHTML = sanitizeRichHtml(html);
 
   const blocks = [];
 
@@ -108,7 +118,10 @@ export function htmlToNdaDoc(html) {
   // 12 matches the editor's CSS default so unformatted text round-trips at the same size.
   function processNode(node, inheritedFontSize = 12) {
     if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent.replace(/\u200B/g, "").replace(/\u00A0/g, " ").trim();
+      const text = node.textContent
+        .replace(/\u200B/g, "")
+        .replace(/\u00A0/g, " ")
+        .trim();
       if (text) {
         blocks.push({ type: "paragraph", align: null, segments: [{ text }] });
       }
@@ -158,22 +171,35 @@ export function htmlToNdaDoc(html) {
     } else if (tag === "br") {
       // ignore top-level <br>
     } else if (
-      tag === "span" || tag === "font" || tag === "a" ||
-      tag === "b" || tag === "strong" || tag === "i" || tag === "em" ||
-      tag === "u" || tag === "s" || tag === "strike" || tag === "sub" || tag === "sup"
+      tag === "span" ||
+      tag === "font" ||
+      tag === "a" ||
+      tag === "b" ||
+      tag === "strong" ||
+      tag === "i" ||
+      tag === "em" ||
+      tag === "u" ||
+      tag === "s" ||
+      tag === "strike" ||
+      tag === "sub" ||
+      tag === "sup"
     ) {
       // Check whether this inline element is (incorrectly) wrapping block-level children.
       // This happens when the font-size handler wraps all paragraphs in a single <span>.
       const hasBlockChildren = [...node.childNodes].some(
         (c) =>
           c.nodeType === Node.ELEMENT_NODE &&
-          ["p", "h1", "h2", "h3", "ul", "ol"].includes(c.tagName.toLowerCase())
+          ["p", "h1", "h2", "h3", "ul", "ol"].includes(c.tagName.toLowerCase()),
       );
 
       if (hasBlockChildren) {
         // Propagate this element's font-size down, then recurse into each child block.
-        const sizeM = (node.style?.cssText || "").match(/font-size\s*:\s*([\d.]+)px/i);
-        const childFontSize = sizeM ? Math.round(parseFloat(sizeM[1])) : inheritedFontSize;
+        const sizeM = (node.style?.cssText || "").match(
+          /font-size\s*:\s*([\d.]+)px/i,
+        );
+        const childFontSize = sizeM
+          ? Math.round(parseFloat(sizeM[1]))
+          : inheritedFontSize;
         for (const child of node.childNodes) {
           processNode(child, childFontSize);
         }
@@ -218,8 +244,9 @@ function segsToHtml(segments) {
   return segments
     .map((seg) => {
       let html = escapeHtml(seg.text);
-      if (seg.fontSize) html = `<span style="font-size:${seg.fontSize}px">${html}</span>`;
-      if (seg.color) html = `<font color="${seg.color}">${html}</font>`;
+      if (seg.fontSize)
+        html = `<span style="font-size:${seg.fontSize}px">${html}</span>`;
+      if (seg.color) html = `<span style="color:${seg.color}">${html}</span>`;
       if (seg.underline) html = `<u>${html}</u>`;
       if (seg.strike) html = `<s>${html}</s>`;
       if (seg.italic) html = `<em>${html}</em>`;

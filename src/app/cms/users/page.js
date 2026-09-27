@@ -21,9 +21,6 @@ import {
   FormControl,
   Select,
   InputLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   RadioGroup,
   FormControlLabel,
   Radio,
@@ -32,6 +29,11 @@ import {
   Tab,
   Checkbox,
   Alert,
+  Badge,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
 } from "@mui/material";
 import { useColorMode } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -46,8 +48,9 @@ import {
   createAdminUser,
   createSuperAdminUser,
   assignUserDepartments,
-  mapUserToFrontend,
 } from "@/services/userService";
+import { revokeUserSessions, getActiveSessions } from "@/services/authService";
+import { formatDateTimeWithLocale } from "@/utils/dateUtils";
 import { getDepartments } from "@/services/departmentService";
 import { getRolePagePermissions, getUserPageOverrides, setUserPageOverrides } from "@/services/permissionService";
 import PAGES, { getPagesForRole } from "@/constants/pageCatalog";
@@ -63,8 +66,26 @@ import RecordMetadata from "@/components/RecordMetadata";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
 import CountryCodeSelector from "@/components/CountryCodeSelector";
-import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay, phoneMatchesQuery } from "@/utils/countryCodes";
+import { DEFAULT_ISO_CODE, getCountryAndPhoneByFullPhone, getCountryCodeByIsoCode, formatPhoneNumberForDisplay } from "@/utils/countryCodes";
 import { filterPhoneInput, onKeyPressPhone } from "@/utils/phoneUtils";
+import useDebouncedValue from "@/hooks/useDebouncedValue";
+
+// This page renders every role in a fixed group order (superadmin, admin,
+// staff, visitor), not sorted or paginated within that combined set. With
+// "All Roles" selected, per-page pagination would cut across those groups —
+// e.g. an older superadmin account landing on page 2 makes its whole section
+// look empty on page 1. Server pagination only applies once a single role is
+// selected (one flat, genuinely paginate-able list); "All Roles" instead
+// fetches every organizational account in one request, up to the backend's
+// hard cap — cheap here since this is staff/admin headcount, not visitors.
+const ALL_ROLES_FETCH_LIMIT = 200;
+
+// Activity types that change who currently holds a live session.
+const SESSION_AFFECTING_ACTIVITY_TYPES = new Set([
+  "login",
+  "logout",
+  "session_revoked",
+]);
 
 const CREATABLE_ROLES = ["superadmin", "admin", "staff"];
 const STAFF_TYPES = ["gate", "kitchen"];
@@ -83,8 +104,8 @@ const stripDialPrefix = (phone, isoCode) => {
 };
 
 export default function UsersPage() {
-  const { user: currentUser } = useAuth();
-  const { socket } = useSocket();
+  const { user: currentUser, logout } = useAuth();
+  const { socket, on } = useSocket();
   const { mode } = useColorMode();
   const isDark = mode === "dark";
   const isSuperAdmin = currentUser?.role === "superadmin";
@@ -109,11 +130,26 @@ export default function UsersPage() {
   const [userToDelete, setUserToDelete] = useState(null);
   const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
   const [userStatusTarget, setUserStatusTarget] = useState(null);
+  const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
+  const [userRevokeTarget, setUserRevokeTarget] = useState(null);
+  const [sessionsModalOpen, setSessionsModalOpen] = useState(false);
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [activeSessionsLoading, setActiveSessionsLoading] = useState(false);
 
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(12);
-  const [isStreaming, setIsStreaming] = useState(false);
+  // Lowest available page size by default — this page renders every role
+  // group at once (see ALL_ROLES_FETCH_LIMIT below), so a smaller per-section
+  // cap keeps the initial render light regardless of total org headcount.
+  const [rowsPerPage, setRowsPerPage] = useState(6);
+  // In "All Roles" view, "Records per page" caps how many cards render per
+  // section (client-side — every account for every role is already fetched,
+  // see ALL_ROLES_FETCH_LIMIT), rather than paging the combined list, so a
+  // small page size can never make an entire role's section look empty.
+  // Sections listed here render every account regardless of the cap.
+  const [expandedRoleGroups, setExpandedRoleGroups] = useState(new Set());
   const [totalCount, setTotalCount] = useState(0);
+  const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300);
+  const usersRequestRef = useRef(null);
 
   const defaultForm = {
     full_name: "",
@@ -165,33 +201,7 @@ export default function UsersPage() {
       .filter((item) => item.overrides.length > 0);
   }
 
-  useEffect(() => {
-    fetchUsers();
-    getDepartments().then((res) => {
-      if (Array.isArray(res)) setAllDepartments(res);
-    });
-  }, []);
-
   // ── Socket progressive loading ──
-  useEffect(() => {
-    if (!socket) return;
-    const handler = (payload) => {
-      if (payload.data?.length) {
-        const mapped = payload.data.map(mapUserToFrontend);
-        setUsers((prev) => {
-          const existing = new Set(prev.map((u) => u.id));
-          const fresh = mapped.filter((u) => !existing.has(u.id));
-          return fresh.length ? [...prev, ...fresh] : prev;
-        });
-      }
-      if (payload.loaded >= payload.total) {
-        setIsStreaming(false);
-      }
-    };
-    socket.on("visitors:progress", handler);
-    return () => socket.off("visitors:progress", handler);
-  }, [socket]);
-
   // Load base role page permissions whenever the create form's role/type changes
   useEffect(() => {
     if (isEditMode) return;
@@ -251,20 +261,98 @@ export default function UsersPage() {
     };
   }, [socket, isEditMode, selectedUserId, form.role, form.staff_type, form.adminType]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
+    usersRequestRef.current?.abort();
+    const controller = new AbortController();
+    usersRequestRef.current = controller;
     try {
-      const BATCH_SIZE = 50;
-      const result = await getAllUsers(undefined, { page: 1, limit: BATCH_SIZE });
+      const isAllRoles = roleFilter === "all";
+      const result = await getAllUsers(
+        isAllRoles ? undefined : roleFilter,
+        {
+          page: isAllRoles ? 1 : page + 1,
+          limit: isAllRoles ? ALL_ROLES_FETCH_LIMIT : rowsPerPage,
+          search: debouncedSearch || undefined,
+          staffType:
+            roleFilter === "staff" && staffTypeFilter !== "all"
+              ? staffTypeFilter
+              : undefined,
+          adminType:
+            roleFilter === "admin" && adminTypeFilter !== "all"
+              ? adminTypeFilter
+              : undefined,
+          signal: controller.signal,
+        },
+      );
+      if (controller.signal.aborted || result?.error) return;
       setUsers(result.data || []);
       setTotalCount(result.total || 0);
-      if (result.total > BATCH_SIZE) {
-        setIsStreaming(true);
-      }
     } finally {
-      setLoading(false);
+      if (usersRequestRef.current === controller) setLoading(false);
     }
-  };
+  }, [
+    adminTypeFilter,
+    debouncedSearch,
+    page,
+    roleFilter,
+    rowsPerPage,
+    staffTypeFilter,
+  ]);
+
+  useEffect(() => {
+    fetchUsers();
+    return () => usersRequestRef.current?.abort();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    getDepartments().then((res) => {
+      if (Array.isArray(res)) setAllDepartments(res);
+    });
+  }, []);
+
+  // Who currently holds a live session — only a SuperAdmin can see or act on
+  // this, and it drives both the "logged in" dot on each card and which cards
+  // show the per-row revoke action.
+  const isSuperAdminViewer = currentUser?.role === "superadmin";
+
+  const fetchActiveSessions = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!isSuperAdminViewer) return;
+      if (!silent) setActiveSessionsLoading(true);
+      try {
+        const result = await getActiveSessions();
+        setActiveSessions(Array.isArray(result) ? result : []);
+      } finally {
+        if (!silent) setActiveSessionsLoading(false);
+      }
+    },
+    [isSuperAdminViewer],
+  );
+
+  useEffect(() => {
+    fetchActiveSessions();
+  }, [fetchActiveSessions]);
+
+  // Keep the header count and the Active Sessions modal live: a login,
+  // logout, or session revocation from ANY connected admin arrives here the
+  // same instant it happens (the same "activity:new" broadcast the Activity
+  // Logs page already reacts to), so a SuperAdmin never sees a stale count
+  // when timing matters — e.g. confirming a revoke actually took effect.
+  useEffect(() => {
+    if (!on || !isSuperAdminViewer) return undefined;
+    return on("activity:new", (payload) => {
+      if (SESSION_AFFECTING_ACTIVITY_TYPES.has(payload?.activityType)) {
+        fetchActiveSessions({ silent: true });
+      }
+    });
+  }, [on, isSuperAdminViewer, fetchActiveSessions]);
+
+  const activeSessionByUserId = useMemo(() => {
+    const map = new Map();
+    activeSessions.forEach((s) => map.set(s.userId, s));
+    return map;
+  }, [activeSessions]);
 
   const handleOpenCreate = () => {
     setForm(defaultForm);
@@ -345,7 +433,7 @@ export default function UsersPage() {
     if (emailError) newErrors.email = emailError;
 
     if (!isEditMode) {
-      const passwordError = validateField({ label: "Password", required: true }, form.password);
+      const passwordError = validateField({ label: "Password", required: true, inputType: "password" }, form.password);
       if (passwordError) newErrors.password = passwordError;
     }
 
@@ -437,26 +525,39 @@ export default function UsersPage() {
     }
   };
 
+  const handleRevokeSessionClick = (u) => {
+    setUserRevokeTarget(u);
+    setRevokeConfirmOpen(true);
+  };
+
+  // Ends every active login for this account right now: revokes all refresh
+  // sessions and force-disconnects any live realtime connection, without
+  // deactivating the account itself. Use when a session may be compromised
+  // (lost device, shared password) but the account should stay usable.
+  const handleConfirmRevokeSession = async () => {
+    if (!userRevokeTarget) return;
+    // Revoking your own session is just logging out: use the real logout
+    // flow (clears the HttpOnly refresh cookie and redirects) rather than
+    // the admin-on-someone-else revoke endpoint.
+    if (userRevokeTarget.isSelf) {
+      setRevokeConfirmOpen(false);
+      setUserRevokeTarget(null);
+      await logout();
+      return;
+    }
+    try {
+      await revokeUserSessions(userRevokeTarget.id);
+      fetchActiveSessions();
+    } finally {
+      setRevokeConfirmOpen(false);
+      setUserRevokeTarget(null);
+    }
+  };
+
   const filteredUsers = useMemo(() => {
     if (!Array.isArray(users)) return [];
     const filtered = users.filter((u) => {
-      if (u.role === "dev") return false;
-      const matchSearch =
-        (u.full_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.email ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        phoneMatchesQuery(u.phone, searchQuery, u.iso_code) ||
-        (u.idNo != null && String(u.idNo).toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchRole = roleFilter === "all" || u.role === roleFilter;
-      const matchStaffType =
-        roleFilter !== "staff" || 
-        staffTypeFilter === "all" || 
-        (u.staff_type && u.staff_type === staffTypeFilter);
-      const matchAdminType =
-        roleFilter !== "admin" ||
-        adminTypeFilter === "all" ||
-        (u.adminType && u.adminType === adminTypeFilter) ||
-        (!u.adminType && adminTypeFilter === "departmental"); // fallback for old records
-      return matchSearch && matchRole && matchStaffType && matchAdminType;
+      return u.role !== "dev";
     });
 
     // Sort by role order: superadmin, admin, staff, visitor
@@ -481,14 +582,11 @@ export default function UsersPage() {
       
       return aOrder - bOrder;
     });
-  }, [users, searchQuery, roleFilter, staffTypeFilter, adminTypeFilter]);
+  }, [users]);
 
   const pagedUsers = useMemo(() => {
-    return filteredUsers.slice(
-      page * rowsPerPage,
-      page * rowsPerPage + rowsPerPage,
-    );
-  }, [filteredUsers, page, rowsPerPage]);
+    return filteredUsers;
+  }, [filteredUsers]);
 
   const pagedGroupedUsers = useMemo(() => {
     const groups = {
@@ -530,6 +628,7 @@ export default function UsersPage() {
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
+    setExpandedRoleGroups(new Set());
   };
 
   const getRoleColor = (role) => {
@@ -592,6 +691,29 @@ export default function UsersPage() {
             rowGap: 1,
           }}
         >
+          {isSuperAdminViewer && (
+            <Button
+              variant="outlined"
+              startIcon={<ICONS.logout sx={{ transform: "scaleX(-1)" }} />}
+              endIcon={
+                activeSessions.length > 0 && (
+                  <Chip
+                    label={activeSessions.length > 99 ? "99+" : activeSessions.length}
+                    size="small"
+                    color="success"
+                    sx={{ height: 18, fontSize: "0.65rem", fontWeight: 800, "& .MuiChip-label": { px: 0.75 } }}
+                  />
+                )
+              }
+              onClick={() => {
+                setSessionsModalOpen(true);
+                fetchActiveSessions();
+              }}
+              sx={{ mr: { sm: 0.5 } }}
+            >
+              Active Sessions
+            </Button>
+          )}
           {canCreate && (
             <Button
               variant="contained"
@@ -608,7 +730,7 @@ export default function UsersPage() {
 
       <ListToolbar
         showingCount={pagedUsers.length}
-        totalCount={totalCount || filteredUsers.length}
+        totalCount={totalCount}
         searchSlot={
           <TextField
             fullWidth
@@ -640,6 +762,7 @@ export default function UsersPage() {
                 if (e.target.value !== "staff") setStaffTypeFilter("all");
                 if (e.target.value !== "admin") setAdminTypeFilter("all");
                 setPage(0);
+                setExpandedRoleGroups(new Set());
               }}
               sx={{ minWidth: { xs: "100%", sm: 160 } }}
             >
@@ -721,6 +844,12 @@ export default function UsersPage() {
             const roleUsers = pagedGroupedUsers[role];
             if (!roleUsers || roleUsers.length === 0) return null;
 
+            const isAllRoles = roleFilter === "all";
+            const isExpanded = expandedRoleGroups.has(role);
+            const visibleRoleUsers =
+              isAllRoles && !isExpanded ? roleUsers.slice(0, rowsPerPage) : roleUsers;
+            const hiddenCount = roleUsers.length - visibleRoleUsers.length;
+
             const roleLabels = {
               superadmin: "Super Admins",
               admin_departmental: "Departmental Admins",
@@ -731,43 +860,24 @@ export default function UsersPage() {
               visitor: "Visitors",
             };
 
+        // Flattened, always-visible sections (no accordion/collapse) — every
+        // role group is on screen at once, in a fixed hierarchy: superadmin,
+        // then admin, then staff, then visitors, regardless of created date.
         return (
-          <Accordion
-            key={role}
-            defaultExpanded={role !== "visitor"}
-            sx={{
-              mb: 3,
-              borderRadius: "12px !important",
-              overflow: "hidden",
-              border: "1px solid",
-              borderColor: "divider",
-              "&::before": { display: "none" },
-              bgcolor: isDark ? "rgba(255,255,255,0.02)" : "#fff",
-            }}
-          >
-            <AccordionSummary
-              expandIcon={<ICONS.down />}
-              sx={{
-                bgcolor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)",
-                borderBottom: "1px solid",
-                borderColor: "divider",
-              }}
-            >
-              <Stack direction="row" alignItems="center" spacing={1.5}>
-                <Typography variant="h6" fontWeight={800}>
-                  {roleLabels[role]}
-                </Typography>
-                <Chip
-                  label={roleUsers.length}
-                  size="small"
-                  color={getRoleColor(role)}
-                  sx={{ fontWeight: 800 }}
-                />
-              </Stack>
-            </AccordionSummary>
-            <AccordionDetails sx={{ p: 3, bgcolor: "transparent" }}>
-              <ResponsiveCardGrid gap={{ xs: 3, md: 3.5 }}>
-                {roleUsers.map((u) => (
+          <Box key={role} sx={{ mb: 4 }}>
+            <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }}>
+              <Typography variant="h6" fontWeight={800}>
+                {roleLabels[role]}
+              </Typography>
+              <Chip
+                label={roleUsers.length}
+                size="small"
+                color={getRoleColor(role)}
+                sx={{ fontWeight: 800 }}
+              />
+            </Stack>
+            <ResponsiveCardGrid gap={{ xs: 3, md: 3.5 }}>
+                {visibleRoleUsers.map((u) => (
                   <AppCard
                     key={u.id}
                     sx={{
@@ -796,22 +906,46 @@ export default function UsersPage() {
                           sx={{ gap: 1 }}
                         >
                           <Stack direction="row" alignItems="center" sx={{ minWidth: 0, flex: 1, gap: 1 }}>
-                            <Avatar
-                              sx={{
-                                width: 40,
-                                height: 40,
-                                bgcolor: isDark ? "#fff" : "#000",
-                                color: isDark ? "#000" : "#fff",
-                                fontSize: "1rem",
-                                fontWeight: 800,
-                              }}
+                            <Tooltip
+                              title={activeSessionByUserId.has(u.id) ? "Logged in" : ""}
+                              disableHoverListener={!activeSessionByUserId.has(u.id)}
                             >
-                              {u.full_name
-                                ?.split(" ")
-                                .map((n) => n[0])
-                                .slice(0, 2)
-                                .join("") || "?"}
-                            </Avatar>
+                              <Badge
+                                overlap="circular"
+                                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                                variant="dot"
+                                invisible={!activeSessionByUserId.has(u.id)}
+                                sx={{
+                                  "& .MuiBadge-dot": {
+                                    bgcolor: "#22c55e",
+                                    boxShadow: "0 0 0 2px " + (isDark ? "#1e1e1e" : "#fff") + ", 0 0 6px 2px rgba(34,197,94,0.9)",
+                                    animation: "sentry-logged-in-pulse 1.6s ease-in-out infinite",
+                                  },
+                                  "@keyframes sentry-logged-in-pulse": {
+                                    "0%": { opacity: 1 },
+                                    "50%": { opacity: 0.45 },
+                                    "100%": { opacity: 1 },
+                                  },
+                                }}
+                              >
+                                <Avatar
+                                  sx={{
+                                    width: 40,
+                                    height: 40,
+                                    bgcolor: isDark ? "#fff" : "#000",
+                                    color: isDark ? "#000" : "#fff",
+                                    fontSize: "1rem",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  {u.full_name
+                                    ?.split(" ")
+                                    .map((n) => n[0])
+                                    .slice(0, 2)
+                                    .join("") || "?"}
+                                </Avatar>
+                              </Badge>
+                            </Tooltip>
                             <Box sx={{ minWidth: 0, flex: 1 }}>
                               <Typography
                                 variant="subtitle1"
@@ -1075,6 +1209,22 @@ export default function UsersPage() {
                               </IconButton>
                             </Tooltip>
                           )}
+                          {isSuperAdminViewer && u.id !== currentUser.id && activeSessionByUserId.has(u.id) && (
+                            <Tooltip title="Revoke Session (end active logins now)">
+                              <IconButton
+                                color="warning"
+                                onClick={() => handleRevokeSessionClick(u)}
+                                size="small"
+                                sx={{
+                                  bgcolor: isDark
+                                    ? "rgba(255,255,255,0.05)"
+                                    : "rgba(0,0,0,0.03)",
+                                }}
+                              >
+                                <ICONS.logout fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           {canDelete && u.id !== currentUser.id && (
                             <Tooltip title="Delete User">
                               <IconButton
@@ -1096,18 +1246,30 @@ export default function UsersPage() {
                     </Box>
                   </AppCard>
                 ))}
-              </ResponsiveCardGrid>
-            </AccordionDetails>
-          </Accordion>
+            </ResponsiveCardGrid>
+            {hiddenCount > 0 && (
+              <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() =>
+                    setExpandedRoleGroups((prev) => new Set(prev).add(role))
+                  }
+                >
+                  Show {hiddenCount} more {roleLabels[role]}
+                </Button>
+              </Box>
+            )}
+          </Box>
         );
       })}
         </>
       )}
 
       <Box display="flex" justifyContent="center" mt={4}>
-        {filteredUsers.length > rowsPerPage && (
+        {roleFilter !== "all" && totalCount > rowsPerPage && (
           <Pagination
-            count={Math.ceil(filteredUsers.length / rowsPerPage)}
+            count={Math.ceil(totalCount / rowsPerPage)}
             page={page + 1}
             onChange={(e, v) => setPage(v - 1)}
             color="primary"
@@ -1474,6 +1636,157 @@ export default function UsersPage() {
         confirmButtonText={String(userStatusTarget?.status || "active").toLowerCase() === "active" ? "Deactivate" : "Activate"}
         confirmButtonIcon={String(userStatusTarget?.status || "active").toLowerCase() === "active" ? <ICONS.close fontSize="small" /> : <ICONS.check fontSize="small" />}
       />
+
+      <ConfirmationDialog
+        open={revokeConfirmOpen}
+        onClose={() => setRevokeConfirmOpen(false)}
+        onConfirm={handleConfirmRevokeSession}
+        title={userRevokeTarget?.isSelf ? "Logout" : "Revoke Session"}
+        message={
+          userRevokeTarget?.isSelf
+            ? "This will log you out of Sentry now. Continue?"
+            : `This will immediately end every active login for ${userRevokeTarget?.full_name}, including any realtime connection already open, and require them to sign in again. Their account stays active. Continue?`
+        }
+        confirmButtonText={userRevokeTarget?.isSelf ? "Logout" : "Revoke Session"}
+        confirmButtonIcon={<ICONS.logout fontSize="small" />}
+      />
+
+      <Dialog
+        open={sessionsModalOpen}
+        onClose={() => setSessionsModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { variant: "frosted", borderRadius: 4 } }}
+      >
+        <DialogHeader
+          title={`Active Sessions${activeSessions.length ? ` (${activeSessions.length})` : ""}`}
+          onClose={() => setSessionsModalOpen(false)}
+        />
+        <DialogContent dividers sx={{ p: activeSessions.length ? 0 : 3 }}>
+          {activeSessionsLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : activeSessions.length === 0 ? (
+            <NoDataAvailable
+              title="No active sessions"
+              description="No one currently has a live session."
+              compact
+            />
+          ) : (
+            <List disablePadding>
+              {activeSessions.map((s) => {
+                const isSelf = s.userId === currentUser.id;
+                return (
+                  <ListItem
+                    key={s.userId}
+                    divider
+                    secondaryAction={
+                      <Tooltip
+                        title={
+                          isSelf
+                            ? "Logout"
+                            : "Revoke Session (end active logins now)"
+                        }
+                      >
+                        <IconButton
+                          color="warning"
+                          edge="end"
+                          onClick={() => {
+                            setUserRevokeTarget({
+                              id: s.userId,
+                              full_name: s.fullName,
+                              isSelf,
+                            });
+                            setRevokeConfirmOpen(true);
+                          }}
+                        >
+                          <ICONS.logout fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    }
+                  >
+                    <ListItemAvatar>
+                      <Badge
+                        overlap="circular"
+                        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                        variant="dot"
+                        sx={{
+                          "& .MuiBadge-dot": {
+                            bgcolor: "#22c55e",
+                            boxShadow:
+                              "0 0 0 2px " + (isDark ? "#1e1e1e" : "#fff") + ", 0 0 6px 2px rgba(34,197,94,0.9)",
+                            animation: "sentry-logged-in-pulse 1.6s ease-in-out infinite",
+                          },
+                        }}
+                      >
+                        <Avatar
+                          sx={{
+                            bgcolor: isDark ? "#fff" : "#000",
+                            color: isDark ? "#000" : "#fff",
+                            fontWeight: 800,
+                          }}
+                        >
+                          {s.fullName
+                            ?.split(" ")
+                            .map((n) => n[0])
+                            .slice(0, 2)
+                            .join("") || "?"}
+                        </Avatar>
+                      </Badge>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ pr: 5 }}>
+                          <Typography variant="subtitle2" fontWeight={800} noWrap>
+                            {s.fullName}
+                          </Typography>
+                          {isSelf && (
+                            <Chip
+                              label="You"
+                              size="small"
+                              color="primary"
+                              sx={{ height: 20, fontSize: "0.65rem", fontWeight: 700 }}
+                            />
+                          )}
+                          <Chip
+                            label={s.role}
+                            size="small"
+                            variant="outlined"
+                            sx={{ textTransform: "capitalize", height: 20, fontSize: "0.65rem" }}
+                          />
+                        </Stack>
+                      }
+                      secondary={
+                        <Stack component="span" spacing={0.25} sx={{ mt: 0.25 }}>
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ overflowWrap: "anywhere" }}
+                          >
+                            {s.email}
+                          </Typography>
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="text.disabled"
+                          >
+                            {s.sessionCount} active session{s.sessionCount === 1 ? "" : "s"}
+                            {" · last active "}
+                            {formatDateTimeWithLocale(s.lastActiveAt)}
+                          </Typography>
+                        </Stack>
+                      }
+                      slotProps={{ secondary: { component: "div" } }}
+                    />
+                  </ListItem>
+                );
+              })}
+            </List>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
     </PermissionRouteGuard>
   );

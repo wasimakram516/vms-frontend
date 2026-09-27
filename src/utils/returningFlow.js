@@ -13,12 +13,11 @@ import { COUNTRY_CODES, DEFAULT_ISO_CODE } from "@/utils/countryCodes";
  * @param {Function} ctx.checkNdaValidity - from registrationService
  */
 export async function applyReturningVerification(res, { setFlowState, setVisitorData, router, checkNdaValidity }) {
-    const visitorEmail = res.user?.email;
     let ndaStillValid = true;
 
-    if (visitorEmail) {
+    if (res.user) {
         try {
-            const validityRes = await checkNdaValidity(visitorEmail);
+            const validityRes = await checkNdaValidity();
             if (validityRes?.ndaRequired) ndaStillValid = false;
         } catch {
             // NDA check failure must not block the returning flow

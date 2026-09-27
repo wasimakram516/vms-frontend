@@ -490,34 +490,23 @@ function KitchenDashboardContent({ canViewHistory }) {
   useSocket(
     useMemo(() => ({
       "kitchen-order:new": (newOrder) => {
-        const mapped = mapOrder(newOrder);
-        setOrders((prev) => [mapped, ...prev]);
         setLastUpdated(new Date());
-        showMessage(`New order from ${mapped.requester}`, "info");
+        showMessage("A new kitchen order is available", "info");
         playAlert();
         
         // Auto-receive new orders
-        if (mapped.status === "initiated" && perms.receive) {
-          updateOrderStatusSilent(mapped.id, { status: "received" });
+        if (newOrder?.status === "initiated" && newOrder?.id && perms.receive) {
+          updateOrderStatusSilent(newOrder.id, { status: "received" });
         }
+        fetchData();
       },
       "kitchen-order:updated": (updated) => {
-        const mapped = mapOrder(updated);
-        setOrders((prev) => {
-          const isTerminal = mapped.status === "cancelled" || mapped.status === "delivered";
-          if (!ACTIVE_STATUSES.includes(mapped.status) && !isTerminal && mapped.status !== "initiated") {
-            return prev.filter((o) => o.id !== mapped.id);
-          }
-          const exists = prev.find((o) => o.id === mapped.id);
-          return exists
-            ? prev.map((o) => o.id === mapped.id ? mapped : o)
-            : prev;
-        });
+        fetchData();
         setLastUpdated(new Date());
 
-        if (mapped.status === "cancelled") {
+        if (updated?.status === "cancelled") {
           playCancelAlert();
-          showMessage(`Order from ${mapped.requester} has been cancelled`, "error");
+          showMessage("A kitchen order has been cancelled", "error");
           setHistoryNotificationCount(prev => prev + 1);
         }
       },

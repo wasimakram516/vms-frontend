@@ -32,8 +32,12 @@ import Grid from "@mui/material/Grid";
 import { DateCalendar } from "@mui/x-date-pickers/DateCalendar";
 import { useRouter } from "next/navigation";
 import { useVisitor } from "@/contexts/VisitorContext";
-import { createRegistration, visitorEditRegistration, getFields } from "@/services/registrationService";
-import { getDepartments } from "@/services/departmentService";
+import {
+  createRegistration,
+  visitorEditRegistration,
+  getFields,
+} from "@/services/registrationService";
+import { getPublicDepartments } from "@/services/departmentService";
 import { getPublicActiveNdaTemplate } from "@/services/ndaTemplateService";
 import { getWorkingHours } from "@/services/hostService";
 import NdaTemplateContent from "@/components/NdaTemplateContent";
@@ -44,15 +48,30 @@ import VisitorLayout from "@/components/layout/VisitorLayout";
 import { useColorMode } from "@/contexts/ThemeContext";
 import useI18nLayout from "@/hooks/useI18nLayout";
 import registrationTranslations from "@/locales/registration";
-import { parse24To12, convert12To24, formatDate, formatTime } from "@/utils/dateUtils";
+import {
+  parse24To12,
+  convert12To24,
+  formatDate,
+  formatTime,
+} from "@/utils/dateUtils";
 import { translateBatch } from "@/services/translationService";
 import { ndaDocToHtml } from "@/utils/ndaDocUtils";
 import getStartIconSpacing from "@/utils/getStartIconSpacing";
-import { workingHoursToUserLocal, userTimeZone, rollOvernightEnd } from "@/utils/premiseTime";
+import TurnstileWidget, {
+  isTurnstileEnabled,
+} from "@/components/TurnstileWidget";
+import { TURNSTILE_ACTIONS } from "@/constants/turnstile";
+import {
+  workingHoursToUserLocal,
+  userTimeZone,
+  rollOvernightEnd,
+} from "@/utils/premiseTime";
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
 // 5-minute steps: 00, 05, 10 … 55
-const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
+const MINUTES = Array.from({ length: 12 }, (_, i) =>
+  String(i * 5).padStart(2, "0"),
+);
 const PERIODS = ["AM", "PM"];
 
 /** Round a minute value to the nearest 5-min step (for prefilling from DB) */
@@ -131,9 +150,21 @@ const fmtLocalWorkingHours = (cfg) => {
 
 export default function BookingPage() {
   const router = useRouter();
-  const { visitorData, setVisitorData, bookingData, setBookingData, resetVisitorFlow, flowState, setFlowState } = useVisitor();
+  const {
+    visitorData,
+    setVisitorData,
+    bookingData,
+    setBookingData,
+    resetVisitorFlow,
+    flowState,
+    setFlowState,
+  } = useVisitor();
   const { mode } = useColorMode();
-  const { t, isArabic: isRtl, language: lang } = useI18nLayout(registrationTranslations);
+  const {
+    t,
+    isArabic: isRtl,
+    language: lang,
+  } = useI18nLayout(registrationTranslations);
   const isDark = mode === "dark";
   const dir = isRtl ? "rtl" : "ltr";
 
@@ -147,6 +178,8 @@ export default function BookingPage() {
   const activeRegistration = flowState?.activeRegistration ?? null;
   const ndaRequired = isReturning && flowState?.ndaAccepted === false;
   const [submitting, setSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const [departments, setDepartments] = useState([]);
   const [translatedDeptNames, setTranslatedDeptNames] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
@@ -204,9 +237,7 @@ export default function BookingPage() {
     if (!outsideHours && !outsideDay) return null;
     const parts = [];
     if (outsideDay)
-      parts.push(
-        t.outsideWorkingDays.replace("{{days}}", DAY_LABELS[dow]),
-      );
+      parts.push(t.outsideWorkingDays.replace("{{days}}", DAY_LABELS[dow]));
     if (outsideHours) parts.push(t.outsideWorkingHours);
     const joined = parts.join(" and ");
 
@@ -227,7 +258,15 @@ export default function BookingPage() {
     );
   };
 
-  const DAY_LABELS = [t.daySun, t.dayMon, t.dayTue, t.dayWed, t.dayThu, t.dayFri, t.daySat];
+  const DAY_LABELS = [
+    t.daySun,
+    t.dayMon,
+    t.dayTue,
+    t.dayWed,
+    t.dayThu,
+    t.dayFri,
+    t.daySat,
+  ];
 
   // ── Custom fields for purpose of visit (returning visitor flow) ───────────
   const [purposeCustomFields, setPurposeCustomFields] = useState([]);
@@ -240,11 +279,15 @@ export default function BookingPage() {
 
   // Collect purpose field + all its transitive dependents
   const purposeRelatedIds = useMemo(() => {
-    const normKey = (s = '') => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normKey = (s = "") => s.toLowerCase().replace(/[^a-z0-9]/g, "");
     const purposeField = purposeCustomFields.find((f) => {
       const k = normKey(f.field_key || f.fieldKey);
-      const l = (f.label || '').toLowerCase();
-      return k.includes('purposeofvisit') || k === 'purpose' || l.includes('purpose of visit');
+      const l = (f.label || "").toLowerCase();
+      return (
+        k.includes("purposeofvisit") ||
+        k === "purpose" ||
+        l.includes("purpose of visit")
+      );
     });
     if (!purposeField) return new Set();
     const ids = new Set([purposeField.id]);
@@ -256,7 +299,10 @@ export default function BookingPage() {
       if (!deps) continue;
       Object.values(deps).forEach((cfg) => {
         getChildFieldIds(cfg).forEach((id) => {
-          if (!ids.has(id)) { ids.add(id); if (byId[id]) queue.push(byId[id]); }
+          if (!ids.has(id)) {
+            ids.add(id);
+            if (byId[id]) queue.push(byId[id]);
+          }
         });
       });
     }
@@ -268,11 +314,16 @@ export default function BookingPage() {
     const allChildIds = new Set();
     purposeCustomFields.forEach((f) => {
       const deps = f.dependents_json || f.dependentsJson;
-      if (deps) Object.values(deps).forEach((cfg) => getChildFieldIds(cfg).forEach((id) => allChildIds.add(id)));
+      if (deps)
+        Object.values(deps).forEach((cfg) =>
+          getChildFieldIds(cfg).forEach((id) => allChildIds.add(id)),
+        );
     });
     const visible = new Set();
     const byId = Object.fromEntries(purposeCustomFields.map((f) => [f.id, f]));
-    const queue = purposeCustomFields.filter((f) => !allChildIds.has(f.id) && purposeRelatedIds.has(f.id));
+    const queue = purposeCustomFields.filter(
+      (f) => !allChildIds.has(f.id) && purposeRelatedIds.has(f.id),
+    );
     queue.forEach((f) => visible.add(f.id));
     const bfsQueue = [...queue];
     while (bfsQueue.length > 0) {
@@ -296,21 +347,31 @@ export default function BookingPage() {
     setVisitorData((prev) => {
       const updated = { ...prev.dynamicFields, [key]: value };
       // Clear hidden dependents when parent value changes
-      const parentField = purposeCustomFields.find((f) => (f.field_key || f.fieldKey) === key);
+      const parentField = purposeCustomFields.find(
+        (f) => (f.field_key || f.fieldKey) === key,
+      );
       const deps = parentField?.dependents_json || parentField?.dependentsJson;
       if (deps) {
         Object.entries(deps).forEach(([triggerVal, cfg]) => {
           if (triggerVal !== value) {
             getChildFieldIds(cfg).forEach((childId) => {
-              const childField = purposeCustomFields.find((f) => f.id === childId);
-              if (childField) delete updated[childField.field_key || childField.fieldKey];
+              const childField = purposeCustomFields.find(
+                (f) => f.id === childId,
+              );
+              if (childField)
+                delete updated[childField.field_key || childField.fieldKey];
             });
           }
         });
       }
       return { ...prev, dynamicFields: updated };
     });
-    if (fieldErrors[key]) setFieldErrors((p) => { const n = { ...p }; delete n[key]; return n; });
+    if (fieldErrors[key])
+      setFieldErrors((p) => {
+        const n = { ...p };
+        delete n[key];
+        return n;
+      });
   };
   const bookingDate = bookingData.date ? dayjs(bookingData.date) : null;
   const hasValidBookingDate = bookingDate?.isValid?.() === true;
@@ -325,11 +386,15 @@ export default function BookingPage() {
       if (!isEditMode || !activeRegistration) return;
 
       // Find the purpose field to know its key
-      const normKey = (s = '') => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normKey = (s = "") => s.toLowerCase().replace(/[^a-z0-9]/g, "");
       const purposeField = res.find((f) => {
         const k = normKey(f.field_key || f.fieldKey);
-        const l = (f.label || '').toLowerCase();
-        return k.includes('purposeofvisit') || k === 'purpose' || l.includes('purpose of visit');
+        const l = (f.label || "").toLowerCase();
+        return (
+          k.includes("purposeofvisit") ||
+          k === "purpose" ||
+          l.includes("purpose of visit")
+        );
       });
 
       // Merge field values from activeRegistration (prefer fieldValues, bridge purposeOfVisit for old records)
@@ -341,20 +406,25 @@ export default function BookingPage() {
         }
       }
       if (Object.keys(preFill).length > 0) {
-        setVisitorData((prev) => ({ ...prev, dynamicFields: { ...prev.dynamicFields, ...preFill } }));
+        setVisitorData((prev) => ({
+          ...prev,
+          dynamicFields: { ...prev.dynamicFields, ...preFill },
+        }));
       }
     });
   }, [isReturning]);
 
   useEffect(() => {
     if (!isReturning) return;
-    getDepartments(true).then((res) => {
+    getPublicDepartments().then((res) => {
       if (!Array.isArray(res)) return;
       setDepartments(res);
       const names = res.map((d) => d.name || "");
       translateBatch(names, "ar").then((results) => {
         const map = {};
-        res.forEach((d, i) => { map[d.id] = results[i] || d.name; });
+        res.forEach((d, i) => {
+          map[d.id] = results[i] || d.name;
+        });
         setTranslatedDeptNames(map);
       });
     });
@@ -366,7 +436,9 @@ export default function BookingPage() {
       const from = dayjs(activeRegistration.requestedFrom);
       const fromH = from.format("HH");
       const fromM = snapTo5(from.minute());
-      const toRaw = activeRegistration.requestedTo ? dayjs(activeRegistration.requestedTo) : null;
+      const toRaw = activeRegistration.requestedTo
+        ? dayjs(activeRegistration.requestedTo)
+        : null;
       const toH = toRaw ? toRaw.format("HH") : from.format("HH");
       const toM = toRaw ? snapTo5(toRaw.minute()) : snapTo5(from.minute());
       setBookingData((prev) => ({
@@ -378,22 +450,36 @@ export default function BookingPage() {
     }
     // Restore recurring preset when editing (re-open the preset tab for recurring visits)
     if (activeRegistration.recurringType) {
-      const typeMap = { full_week: "fullWeek", full_month: "fullMonth", specific_days: "specificDays" };
+      const typeMap = {
+        full_week: "fullWeek",
+        full_month: "fullMonth",
+        specific_days: "specificDays",
+      };
       const preset = typeMap[activeRegistration.recurringType] || "fullDay";
       setBookingType("preset");
       setSelectedPreset(preset);
-      if (preset === "specificDays" && Array.isArray(activeRegistration.recurringDays)) {
+      if (
+        preset === "specificDays" &&
+        Array.isArray(activeRegistration.recurringDays)
+      ) {
         setSpecificDays(activeRegistration.recurringDays);
       }
     }
     if (activeRegistration.departmentId) {
-      setVisitorData((prev) => ({ ...prev, departmentId: activeRegistration.departmentId }));
+      setVisitorData((prev) => ({
+        ...prev,
+        departmentId: activeRegistration.departmentId,
+      }));
     }
   }, [isEditMode]);
 
   // Load host working-hours config (best-effort; gracefully falls back to defaults).
   useEffect(() => {
-    getWorkingHours().then((cfg) => { if (cfg) setHostConfig(cfg); }).catch(() => {});
+    getWorkingHours()
+      .then((cfg) => {
+        if (cfg) setHostConfig(cfg);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -415,10 +501,23 @@ export default function BookingPage() {
         const resolved = res || null;
         setNdaTemplate(resolved);
         if (resolved) {
-          const preambleHtml = Array.isArray(resolved.preamble) ? ndaDocToHtml(resolved.preamble) : (resolved.preamble || "");
-          const bodyHtml = Array.isArray(resolved.body) ? ndaDocToHtml(resolved.body) : (resolved.body || "");
-          const [arName, arPreamble, arBody] = await translateBatch([resolved.name || "", preambleHtml, bodyHtml], "ar", "html");
-          setTranslatedNda({ ...resolved, name: arName, preamble: arPreamble, body: arBody });
+          const preambleHtml = Array.isArray(resolved.preamble)
+            ? ndaDocToHtml(resolved.preamble)
+            : resolved.preamble || "";
+          const bodyHtml = Array.isArray(resolved.body)
+            ? ndaDocToHtml(resolved.body)
+            : resolved.body || "";
+          const [arName, arPreamble, arBody] = await translateBatch(
+            [resolved.name || "", preambleHtml, bodyHtml],
+            "ar",
+            "html",
+          );
+          setTranslatedNda({
+            ...resolved,
+            name: arName,
+            preamble: arPreamble,
+            body: arBody,
+          });
         }
       })
       .catch(() => setNdaTemplate(null))
@@ -469,62 +568,148 @@ export default function BookingPage() {
     const resolvedAmPm = allowedPeriods.includes(curAmPm) ? curAmPm : "AM";
     const hoursInPeriod = allHours
       .filter((s) => s.ampm === resolvedAmPm)
-      .sort((a, b) => (a.h12 === 12 ? 13 : a.h12) - (b.h12 === 12 ? 13 : b.h12));
-    const resolvedH24 = hoursInPeriod.some((s) => s.h24 === h24) ? h24 : (hoursInPeriod[0]?.h24 ?? 8);
+      .sort(
+        (a, b) => (a.h12 === 12 ? 13 : a.h12) - (b.h12 === 12 ? 13 : b.h12),
+      );
+    const resolvedH24 = hoursInPeriod.some((s) => s.h24 === h24)
+      ? h24
+      : (hoursInPeriod[0]?.h24 ?? 8);
     const allowedMinutes = getAllowedMinutes();
-    const resolvedMinute = allowedMinutes.includes(minute) ? minute : (allowedMinutes[0] ?? "00");
+    const resolvedMinute = allowedMinutes.includes(minute)
+      ? minute
+      : (allowedMinutes[0] ?? "00");
 
     return (
       <Box>
-        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ ml: 1, mb: 0.5, display: "block" }}>
+        <Typography
+          variant="caption"
+          fontWeight={700}
+          color="text.secondary"
+          sx={{ ml: 1, mb: 0.5, display: "block" }}
+        >
           {label}
         </Typography>
         <Stack direction="row" sx={{ gap: 0.5 }}>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t.bookingHr}</Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                ml: 1,
+                color: "text.secondary",
+                textTransform: "uppercase",
+              }}
+            >
+              {t.bookingHr}
+            </Typography>
             <TextField
-              select size="small"
+              select
+              size="small"
               value={resolvedH24}
               onChange={(e) => {
                 const newH24 = Number(e.target.value);
                 const newMins = getAllowedMinutes();
-                const snapMin = newMins.includes(resolvedMinute) ? resolvedMinute : (newMins[0] ?? "00");
-                handleTimeChange(type, `${String(newH24).padStart(2, "0")}:${snapMin}`);
+                const snapMin = newMins.includes(resolvedMinute)
+                  ? resolvedMinute
+                  : (newMins[0] ?? "00");
+                handleTimeChange(
+                  type,
+                  `${String(newH24).padStart(2, "0")}:${snapMin}`,
+                );
               }}
-              sx={{ width: "100%", "& .MuiOutlinedInput-root": { borderRadius: 30 }, "& .MuiSelect-select": { fontSize: "0.75rem", py: 1, px: 1 } }}
+              sx={{
+                width: "100%",
+                "& .MuiOutlinedInput-root": { borderRadius: 30 },
+                "& .MuiSelect-select": { fontSize: "0.75rem", py: 1, px: 1 },
+              }}
             >
               {hoursInPeriod.map((slot) => (
-                <MenuItem key={slot.h24} value={slot.h24} sx={{ fontSize: "0.75rem" }}>{slot.h12}</MenuItem>
+                <MenuItem
+                  key={slot.h24}
+                  value={slot.h24}
+                  sx={{ fontSize: "0.75rem" }}
+                >
+                  {slot.h12}
+                </MenuItem>
               ))}
             </TextField>
           </Box>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t.bookingMin}</Typography>
-            <TextField
-              select size="small"
-              value={resolvedMinute}
-              onChange={(e) => handleTimeChange(type, `${String(resolvedH24).padStart(2, "0")}:${e.target.value}`)}
-              sx={{ width: "100%", "& .MuiOutlinedInput-root": { borderRadius: 30 }, "& .MuiSelect-select": { fontSize: "0.75rem", py: 1, px: 1 } }}
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                ml: 1,
+                color: "text.secondary",
+                textTransform: "uppercase",
+              }}
             >
-              {allowedMinutes.map((m) => <MenuItem key={m} value={m} sx={{ fontSize: "0.75rem" }}>{m}</MenuItem>)}
+              {t.bookingMin}
+            </Typography>
+            <TextField
+              select
+              size="small"
+              value={resolvedMinute}
+              onChange={(e) =>
+                handleTimeChange(
+                  type,
+                  `${String(resolvedH24).padStart(2, "0")}:${e.target.value}`,
+                )
+              }
+              sx={{
+                width: "100%",
+                "& .MuiOutlinedInput-root": { borderRadius: 30 },
+                "& .MuiSelect-select": { fontSize: "0.75rem", py: 1, px: 1 },
+              }}
+            >
+              {allowedMinutes.map((m) => (
+                <MenuItem key={m} value={m} sx={{ fontSize: "0.75rem" }}>
+                  {m}
+                </MenuItem>
+              ))}
             </TextField>
           </Box>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="caption" sx={{ fontSize: "0.6rem", fontWeight: 700, ml: 1, color: "text.secondary", textTransform: "uppercase" }}>{t.bookingAmPm}</Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                ml: 1,
+                color: "text.secondary",
+                textTransform: "uppercase",
+              }}
+            >
+              {t.bookingAmPm}
+            </Typography>
             <TextField
-              select size="small"
+              select
+              size="small"
               value={resolvedAmPm}
               onChange={(e) => {
                 const newAmPm = e.target.value;
-                const newPeriodHours = allHours.filter((s) => s.ampm === newAmPm);
+                const newPeriodHours = allHours.filter(
+                  (s) => s.ampm === newAmPm,
+                );
                 const newH24 = newPeriodHours.some((s) => s.h24 === resolvedH24)
                   ? resolvedH24
                   : (newPeriodHours[0]?.h24 ?? 8);
                 const newMins = getAllowedMinutes();
-                const snapMin = newMins.includes(resolvedMinute) ? resolvedMinute : (newMins[0] ?? "00");
-                handleTimeChange(type, `${String(newH24).padStart(2, "0")}:${snapMin}`);
+                const snapMin = newMins.includes(resolvedMinute)
+                  ? resolvedMinute
+                  : (newMins[0] ?? "00");
+                handleTimeChange(
+                  type,
+                  `${String(newH24).padStart(2, "0")}:${snapMin}`,
+                );
               }}
-              sx={{ width: "100%", "& .MuiOutlinedInput-root": { borderRadius: 30 }, "& .MuiSelect-select": { fontSize: "0.75rem", py: 1, px: 1 } }}
+              sx={{
+                width: "100%",
+                "& .MuiOutlinedInput-root": { borderRadius: 30 },
+                "& .MuiSelect-select": { fontSize: "0.75rem", py: 1, px: 1 },
+              }}
             >
               {allowedPeriods.map((p) => (
                 <MenuItem key={p} value={p} sx={{ fontSize: "0.75rem" }}>
@@ -540,26 +725,39 @@ export default function BookingPage() {
 
   const handleSubmit = async () => {
     if (!hasValidBookingDate) return;
+    if (!isEditMode && isTurnstileEnabled && !turnstileToken) return;
 
     if (isReturning) {
       const errs = {};
       if (!visitorData.departmentId) errs.departmentId = t.departmentRequired;
       if (showNdaCheckbox && !ndaAccepted) errs.nda = t.ndaMustAccept;
-      if (Object.keys(errs).length) { setFieldErrors(errs); return; }
+      if (Object.keys(errs).length) {
+        setFieldErrors(errs);
+        return;
+      }
     }
 
     // Validate specific days
     if (bookingType === "preset" && selectedPreset === "specificDays") {
       if (!specificDays.length) {
-        setFieldErrors((p) => ({ ...p, specificDays: "Please select at least one day" }));
+        setFieldErrors((p) => ({
+          ...p,
+          specificDays: "Please select at least one day",
+        }));
         return;
       }
       if (!specificEndDate || !specificEndDate.isValid()) {
-        setFieldErrors((p) => ({ ...p, specificEndDate: "Please select an end date" }));
+        setFieldErrors((p) => ({
+          ...p,
+          specificEndDate: "Please select an end date",
+        }));
         return;
       }
       if (specificEndDate.isBefore(bookingDate, "day")) {
-        setFieldErrors((p) => ({ ...p, specificEndDate: "End date must be on or after the start date" }));
+        setFieldErrors((p) => ({
+          ...p,
+          specificEndDate: "End date must be on or after the start date",
+        }));
         return;
       }
     }
@@ -571,7 +769,7 @@ export default function BookingPage() {
       // so the payload doesn't rely on bookingData.timeFrom/timeTo (which the user never
       // touches for Full Day since no time picker is shown).
       let fullDayFromIso = null;
-      let fullDayToIso   = null;
+      let fullDayToIso = null;
       let recurringType = null;
       let recurringDays = null;
       let recurringTimeFrom = null;
@@ -586,12 +784,12 @@ export default function BookingPage() {
           // Full Day = the selected date's working window on the SAME calendar day (no next-day)
           const startH = hostConfig?.start ?? 8;
           const startM = hostConfig?.startMinute ?? 0;
-          const endH   = hostConfig?.end   ?? 17;
-          const endM   = hostConfig?.endMinute   ?? 0;
+          const endH = hostConfig?.end ?? 17;
+          const endM = hostConfig?.endMinute ?? 0;
           from = from.startOf("day").hour(startH).minute(startM);
-          to   = date.clone().startOf("day").hour(endH).minute(endM);
+          to = date.clone().startOf("day").hour(endH).minute(endM);
           fullDayFromIso = from.toISOString();
-          fullDayToIso   = to.toISOString();
+          fullDayToIso = to.toISOString();
           // recurringType stays null for a single full-day slot
         } else if (selectedPreset === "fullWeek") {
           from = from.startOf("day");
@@ -634,11 +832,13 @@ export default function BookingPage() {
 
       // Full Day uses exact ISO from working-hours config; all other presets and custom
       // reconstruct from the user-selected date + timeFrom/timeTo dropdowns.
-      const resolvedFrom = fullDayFromIso ?? dayjs(`${fromDate}T${bookingData.timeFrom}`).toISOString();
-      const resolvedTo   = fullDayToIso   ?? dayjs(`${toDate}T${bookingData.timeTo}`).toISOString();
+      const resolvedFrom =
+        fullDayFromIso ??
+        dayjs(`${fromDate}T${bookingData.timeFrom}`).toISOString();
+      const resolvedTo =
+        fullDayToIso ?? dayjs(`${toDate}T${bookingData.timeTo}`).toISOString();
 
       const payload = {
-        userId: visitorData.userId,
         ndaAccepted: flowState?.ndaAccepted === true || ndaAccepted,
         requestedFrom: resolvedFrom,
         requestedTo: resolvedTo,
@@ -646,34 +846,50 @@ export default function BookingPage() {
         departmentId: visitorData.departmentId || undefined,
         fieldValues: {
           ...visitorData.dynamicFields,
-          full_name: visitorData.fullName || visitorData.dynamicFields.full_name,
+          full_name:
+            visitorData.fullName || visitorData.dynamicFields.full_name,
         },
         tzOffset: new Date().getTimezoneOffset(),
-        ...(recurringType && { recurringType, recurringDays, recurringTimeFrom, recurringTimeTo }),
+        ...(recurringType && {
+          recurringType,
+          recurringDays,
+          recurringTimeFrom,
+          recurringTimeTo,
+        }),
       };
 
       let res;
       if (isEditMode && activeRegistration?.id) {
         res = await visitorEditRegistration(activeRegistration.id, {
-          userId: visitorData.userId,
           requestedFrom: resolvedFrom,
           requestedTo: resolvedTo,
           departmentId: visitorData.departmentId || undefined,
           fieldValues: {
             ...visitorData.dynamicFields,
-            full_name: visitorData.fullName || visitorData.dynamicFields?.full_name,
+            full_name:
+              visitorData.fullName || visitorData.dynamicFields?.full_name,
           },
           tzOffset: new Date().getTimezoneOffset(),
-          ...(recurringType && { recurringType, recurringDays, recurringTimeFrom, recurringTimeTo }),
+          ...(recurringType && {
+            recurringType,
+            recurringDays,
+            recurringTimeFrom,
+            recurringTimeTo,
+          }),
         });
       } else {
-        res = await createRegistration(payload);
+        res = await createRegistration({ ...payload, turnstileToken });
+        setTurnstileToken("");
+        setTurnstileResetKey((value) => value + 1);
       }
       if (!res.error) {
         // sessionStorage can throw SecurityError in private browsing; guard it so
         // the navigation still proceeds even if storage is unavailable.
         try {
-          sessionStorage.setItem("vms_summary", JSON.stringify({ registration: res, visitorData }));
+          sessionStorage.setItem(
+            "vms_summary",
+            JSON.stringify({ registration: res, visitorData }),
+          );
         } catch {
           // storage unavailable — summary page will fall back to a blank/redirect state
         }
@@ -683,6 +899,10 @@ export default function BookingPage() {
       }
       setSubmitting(false);
     } catch {
+      if (!isEditMode) {
+        setTurnstileToken("");
+        setTurnstileResetKey((value) => value + 1);
+      }
       setSubmitting(false);
     }
   };
@@ -696,7 +916,9 @@ export default function BookingPage() {
         maxWidth={900}
       >
         <Stack spacing={2}>
-          <Box sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}>
+          <Box
+            sx={{ textAlign: "center", display: { xs: "none", md: "block" } }}
+          >
             <Typography variant="h5" fontWeight={800}>
               {t.bookingHeading}
             </Typography>
@@ -705,20 +927,50 @@ export default function BookingPage() {
             </Typography>
           </Box>
 
+          {!isEditMode && (
+            <TurnstileWidget
+              action={TURNSTILE_ACTIONS.REGISTRATION_SUBMIT}
+              onTokenChange={setTurnstileToken}
+              resetKey={turnstileResetKey}
+            />
+          )}
+
           <Divider />
 
           {isEditMode && activeRegistration && (
-            <Box sx={{ p: 2, borderRadius: 3, bgcolor: "warning.main", color: "warning.contrastText", display: "flex", alignItems: "flex-start", gap: 1.5 }}>
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 3,
+                bgcolor: "warning.main",
+                color: "warning.contrastText",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 1.5,
+              }}
+            >
               <ICONS.edit sx={{ mt: 0.2, fontSize: 20, flexShrink: 0 }} />
               <Box>
-                <Typography variant="body2" fontWeight={700}>{t.activeRequestTitle}</Typography>
+                <Typography variant="body2" fontWeight={700}>
+                  {t.activeRequestTitle}
+                </Typography>
                 <Typography variant="caption">{t.activeRequestDesc}</Typography>
               </Box>
             </Box>
           )}
 
           {isEditMode && activeRegistration?.isGroupMeeting && (
-            <Box sx={{ p: 2, borderRadius: 3, bgcolor: "info.main", color: "info.contrastText", display: "flex", alignItems: "flex-start", gap: 1.5 }}>
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 3,
+                bgcolor: "info.main",
+                color: "info.contrastText",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 1.5,
+              }}
+            >
               <ICONS.group sx={{ mt: 0.2, fontSize: 20, flexShrink: 0 }} />
               <Box>
                 <Typography variant="body2" fontWeight={700}>
@@ -726,31 +978,49 @@ export default function BookingPage() {
                     activeRegistration?.meeting_name ||
                     t.groupMeetingEditTitle}
                 </Typography>
-                <Typography variant="caption">{t.groupMeetingEditDesc}</Typography>
+                <Typography variant="caption">
+                  {t.groupMeetingEditDesc}
+                </Typography>
               </Box>
             </Box>
           )}
 
           {isReturning && (
             <Stack spacing={2}>
-              <FormControl fullWidth required error={Boolean(fieldErrors.departmentId)}>
+              <FormControl
+                fullWidth
+                required
+                error={Boolean(fieldErrors.departmentId)}
+              >
                 <InputLabel>{t.department}</InputLabel>
                 <Select
                   value={visitorData.departmentId || ""}
                   label={t.department}
                   onChange={(e) => {
-                    setVisitorData((prev) => ({ ...prev, departmentId: e.target.value }));
-                    if (fieldErrors.departmentId) setFieldErrors((p) => { const n = { ...p }; delete n.departmentId; return n; });
+                    setVisitorData((prev) => ({
+                      ...prev,
+                      departmentId: e.target.value,
+                    }));
+                    if (fieldErrors.departmentId)
+                      setFieldErrors((p) => {
+                        const n = { ...p };
+                        delete n.departmentId;
+                        return n;
+                      });
                   }}
                   sx={{ borderRadius: 30 }}
                 >
                   {departments.map((dept) => (
                     <MenuItem key={dept.id} value={dept.id}>
-                      {(isRtl && translatedDeptNames[dept.id]) ? translatedDeptNames[dept.id] : dept.name}
+                      {isRtl && translatedDeptNames[dept.id]
+                        ? translatedDeptNames[dept.id]
+                        : dept.name}
                     </MenuItem>
                   ))}
                 </Select>
-                {fieldErrors.departmentId && <FormHelperText>{fieldErrors.departmentId}</FormHelperText>}
+                {fieldErrors.departmentId && (
+                  <FormHelperText>{fieldErrors.departmentId}</FormHelperText>
+                )}
               </FormControl>
 
               {purposeCustomFields
@@ -758,16 +1028,36 @@ export default function BookingPage() {
                 .map((f) => {
                   const fieldKey = f.field_key || f.fieldKey;
                   const isRequired = f.is_required || f.isRequired;
-                  const inputType = (f.input_type || f.inputType || 'text').toLowerCase();
+                  const inputType = (
+                    f.input_type ||
+                    f.inputType ||
+                    "text"
+                  ).toLowerCase();
                   const options = f.options_json || f.optionsJson || [];
-                  const val = visitorData.dynamicFields?.[fieldKey] ?? '';
+                  const val = visitorData.dynamicFields?.[fieldKey] ?? "";
                   const err = fieldErrors[fieldKey];
-                  if (inputType === 'select') {
+                  if (inputType === "select") {
                     return (
-                      <FormControl key={f.id} fullWidth required={isRequired} error={Boolean(err)}>
+                      <FormControl
+                        key={f.id}
+                        fullWidth
+                        required={isRequired}
+                        error={Boolean(err)}
+                      >
                         <InputLabel>{f.label}</InputLabel>
-                        <Select value={val} label={f.label} onChange={(e) => handlePurposeFieldChange(fieldKey, e.target.value)} sx={{ borderRadius: 30 }}>
-                          {options.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                        <Select
+                          value={val}
+                          label={f.label}
+                          onChange={(e) =>
+                            handlePurposeFieldChange(fieldKey, e.target.value)
+                          }
+                          sx={{ borderRadius: 30 }}
+                        >
+                          {options.map((opt) => (
+                            <MenuItem key={opt} value={opt}>
+                              {opt}
+                            </MenuItem>
+                          ))}
                         </Select>
                         {err && <FormHelperText>{err}</FormHelperText>}
                       </FormControl>
@@ -780,11 +1070,13 @@ export default function BookingPage() {
                       label={f.label}
                       value={val}
                       required={isRequired}
-                      onChange={(e) => handlePurposeFieldChange(fieldKey, e.target.value)}
+                      onChange={(e) =>
+                        handlePurposeFieldChange(fieldKey, e.target.value)
+                      }
                       error={Boolean(err)}
                       helperText={err}
-                      multiline={inputType === 'textarea'}
-                      minRows={inputType === 'textarea' ? 2 : undefined}
+                      multiline={inputType === "textarea"}
+                      minRows={inputType === "textarea" ? 2 : undefined}
                       InputProps={{ sx: { borderRadius: 30 } }}
                     />
                   );
@@ -804,16 +1096,28 @@ export default function BookingPage() {
                       />
                     }
                     label={
-                      <Typography component="span" variant="body2" fontWeight={600}>
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        fontWeight={600}
+                      >
                         {t.ndaAgreeLabel}
                       </Typography>
                     }
                   />
-                  <Typography variant="caption" color="text.secondary" sx={{ pl: 4 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ pl: 4 }}
+                  >
                     {ndaAccepted ? t.ndaAcceptedHint : t.ndaExpiredHint}
                   </Typography>
                   {fieldErrors.nda && (
-                    <Typography variant="caption" color="error.main" sx={{ pl: 4 }}>
+                    <Typography
+                      variant="caption"
+                      color="error.main"
+                      sx={{ pl: 4 }}
+                    >
                       {fieldErrors.nda}
                     </Typography>
                   )}
@@ -826,7 +1130,11 @@ export default function BookingPage() {
 
           <Grid container spacing={3}>
             <Grid size={{ xs: 12, md: 6 }}>
-              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, px: 2 }}>
+              <Typography
+                variant="subtitle2"
+                fontWeight={700}
+                sx={{ mb: 1, px: 2 }}
+              >
                 {t.bookingSelectDate}
               </Typography>
               <Box
@@ -836,16 +1144,34 @@ export default function BookingPage() {
                   borderColor: "divider",
                   borderRadius: 4,
                   overflow: "hidden",
-                  bgcolor: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
-                  "& .MuiDateCalendar-root": { width: "100%", height: "auto", maxHeight: "none" },
+                  bgcolor: isDark
+                    ? "rgba(255,255,255,0.03)"
+                    : "rgba(0,0,0,0.02)",
+                  "& .MuiDateCalendar-root": {
+                    width: "100%",
+                    height: "auto",
+                    maxHeight: "none",
+                  },
                   "& .MuiPickersArrowSwitcher-button": {
-                    width: 32, height: 32, borderRadius: 1,
+                    width: 32,
+                    height: 32,
+                    borderRadius: 1,
                     color: "text.primary",
-                    "&:hover": { bgcolor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" },
+                    "&:hover": {
+                      bgcolor: isDark
+                        ? "rgba(255,255,255,0.1)"
+                        : "rgba(0,0,0,0.08)",
+                    },
                   },
                   "& .MuiPickersCalendarHeader-switchViewButton": {
-                    width: 32, height: 32, borderRadius: 1,
-                    "&:hover": { bgcolor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" },
+                    width: 32,
+                    height: 32,
+                    borderRadius: 1,
+                    "&:hover": {
+                      bgcolor: isDark
+                        ? "rgba(255,255,255,0.1)"
+                        : "rgba(0,0,0,0.08)",
+                    },
                   },
                   "& .MuiPickersDay-root.Mui-selected": {
                     bgcolor: isDark ? "#ffffff" : "#000000",
@@ -854,9 +1180,12 @@ export default function BookingPage() {
                     "&:hover": { bgcolor: isDark ? "#e0e0e0" : "#333333" },
                     "&:focus": { bgcolor: isDark ? "#ffffff" : "#000000" },
                   },
-                  "& .MuiPickersDay-root.MuiPickersDay-today:not(.Mui-selected)": {
-                    borderColor: isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)",
-                  },
+                  "& .MuiPickersDay-root.MuiPickersDay-today:not(.Mui-selected)":
+                    {
+                      borderColor: isDark
+                        ? "rgba(255,255,255,0.4)"
+                        : "rgba(0,0,0,0.35)",
+                    },
                   "& .MuiDayCalendar-weekDayLabel": {
                     fontWeight: 700,
                     color: "text.secondary",
@@ -871,9 +1200,17 @@ export default function BookingPage() {
                   disablePast
                   slots={{
                     leftArrowIcon: () =>
-                      isRtl ? <ICONS.chevronRight fontSize="small" /> : <ICONS.chevronLeft fontSize="small" />,
+                      isRtl ? (
+                        <ICONS.chevronRight fontSize="small" />
+                      ) : (
+                        <ICONS.chevronLeft fontSize="small" />
+                      ),
                     rightArrowIcon: () =>
-                      isRtl ? <ICONS.chevronLeft fontSize="small" /> : <ICONS.chevronRight fontSize="small" />,
+                      isRtl ? (
+                        <ICONS.chevronLeft fontSize="small" />
+                      ) : (
+                        <ICONS.chevronRight fontSize="small" />
+                      ),
                   }}
                 />
               </Box>
@@ -891,43 +1228,142 @@ export default function BookingPage() {
                       setBookingType(value);
                       if (value === "preset") {
                         if (selectedPreset === "fullDay") {
-                          setBookingData((prev) => ({ ...prev, timeTo: prev.timeFrom }));
+                          setBookingData((prev) => ({
+                            ...prev,
+                            timeTo: prev.timeFrom,
+                          }));
                         } else {
-                          setBookingData((prev) => ({ ...prev, timeFrom: "00:00", timeTo: "23:59" }));
+                          setBookingData((prev) => ({
+                            ...prev,
+                            timeFrom: "00:00",
+                            timeTo: "23:59",
+                          }));
                         }
                       }
                     }}
                     variant="fullWidth"
-                    sx={{ minHeight: 46, bgcolor: (theme) => alpha(theme.palette.text.primary, isDark ? 0.06 : 0.04), borderRadius: 999, p: 0.5, "& .MuiTabs-indicator": { display: "none" }, "& .MuiTab-iconWrapper": { marginRight: isRtl ? 0 : "8px", marginLeft: isRtl ? "8px" : 0 } }}
+                    sx={{
+                      minHeight: 46,
+                      bgcolor: (theme) =>
+                        alpha(theme.palette.text.primary, isDark ? 0.06 : 0.04),
+                      borderRadius: 999,
+                      p: 0.5,
+                      "& .MuiTabs-indicator": { display: "none" },
+                      "& .MuiTab-iconWrapper": {
+                        marginRight: isRtl ? 0 : "8px",
+                        marginLeft: isRtl ? "8px" : 0,
+                      },
+                    }}
                   >
-                    <Tab value="custom" icon={<ICONS.time fontSize="small" />} iconPosition="start" label={t.bookingCustomTab} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
-                    <Tab value="preset" icon={<ICONS.event fontSize="small" />} iconPosition="start" label={t.bookingPresetTab} sx={{ minHeight: 38, borderRadius: 999, fontWeight: 800, textTransform: "none", "&.Mui-selected": { bgcolor: "background.paper", color: "text.primary", boxShadow: "0 6px 14px rgba(0,0,0,0.08)" } }} />
+                    <Tab
+                      value="custom"
+                      icon={<ICONS.time fontSize="small" />}
+                      iconPosition="start"
+                      label={t.bookingCustomTab}
+                      sx={{
+                        minHeight: 38,
+                        borderRadius: 999,
+                        fontWeight: 800,
+                        textTransform: "none",
+                        "&.Mui-selected": {
+                          bgcolor: "background.paper",
+                          color: "text.primary",
+                          boxShadow: "0 6px 14px rgba(0,0,0,0.08)",
+                        },
+                      }}
+                    />
+                    <Tab
+                      value="preset"
+                      icon={<ICONS.event fontSize="small" />}
+                      iconPosition="start"
+                      label={t.bookingPresetTab}
+                      sx={{
+                        minHeight: 38,
+                        borderRadius: 999,
+                        fontWeight: 800,
+                        textTransform: "none",
+                        "&.Mui-selected": {
+                          bgcolor: "background.paper",
+                          color: "text.primary",
+                          boxShadow: "0 6px 14px rgba(0,0,0,0.08)",
+                        },
+                      }}
+                    />
                   </Tabs>
 
                   {bookingType === "custom" && (
-                    <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 320 }}>
+                    <Box
+                      sx={{
+                        p: 2,
+                        bgcolor: "action.hover",
+                        borderRadius: 2,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        minHeight: 320,
+                      }}
+                    >
                       {hostConfig && (
-                        <Typography dir="ltr" variant="caption" color="info.main" sx={{ display: "block", mb: 1.5, fontSize: "0.68rem" }}>
+                        <Typography
+                          dir="ltr"
+                          variant="caption"
+                          color="info.main"
+                          sx={{
+                            display: "block",
+                            mb: 1.5,
+                            fontSize: "0.68rem",
+                          }}
+                        >
                           {t.bookingWorkingHoursInfo
-                            .replace("{{start}}", fmtLocalWorkingHours(hostConfig).start)
-                            .replace("{{end}}", fmtLocalWorkingHours(hostConfig).end)}
+                            .replace(
+                              "{{start}}",
+                              fmtLocalWorkingHours(hostConfig).start,
+                            )
+                            .replace(
+                              "{{end}}",
+                              fmtLocalWorkingHours(hostConfig).end,
+                            )}
                         </Typography>
                       )}
                       <Stack spacing={2} sx={{ mb: 2 }}>
                         {renderTimeDropdowns("timeFrom", t.bookingArrival)}
                         {renderTimeDropdowns("timeTo", t.bookingDeparture)}
                       </Stack>
-                      <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                        <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
-                          <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
-                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
+                      <Box
+                        sx={{
+                          p: 1.5,
+                          bgcolor: "background.paper",
+                          borderRadius: 2,
+                          border: "1px solid",
+                          borderColor: "divider",
+                        }}
+                      >
+                        <Stack
+                          direction="row"
+                          sx={{ gap: 1 }}
+                          alignItems="center"
+                        >
+                          <ICONS.info
+                            sx={{ fontSize: 16, color: "text.secondary" }}
+                          />
+                          <Typography
+                            variant="caption"
+                            fontWeight={700}
+                            color="text.secondary"
+                            sx={{ fontSize: 12 }}
+                          >
                             {(() => {
-                            const f = dayjs(`2000-01-01 ${bookingData.timeFrom}`);
-                            const tEnd = dayjs(`2000-01-01 ${bookingData.timeTo}`);
-                            const end = tEnd.isBefore(f) ? tEnd.add(1, "day") : tEnd; // overnight
-                            const mins = Math.max(0, end.diff(f, "minute"));
-                            return t.bookingDuration.replace("{{min}}", mins);
-                          })()}
+                              const f = dayjs(
+                                `2000-01-01 ${bookingData.timeFrom}`,
+                              );
+                              const tEnd = dayjs(
+                                `2000-01-01 ${bookingData.timeTo}`,
+                              );
+                              const end = tEnd.isBefore(f)
+                                ? tEnd.add(1, "day")
+                                : tEnd; // overnight
+                              const mins = Math.max(0, end.diff(f, "minute"));
+                              return t.bookingDuration.replace("{{min}}", mins);
+                            })()}
                           </Typography>
                         </Stack>
                       </Box>
@@ -936,76 +1372,185 @@ export default function BookingPage() {
                   )}
 
                   {bookingType === "preset" && (
-                    <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 2, border: "1px solid", borderColor: "divider", minHeight: 320 }}>
+                    <Box
+                      sx={{
+                        p: 2,
+                        bgcolor: "action.hover",
+                        borderRadius: 2,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        minHeight: 320,
+                      }}
+                    >
                       <Box sx={{ mb: 2.5 }}>
-                        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                        <Typography
+                          variant="caption"
+                          fontWeight={700}
+                          color="text.secondary"
+                          sx={{
+                            display: "block",
+                            mb: 1,
+                            textTransform: "uppercase",
+                            fontSize: "0.65rem",
+                          }}
+                        >
                           {t.bookingPresetType}
                         </Typography>
                         <TextField
-                          fullWidth select size="small"
+                          fullWidth
+                          select
+                          size="small"
                           value={selectedPreset || "fullDay"}
                           onChange={(e) => {
                             const preset = e.target.value;
                             setSelectedPreset(preset);
                             setSpecificDays([]);
                             setSpecificEndDate(null);
-                            setFieldErrors((p) => { const n = { ...p }; delete n.specificDays; delete n.specificEndDate; return n; });
+                            setFieldErrors((p) => {
+                              const n = { ...p };
+                              delete n.specificDays;
+                              delete n.specificEndDate;
+                              return n;
+                            });
                             if (preset === "fullDay") {
-                              setBookingData((prev) => ({ ...prev, timeTo: prev.timeFrom }));
+                              setBookingData((prev) => ({
+                                ...prev,
+                                timeTo: prev.timeFrom,
+                              }));
                             } else {
-                              setBookingData((prev) => ({ ...prev, timeFrom: "08:00", timeTo: "17:00" }));
+                              setBookingData((prev) => ({
+                                ...prev,
+                                timeFrom: "08:00",
+                                timeTo: "17:00",
+                              }));
                             }
                           }}
-                          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+                          sx={{
+                            "& .MuiOutlinedInput-root": { borderRadius: 2 },
+                          }}
                         >
-                          <MenuItem value="fullDay">{t.bookingFullDay}</MenuItem>
-                          <MenuItem value="fullWeek">{t.bookingFullWeek}</MenuItem>
-                          <MenuItem value="fullMonth">{t.bookingFullMonth}</MenuItem>
-                          <MenuItem value="specificDays">{t.bookingSpecificDays}</MenuItem>
+                          <MenuItem value="fullDay">
+                            {t.bookingFullDay}
+                          </MenuItem>
+                          <MenuItem value="fullWeek">
+                            {t.bookingFullWeek}
+                          </MenuItem>
+                          <MenuItem value="fullMonth">
+                            {t.bookingFullMonth}
+                          </MenuItem>
+                          <MenuItem value="specificDays">
+                            {t.bookingSpecificDays}
+                          </MenuItem>
                         </TextField>
                       </Box>
 
-                      {hasValidBookingDate && selectedPreset !== "specificDays" && (
-                        <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider", mb: 2.5 }}>
-                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                            {t.bookingDateRange}
-                          </Typography>
-                          <Typography variant="body2" fontWeight={600} color="text.primary">
-                            {(() => {
-                              const date = bookingDate;
-                              let from = date.clone();
-                              let to = date.clone();
-                              if (selectedPreset === "fullDay") {
-                                const startH = hostConfig?.start ?? 8;
-                                const startM = hostConfig?.startMinute ?? 0;
-                                const endH   = hostConfig?.end ?? 17;
-                                const endM   = hostConfig?.endMinute ?? 0;
-                                from = from.startOf("day").hour(startH).minute(startM);
-                                to   = date.clone().startOf("day").hour(endH).minute(endM);
-                              } else if (selectedPreset === "fullWeek") {
-                                from = from.startOf("day").hour(0).minute(0);
-                                to = from.add(6, "days").hour(23).minute(59);
-                              } else if (selectedPreset === "fullMonth") {
-                                from = from.startOf("day").hour(0).minute(0);
-                                to = from.endOf("month");
-                              }
-                              const locale = lang === "ar" ? "ar-u-nu-latn" : "en-GB";
-                              const fmtDate = (d) => new Intl.DateTimeFormat(locale, { day: "2-digit", month: "long", year: "numeric" }).format(d.toDate());
-                              const fmtTime = (d) => d.toDate().toLocaleString(locale, { hour: "2-digit", minute: "2-digit", hour12: true });
-                              return `${fmtDate(from)}, ${fmtTime(from)} ${isRtl ? "←" : "→"} ${fmtDate(to)}, ${fmtTime(to)}`;
-                            })()}
-                          </Typography>
-                        </Box>
-                      )}
+                      {hasValidBookingDate &&
+                        selectedPreset !== "specificDays" && (
+                          <Box
+                            sx={{
+                              p: 1.5,
+                              bgcolor: "background.paper",
+                              borderRadius: 2,
+                              border: "1px solid",
+                              borderColor: "divider",
+                              mb: 2.5,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              fontWeight={700}
+                              color="text.secondary"
+                              sx={{
+                                display: "block",
+                                mb: 0.5,
+                                textTransform: "uppercase",
+                                fontSize: "0.65rem",
+                              }}
+                            >
+                              {t.bookingDateRange}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              fontWeight={600}
+                              color="text.primary"
+                            >
+                              {(() => {
+                                const date = bookingDate;
+                                let from = date.clone();
+                                let to = date.clone();
+                                if (selectedPreset === "fullDay") {
+                                  const startH = hostConfig?.start ?? 8;
+                                  const startM = hostConfig?.startMinute ?? 0;
+                                  const endH = hostConfig?.end ?? 17;
+                                  const endM = hostConfig?.endMinute ?? 0;
+                                  from = from
+                                    .startOf("day")
+                                    .hour(startH)
+                                    .minute(startM);
+                                  to = date
+                                    .clone()
+                                    .startOf("day")
+                                    .hour(endH)
+                                    .minute(endM);
+                                } else if (selectedPreset === "fullWeek") {
+                                  from = from.startOf("day").hour(0).minute(0);
+                                  to = from.add(6, "days").hour(23).minute(59);
+                                } else if (selectedPreset === "fullMonth") {
+                                  from = from.startOf("day").hour(0).minute(0);
+                                  to = from.endOf("month");
+                                }
+                                const locale =
+                                  lang === "ar" ? "ar-u-nu-latn" : "en-GB";
+                                const fmtDate = (d) =>
+                                  new Intl.DateTimeFormat(locale, {
+                                    day: "2-digit",
+                                    month: "long",
+                                    year: "numeric",
+                                  }).format(d.toDate());
+                                const fmtTime = (d) =>
+                                  d
+                                    .toDate()
+                                    .toLocaleString(locale, {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      hour12: true,
+                                    });
+                                return `${fmtDate(from)}, ${fmtTime(from)} ${isRtl ? "←" : "→"} ${fmtDate(to)}, ${fmtTime(to)}`;
+                              })()}
+                            </Typography>
+                          </Box>
+                        )}
 
                       {/* ── Day-type tabs (fullWeek/fullMonth only) ── */}
-                      {(selectedPreset === "fullWeek" || selectedPreset === "fullMonth") && (
+                      {(selectedPreset === "fullWeek" ||
+                        selectedPreset === "fullMonth") && (
                         <Box sx={{ mb: 2 }}>
-                          <Typography variant="caption" fontWeight={600} color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
+                          <Typography
+                            variant="caption"
+                            fontWeight={600}
+                            color="info.main"
+                            sx={{
+                              display: "block",
+                              mb: 0.75,
+                              fontSize: "0.68rem",
+                            }}
+                          >
                             {t.bookingWorkingDays}:{" "}
-                            {(hostConfig?.workingDays ?? [0, 1, 2, 3, 4]).map((d) => DAY_LABELS[d]).join(", ")}
+                            {(hostConfig?.workingDays ?? [0, 1, 2, 3, 4])
+                              .map((d) => DAY_LABELS[d])
+                              .join(", ")}
                           </Typography>
-                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                          <Typography
+                            variant="caption"
+                            fontWeight={700}
+                            color="text.secondary"
+                            sx={{
+                              display: "block",
+                              mb: 0.75,
+                              textTransform: "uppercase",
+                              fontSize: "0.65rem",
+                            }}
+                          >
                             {t.bookingDayType}
                           </Typography>
                           <RadioGroup
@@ -1013,148 +1558,343 @@ export default function BookingPage() {
                             value={dayTypeTab}
                             onChange={(_, v) => {
                               setDayTypeTab(v);
-                              if (fieldErrors.specificDays) setFieldErrors((p) => { const n = { ...p }; delete n.specificDays; return n; });
+                              if (fieldErrors.specificDays)
+                                setFieldErrors((p) => {
+                                  const n = { ...p };
+                                  delete n.specificDays;
+                                  return n;
+                                });
                             }}
                           >
-                            <FormControlLabel value="working" control={<Radio size="small" />} label={t.bookingWorkingOnly} />
-                            <FormControlLabel value="all" control={<Radio size="small" />} label={t.bookingWorkingPlusWeekends} />
+                            <FormControlLabel
+                              value="working"
+                              control={<Radio size="small" />}
+                              label={t.bookingWorkingOnly}
+                            />
+                            <FormControlLabel
+                              value="all"
+                              control={<Radio size="small" />}
+                              label={t.bookingWorkingPlusWeekends}
+                            />
                           </RadioGroup>
                         </Box>
                       )}
 
                       {/* ── Specific Days UI — shows all days with working/weekend colors ── */}
-                      {selectedPreset === "specificDays" && (() => {
-                        const workSet = hostConfig?.workingDays ?? [0, 1, 2, 3, 4];
-                        const offSet = hostConfig?.weekendDays ?? [5, 6];
-                        const renderChip = (idx, label) => {
-                          const selected = specificDays.includes(idx);
-                          const isOff = offSet.includes(idx);
+                      {selectedPreset === "specificDays" &&
+                        (() => {
+                          const workSet = hostConfig?.workingDays ?? [
+                            0, 1, 2, 3, 4,
+                          ];
+                          const offSet = hostConfig?.weekendDays ?? [5, 6];
+                          const renderChip = (idx, label) => {
+                            const selected = specificDays.includes(idx);
+                            const isOff = offSet.includes(idx);
+                            return (
+                              <Box
+                                key={idx}
+                                onClick={() => {
+                                  setSpecificDays((prev) =>
+                                    prev.includes(idx)
+                                      ? prev.filter((d) => d !== idx)
+                                      : [...prev, idx],
+                                  );
+                                  if (fieldErrors.specificDays)
+                                    setFieldErrors((p) => {
+                                      const n = { ...p };
+                                      delete n.specificDays;
+                                      return n;
+                                    });
+                                }}
+                                sx={{
+                                  px: 1.5,
+                                  py: 0.75,
+                                  borderRadius: 2,
+                                  cursor: "pointer",
+                                  userSelect: "none",
+                                  border: "1px solid",
+                                  borderColor: selected
+                                    ? isOff
+                                      ? "warning.main"
+                                      : "primary.main"
+                                    : "divider",
+                                  bgcolor: selected
+                                    ? isOff
+                                      ? "warning.main"
+                                      : "primary.main"
+                                    : "background.paper",
+                                  color: selected
+                                    ? isOff
+                                      ? "warning.contrastText"
+                                      : "primary.contrastText"
+                                    : isOff
+                                      ? "warning.main"
+                                      : "text.primary",
+                                  fontWeight: 700,
+                                  fontSize: "0.75rem",
+                                  transition: "all 0.15s",
+                                }}
+                              >
+                                {label}
+                              </Box>
+                            );
+                          };
                           return (
-                            <Box
-                              key={idx}
-                              onClick={() => {
-                                setSpecificDays((prev) =>
-                                  prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx]
-                                );
-                                if (fieldErrors.specificDays) setFieldErrors((p) => { const n = { ...p }; delete n.specificDays; return n; });
-                              }}
-                              sx={{
-                                px: 1.5, py: 0.75, borderRadius: 2, cursor: "pointer", userSelect: "none",
-                                border: "1px solid",
-                                borderColor: selected ? (isOff ? "warning.main" : "primary.main") : "divider",
-                                bgcolor: selected ? (isOff ? "warning.main" : "primary.main") : "background.paper",
-                                color: selected ? (isOff ? "warning.contrastText" : "primary.contrastText") : (isOff ? "warning.main" : "text.primary"),
-                                fontWeight: 700, fontSize: "0.75rem",
-                                transition: "all 0.15s",
-                              }}
-                            >
-                              {label}
+                            <Box sx={{ mb: 2.5 }}>
+                              <Typography
+                                variant="caption"
+                                fontWeight={700}
+                                color="text.secondary"
+                                sx={{
+                                  display: "block",
+                                  mb: 1,
+                                  textTransform: "uppercase",
+                                  fontSize: "0.65rem",
+                                }}
+                              >
+                                {t.bookingSelectDays}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                fontWeight={600}
+                                color="info.main"
+                                sx={{
+                                  display: "block",
+                                  mb: 0.5,
+                                  fontSize: "0.68rem",
+                                }}
+                              >
+                                {t.bookingWorkingDays}
+                              </Typography>
+                              <Stack
+                                direction="row"
+                                flexWrap="wrap"
+                                sx={{ gap: 1, mb: 1.5 }}
+                              >
+                                {workSet.map((idx) =>
+                                  renderChip(idx, DAY_LABELS[idx]),
+                                )}
+                              </Stack>
+                              <Typography
+                                variant="caption"
+                                fontWeight={600}
+                                color="warning.main"
+                                sx={{
+                                  display: "block",
+                                  mb: 0.5,
+                                  fontSize: "0.68rem",
+                                }}
+                              >
+                                {t.bookingWeekendDays}
+                              </Typography>
+                              <Stack
+                                direction="row"
+                                flexWrap="wrap"
+                                sx={{ gap: 1, mb: 1 }}
+                              >
+                                {offSet.map((idx) =>
+                                  renderChip(idx, DAY_LABELS[idx]),
+                                )}
+                              </Stack>
+                              {fieldErrors.specificDays && (
+                                <Typography
+                                  variant="caption"
+                                  color="error.main"
+                                >
+                                  {fieldErrors.specificDays}
+                                </Typography>
+                              )}
+
+                              <Typography
+                                variant="caption"
+                                fontWeight={700}
+                                color="text.secondary"
+                                sx={{
+                                  display: "block",
+                                  mt: 2,
+                                  mb: 0.5,
+                                  textTransform: "uppercase",
+                                  fontSize: "0.65rem",
+                                }}
+                              >
+                                {t.bookingPeriod}
+                              </Typography>
+                              <Stack
+                                direction="row"
+                                sx={{ gap: 1 }}
+                                alignItems="center"
+                              >
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ minWidth: 36, fontWeight: 600 }}
+                                >
+                                  From
+                                </Typography>
+                                <Typography variant="body2" fontWeight={700}>
+                                  {hasValidBookingDate
+                                    ? bookingDate.format("DD MMM YYYY")
+                                    : "—"}
+                                </Typography>
+                              </Stack>
+                              <Stack
+                                direction="row"
+                                sx={{ gap: 1, mt: 0.5 }}
+                                alignItems="center"
+                              >
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ minWidth: 36, fontWeight: 600 }}
+                                >
+                                  To
+                                </Typography>
+                                <TextField
+                                  type="date"
+                                  size="small"
+                                  value={
+                                    specificEndDate
+                                      ? specificEndDate.format("YYYY-MM-DD")
+                                      : ""
+                                  }
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                      ? dayjs(e.target.value)
+                                      : null;
+                                    setSpecificEndDate(v);
+                                    if (fieldErrors.specificEndDate)
+                                      setFieldErrors((p) => {
+                                        const n = { ...p };
+                                        delete n.specificEndDate;
+                                        return n;
+                                      });
+                                  }}
+                                  inputProps={{
+                                    min: hasValidBookingDate
+                                      ? bookingDate.format("YYYY-MM-DD")
+                                      : undefined,
+                                  }}
+                                  error={Boolean(fieldErrors.specificEndDate)}
+                                  helperText={fieldErrors.specificEndDate}
+                                  sx={{
+                                    "& .MuiOutlinedInput-root": {
+                                      borderRadius: 2,
+                                    },
+                                    width: 180,
+                                  }}
+                                />
+                              </Stack>
                             </Box>
                           );
-                        };
-                        return (
-                          <Box sx={{ mb: 2.5 }}>
-                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                              {t.bookingSelectDays}
-                            </Typography>
-                            <Typography variant="caption" fontWeight={600} color="info.main" sx={{ display: "block", mb: 0.5, fontSize: "0.68rem" }}>
-                              {t.bookingWorkingDays}
-                            </Typography>
-                            <Stack direction="row" flexWrap="wrap" sx={{ gap: 1, mb: 1.5 }}>
-                              {workSet.map((idx) => renderChip(idx, DAY_LABELS[idx]))}
-                            </Stack>
-                            <Typography variant="caption" fontWeight={600} color="warning.main" sx={{ display: "block", mb: 0.5, fontSize: "0.68rem" }}>
-                              {t.bookingWeekendDays}
-                            </Typography>
-                            <Stack direction="row" flexWrap="wrap" sx={{ gap: 1, mb: 1 }}>
-                              {offSet.map((idx) => renderChip(idx, DAY_LABELS[idx]))}
-                            </Stack>
-                            {fieldErrors.specificDays && (
-                              <Typography variant="caption" color="error.main">{fieldErrors.specificDays}</Typography>
-                            )}
-
-                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mt: 2, mb: 0.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                              {t.bookingPeriod}
-                            </Typography>
-                            <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
-                              <Typography variant="caption" color="text.secondary" sx={{ minWidth: 36, fontWeight: 600 }}>From</Typography>
-                              <Typography variant="body2" fontWeight={700}>{hasValidBookingDate ? bookingDate.format("DD MMM YYYY") : "—"}</Typography>
-                            </Stack>
-                            <Stack direction="row" sx={{ gap: 1, mt: 0.5 }} alignItems="center">
-                              <Typography variant="caption" color="text.secondary" sx={{ minWidth: 36, fontWeight: 600 }}>To</Typography>
-                              <TextField
-                                type="date"
-                                size="small"
-                                value={specificEndDate ? specificEndDate.format("YYYY-MM-DD") : ""}
-                                onChange={(e) => {
-                                  const v = e.target.value ? dayjs(e.target.value) : null;
-                                  setSpecificEndDate(v);
-                                  if (fieldErrors.specificEndDate) setFieldErrors((p) => { const n = { ...p }; delete n.specificEndDate; return n; });
-                                }}
-                                inputProps={{ min: hasValidBookingDate ? bookingDate.format("YYYY-MM-DD") : undefined }}
-                                error={Boolean(fieldErrors.specificEndDate)}
-                                helperText={fieldErrors.specificEndDate}
-                                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, width: 180 }}
-                              />
-                            </Stack>
-                          </Box>
-                        );
-                      })()}
+                        })()}
 
                       {/* ── Week / Month bracket-day preview (matches CMS approval dialog) ── */}
-                      {(selectedPreset === "fullWeek" || selectedPreset === "fullMonth") && hasValidBookingDate && (() => {
-                        const activeDaySet = computeDaySet(dayTypeTab, hostConfig);
-                        const weekendSet = hostConfig?.weekendDays ?? [5, 6];
-                        const bracketStart = bookingDate;
-                        const bracketEnd = selectedPreset === "fullWeek"
-                          ? bookingDate.add(6, "day")
-                          : bookingDate.endOf("month");
-                        const days = [];
-                        let cur = bracketStart;
-                        while (!cur.isAfter(bracketEnd, "day")) {
-                          if (activeDaySet.includes(cur.day())) days.push(cur);
-                          cur = cur.add(1, "day");
-                        }
-                        return days.length > 0 ? (
-                          <Box sx={{ mb: 2 }}>
-                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.75, textTransform: "uppercase", fontSize: "0.65rem" }}>
-                              {t.bookingDaysInRange.replace(
-                                "{{type}}",
-                                dayTypeTab === "all" ? t.bookingAllDays : t.bookingWorkingDays,
-                              )}
-                            </Typography>
-                            <Stack direction="row" flexWrap="wrap" sx={{ gap: 0.5 }}>
-                              {days.map((d) => {
-                                const isOff = weekendSet.includes(d.day());
-                                return (
-                                  <Chip
-                                    key={d.format("YYYY-MM-DD")}
-                                    label={`${DAY_LABELS[d.day()]} ${d.format("DD")}`}
-                                    size="small"
-                                    color={isOff ? "warning" : "primary"}
-                                    variant="outlined"
-                                    sx={{ fontWeight: 600, fontSize: "0.65rem", height: 20 }}
-                                  />
-                                );
-                              })}
-                            </Stack>
-                          </Box>
-                        ) : null;
-                      })()}
+                      {(selectedPreset === "fullWeek" ||
+                        selectedPreset === "fullMonth") &&
+                        hasValidBookingDate &&
+                        (() => {
+                          const activeDaySet = computeDaySet(
+                            dayTypeTab,
+                            hostConfig,
+                          );
+                          const weekendSet = hostConfig?.weekendDays ?? [5, 6];
+                          const bracketStart = bookingDate;
+                          const bracketEnd =
+                            selectedPreset === "fullWeek"
+                              ? bookingDate.add(6, "day")
+                              : bookingDate.endOf("month");
+                          const days = [];
+                          let cur = bracketStart;
+                          while (!cur.isAfter(bracketEnd, "day")) {
+                            if (activeDaySet.includes(cur.day()))
+                              days.push(cur);
+                            cur = cur.add(1, "day");
+                          }
+                          return days.length > 0 ? (
+                            <Box sx={{ mb: 2 }}>
+                              <Typography
+                                variant="caption"
+                                fontWeight={700}
+                                color="text.secondary"
+                                sx={{
+                                  display: "block",
+                                  mb: 0.75,
+                                  textTransform: "uppercase",
+                                  fontSize: "0.65rem",
+                                }}
+                              >
+                                {t.bookingDaysInRange.replace(
+                                  "{{type}}",
+                                  dayTypeTab === "all"
+                                    ? t.bookingAllDays
+                                    : t.bookingWorkingDays,
+                                )}
+                              </Typography>
+                              <Stack
+                                direction="row"
+                                flexWrap="wrap"
+                                sx={{ gap: 0.5 }}
+                              >
+                                {days.map((d) => {
+                                  const isOff = weekendSet.includes(d.day());
+                                  return (
+                                    <Chip
+                                      key={d.format("YYYY-MM-DD")}
+                                      label={`${DAY_LABELS[d.day()]} ${d.format("DD")}`}
+                                      size="small"
+                                      color={isOff ? "warning" : "primary"}
+                                      variant="outlined"
+                                      sx={{
+                                        fontWeight: 600,
+                                        fontSize: "0.65rem",
+                                        height: 20,
+                                      }}
+                                    />
+                                  );
+                                })}
+                              </Stack>
+                            </Box>
+                          ) : null;
+                        })()}
 
                       {/* ── Full Day: no time input, just show working hours info ── */}
                       {selectedPreset === "fullDay" ? (
-                        <Box sx={{ p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                          <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
-                            <ICONS.info sx={{ fontSize: 16, color: "info.main" }} />
-                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
+                        <Box
+                          sx={{
+                            p: 1.5,
+                            bgcolor: "background.paper",
+                            borderRadius: 2,
+                            border: "1px solid",
+                            borderColor: "divider",
+                          }}
+                        >
+                          <Stack
+                            direction="row"
+                            sx={{ gap: 1 }}
+                            alignItems="center"
+                          >
+                            <ICONS.info
+                              sx={{ fontSize: 16, color: "info.main" }}
+                            />
+                            <Typography
+                              variant="caption"
+                              fontWeight={700}
+                              color="text.secondary"
+                              sx={{ fontSize: 12 }}
+                            >
                               {t.bookingFullDayWorkingHoursInfo
-                                .replace("{{start}}", hostConfig
-                                  ? fmtLocalWorkingHours(hostConfig).start
-                                  : "8:00 AM")
-                                .replace("{{end}}", hostConfig
-                                  ? fmtLocalWorkingHours(hostConfig).end
-                                  : "5:00 PM")}
+                                .replace(
+                                  "{{start}}",
+                                  hostConfig
+                                    ? fmtLocalWorkingHours(hostConfig).start
+                                    : "8:00 AM",
+                                )
+                                .replace(
+                                  "{{end}}",
+                                  hostConfig
+                                    ? fmtLocalWorkingHours(hostConfig).end
+                                    : "5:00 PM",
+                                )}
                             </Typography>
                           </Stack>
                         </Box>
@@ -1162,39 +1902,100 @@ export default function BookingPage() {
                         /* ── Time dropdowns (no working/outside tab filter) ── */
                         <Box>
                           <Box sx={{ mb: 1.5 }}>
-                            {hostConfig && (() => {
-                              const fmtH12 = (h24, min) => {
-                                const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-                                const ampm = h24 < 12 ? "AM" : "PM";
-                                return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
-                              };
-                              const s = fmtH12(fmtLocalWorkingHours(hostConfig).startH, fmtLocalWorkingHours(hostConfig).startM);
-                              const e = fmtH12(fmtLocalWorkingHours(hostConfig).endH, fmtLocalWorkingHours(hostConfig).endM);
-                              return (
-                                <Typography dir="ltr" variant="caption" color="info.main" sx={{ display: "block", mb: 0.75, fontSize: "0.68rem" }}>
-                                  {t.bookingWorkingHoursInfo.replace("{{start}}", s).replace("{{end}}", e)}
-                                </Typography>
-                              );
-                            })()}
+                            {hostConfig &&
+                              (() => {
+                                const fmtH12 = (h24, min) => {
+                                  const h12 =
+                                    h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+                                  const ampm = h24 < 12 ? "AM" : "PM";
+                                  return `${h12}:${String(min).padStart(2, "0")} ${ampm}`;
+                                };
+                                const s = fmtH12(
+                                  fmtLocalWorkingHours(hostConfig).startH,
+                                  fmtLocalWorkingHours(hostConfig).startM,
+                                );
+                                const e = fmtH12(
+                                  fmtLocalWorkingHours(hostConfig).endH,
+                                  fmtLocalWorkingHours(hostConfig).endM,
+                                );
+                                return (
+                                  <Typography
+                                    dir="ltr"
+                                    variant="caption"
+                                    color="info.main"
+                                    sx={{
+                                      display: "block",
+                                      mb: 0.75,
+                                      fontSize: "0.68rem",
+                                    }}
+                                  >
+                                    {t.bookingWorkingHoursInfo
+                                      .replace("{{start}}", s)
+                                      .replace("{{end}}", e)}
+                                  </Typography>
+                                );
+                              })()}
                           </Box>
-                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1.5, textTransform: "uppercase", fontSize: "0.65rem" }}>
+                          <Typography
+                            variant="caption"
+                            fontWeight={700}
+                            color="text.secondary"
+                            sx={{
+                              display: "block",
+                              mb: 1.5,
+                              textTransform: "uppercase",
+                              fontSize: "0.65rem",
+                            }}
+                          >
                             {t.bookingDailyVisitTime}
                           </Typography>
                           <Stack spacing={2}>
-                            {renderTimeDropdowns("timeFrom", t.bookingStartTime)}
+                            {renderTimeDropdowns(
+                              "timeFrom",
+                              t.bookingStartTime,
+                            )}
                             {renderTimeDropdowns("timeTo", t.bookingEndTime)}
                           </Stack>
                           {(() => {
-                            const f = dayjs(`2000-01-01 ${bookingData.timeFrom || "08:00"}`);
-                            const tEnd = dayjs(`2000-01-01 ${bookingData.timeTo || "17:00"}`);
-                            const end = tEnd.isBefore(f) ? tEnd.add(1, "day") : tEnd; // overnight
+                            const f = dayjs(
+                              `2000-01-01 ${bookingData.timeFrom || "08:00"}`,
+                            );
+                            const tEnd = dayjs(
+                              `2000-01-01 ${bookingData.timeTo || "17:00"}`,
+                            );
+                            const end = tEnd.isBefore(f)
+                              ? tEnd.add(1, "day")
+                              : tEnd; // overnight
                             const mins = end.diff(f, "minute");
                             if (mins <= 0) return null;
                             return (
-                              <Box sx={{ mt: 1.5, p: 1.5, bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
-                                <Stack direction="row" sx={{ gap: 1 }} alignItems="center">
-                                  <ICONS.info sx={{ fontSize: 16, color: "text.secondary" }} />
-                                  <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: 12 }}>
+                              <Box
+                                sx={{
+                                  mt: 1.5,
+                                  p: 1.5,
+                                  bgcolor: "background.paper",
+                                  borderRadius: 2,
+                                  border: "1px solid",
+                                  borderColor: "divider",
+                                }}
+                              >
+                                <Stack
+                                  direction="row"
+                                  sx={{ gap: 1 }}
+                                  alignItems="center"
+                                >
+                                  <ICONS.info
+                                    sx={{
+                                      fontSize: 16,
+                                      color: "text.secondary",
+                                    }}
+                                  />
+                                  <Typography
+                                    variant="caption"
+                                    fontWeight={700}
+                                    color="text.secondary"
+                                    sx={{ fontSize: 12 }}
+                                  >
                                     {t.bookingDuration.replace("{{min}}", mins)}
                                   </Typography>
                                 </Stack>
@@ -1296,21 +2097,51 @@ export default function BookingPage() {
             <Button
               variant="contained"
               fullWidth
-              disabled={submitting || !hasValidBookingDate}
-              startIcon={submitting ? <CircularProgress size={24} color="inherit" /> : <ICONS.send sx={{ transform: isRtl ? "scaleX(-1)" : "none" }} />}
+              disabled={
+                submitting ||
+                !hasValidBookingDate ||
+                (!isEditMode && isTurnstileEnabled && !turnstileToken)
+              }
+              startIcon={
+                submitting ? (
+                  <CircularProgress size={24} color="inherit" />
+                ) : (
+                  <ICONS.send
+                    sx={{ transform: isRtl ? "scaleX(-1)" : "none" }}
+                  />
+                )
+              }
               onClick={handleSubmit}
               sx={{ py: 1.5, borderRadius: 30, ...getStartIconSpacing(dir) }}
             >
-              {submitting ? t.bookingSending : isEditMode ? t.bookingSaveChanges : t.submit}
+              {submitting
+                ? t.bookingSending
+                : isEditMode
+                  ? t.bookingSaveChanges
+                  : t.submit}
             </Button>
           </Stack>
         </Stack>
       </VisitorLayout>
 
-      <Dialog open={ndaOpen} onClose={() => setNdaOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4, p: 1 } }}>
-        <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <Dialog
+        open={ndaOpen}
+        onClose={() => setNdaOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 4, p: 1 } }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <Typography variant="h6" fontWeight={800} component="span">
-            {(isRtl && translatedNda?.name) ? translatedNda.name : (ndaTemplate?.name || t.ndaTitle)}
+            {isRtl && translatedNda?.name
+              ? translatedNda.name
+              : ndaTemplate?.name || t.ndaTitle}
           </Typography>
           <IconButton onClick={() => setNdaOpen(false)}>
             <ICONS.close />
@@ -1320,14 +2151,22 @@ export default function BookingPage() {
           {ndaLoading ? (
             <Stack spacing={2} alignItems="center" sx={{ py: 4 }}>
               <CircularProgress size={28} />
-              <Typography variant="body2" color="text.secondary">{t.ndaLoading}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t.ndaLoading}
+              </Typography>
             </Stack>
           ) : (
-            <NdaTemplateContent template={(isRtl && translatedNda) ? translatedNda : ndaTemplate} />
+            <NdaTemplateContent
+              template={isRtl && translatedNda ? translatedNda : ndaTemplate}
+            />
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>
-          <Button variant="outlined" onClick={() => setNdaOpen(false)} sx={{ borderRadius: 30, ...getStartIconSpacing(dir) }}>
+          <Button
+            variant="outlined"
+            onClick={() => setNdaOpen(false)}
+            sx={{ borderRadius: 30, ...getStartIconSpacing(dir) }}
+          >
             {t.close}
           </Button>
           <Button
@@ -1338,7 +2177,12 @@ export default function BookingPage() {
               setNdaAccepted(true);
               setFlowState((prev) => ({ ...prev, ndaAccepted: true }));
               setNdaOpen(false);
-              if (fieldErrors.nda) setFieldErrors((p) => { const n = { ...p }; delete n.nda; return n; });
+              if (fieldErrors.nda)
+                setFieldErrors((p) => {
+                  const n = { ...p };
+                  delete n.nda;
+                  return n;
+                });
             }}
             sx={{ borderRadius: 30, ...getStartIconSpacing(dir) }}
           >

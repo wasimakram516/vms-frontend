@@ -48,6 +48,7 @@ import DialogHeader from "@/components/modals/DialogHeader";
 import RecordMetadata from "@/components/RecordMetadata";
 import PermissionRouteGuard from "@/components/auth/PermissionRouteGuard";
 import { canAccessResource } from "@/utils/permissions";
+import { validateSafeText } from "@/utils/safeText";
 
 const INPUT_TYPES = [
   "text",
@@ -60,7 +61,8 @@ const INPUT_TYPES = [
   "checkbox",
   "date",
   "time",
-  "file",
+  // "file" is disabled until a server-validated visitor upload flow exists;
+  // the backend rejects creating or activating file fields.
   "country",
 ];
 const SUPPORTED_INPUT_TYPES = new Set(INPUT_TYPES);
@@ -256,6 +258,15 @@ export default function CmsFieldsPage() {
           .map((o) => o.trim())
           .filter(Boolean)
       : [];
+
+    const textError =
+      validateSafeText(form.label, "Label", 200) ||
+      validateSafeText(form.fieldKey, "Field key", 100) ||
+      optionsJson.map((option) => validateSafeText(option, "Each option", 200)).find(Boolean);
+    if (textError) {
+      showMessage(textError, "error");
+      return;
+    }
 
     if (HAS_OPTIONS.includes(form.inputType) && optionsJson.length < 2) {
       showMessage("Please provide at least 2 options for this field type.", "error");

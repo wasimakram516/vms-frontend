@@ -1,37 +1,42 @@
 "use client";
 
-const IS_BROWSER = typeof window !== "undefined";
+let accessToken = null;
+let currentUser = null;
+let refreshPromise = null;
+
+if (typeof window !== "undefined") {
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("user");
+}
 
 const notifyAuthStorageChanged = () => {
-  if (!IS_BROWSER) return;
+  if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("auth-storage-changed"));
 };
 
-export const getStoredToken = () => {
-  if (!IS_BROWSER) return null;
-  return localStorage.getItem("accessToken");
-};
+export const getStoredToken = () => accessToken;
 
-export const getStoredUser = () => {
-  if (!IS_BROWSER) return null;
-  const user = localStorage.getItem("user");
-  try {
-    return user ? JSON.parse(user) : null;
-  } catch {
-    return null;
-  }
-};
+export const getStoredUser = () => currentUser;
 
 export const setStoredAuthData = (token, user) => {
-  if (!IS_BROWSER) return;
-  if (token) localStorage.setItem("accessToken", token);
-  if (user) localStorage.setItem("user", JSON.stringify(user));
+  if (token) accessToken = token;
+  if (user) currentUser = user;
   notifyAuthStorageChanged();
 };
 
 export const clearStoredAuthData = () => {
-  if (!IS_BROWSER) return;
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("user");
+  accessToken = null;
+  currentUser = null;
   notifyAuthStorageChanged();
+};
+
+export const runSingleRefresh = (refresh) => {
+  if (!refreshPromise) {
+    refreshPromise = Promise.resolve()
+      .then(refresh)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
 };

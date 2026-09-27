@@ -41,11 +41,13 @@ import { getActivityLogs } from "@/services/activityService";
 import {
   ACTIVITY_TYPES,
   getActivityIcon,
+  getActivityDisplayLabel,
   getActivityLabel,
   getActivityStatus,
 } from "@/utils/activityMeta";
 import ICONS from "@/utils/iconUtil";
 import ExpandableNote from "@/components/ExpandableNote";
+import ActivityDetailsDialog from "@/components/activity/ActivityDetailsDialog";
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -183,6 +185,13 @@ function buildMetadataLines(activityType, metadata, userTz = PREMISE_TZ) {
     case "qr_generated":
       add("Token", metadata.qrToken);
       break;
+    case "login":
+      add("Result", metadata.result === "success" ? "Successful" : "Failed");
+      add("IP Address", metadata.ipAddress);
+      break;
+    case "logout":
+      add("IP Address", metadata.ipAddress);
+      break;
     case "sla_escalation": {
       let waitingMins = metadata.hoursWaiting != null
         ? Number(metadata.hoursWaiting) * 60
@@ -208,9 +217,9 @@ function buildMetadataLines(activityType, metadata, userTz = PREMISE_TZ) {
 const INITIAL_BATCH_SIZE = 50;
 
 // Table columns — headings render once, every row's values align beneath them.
-const LOG_COLUMNS = ["Activity", "Visitor", "By", "Details", "Time", ""];
+const LOG_COLUMNS = ["Activity", "Subject", "By", "Details", "Time", "Actions"];
 const LOG_GRID =
-  "minmax(150px, 0.9fr) minmax(170px, 1.2fr) minmax(110px, 0.8fr) minmax(180px, 1.5fr) auto 44px";
+  "minmax(150px, 0.9fr) minmax(170px, 1.2fr) minmax(110px, 0.8fr) minmax(180px, 1.5fr) auto 88px";
 
 // Account-level document bucket (idNo + idType + idCountry) into a
 // displayable "Oman ID: 1234" / "Passport 🇮🇳 ABC123" snippet.
@@ -255,7 +264,7 @@ export default function ActivityPage() {
 
   // Shared per-log derived values used by the desktop table AND mobile cards.
   const buildRowMeta = (act) => {
-    const statusKey = getActivityStatus(act.activityType);
+    const statusKey = getActivityStatus(act.activityType, act.metadata);
     const statusColor =
       ["success", "info", "warning", "error", "primary", "secondary"].includes(
         statusKey,
@@ -284,6 +293,7 @@ export default function ActivityPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState(null);
   const loadSeqRef = useRef(0);
 
   const load = useCallback(async (opts = {}) => {
@@ -557,7 +567,8 @@ export default function ActivityPage() {
                       textTransform: "uppercase",
                       letterSpacing: "0.04em",
                       fontWeight: 700,
-                      textAlign: h === "Time" ? "right" : "left",
+                      textAlign:
+                        h === "Time" || h === "Actions" ? "right" : "left",
                     }}
                   >
                     {h}
@@ -612,7 +623,7 @@ export default function ActivityPage() {
                         )}
                       </Box>
                       <Typography variant="subtitle2" fontWeight={800}>
-                        {getActivityLabel(act.activityType)}
+                        {getActivityDisplayLabel(act.activityType, act.metadata)}
                       </Typography>
                     </Stack>
 
@@ -766,7 +777,17 @@ export default function ActivityPage() {
                     </Box>
 
                     {/* Actions */}
-                    <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                    <Stack direction="row" spacing={0.25} justifyContent="flex-end">
+                      <Tooltip title="View details">
+                        <IconButton
+                          size="small"
+                          aria-label={`View details for ${getActivityDisplayLabel(act.activityType, act.metadata)}`}
+                          onClick={() => setSelectedActivity(act)}
+                          sx={{ color: "text.secondary" }}
+                        >
+                          <ICONS.view sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
                       {act.activityType === "visit_history_exported" &&
                       act.metadata?.visitorId &&
                       canReadVisitors ? (
@@ -800,7 +821,7 @@ export default function ActivityPage() {
                           </IconButton>
                         </Tooltip>
                       ) : null}
-                    </Box>
+                    </Stack>
                   </Box>
                 );
               })}
@@ -853,7 +874,7 @@ export default function ActivityPage() {
                       </Box>
                       <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Typography variant="subtitle2" fontWeight={800}>
-                          {getActivityLabel(act.activityType)}
+                          {getActivityDisplayLabel(act.activityType, act.metadata)}
                         </Typography>
                         <Typography
                           variant="caption"
@@ -865,6 +886,16 @@ export default function ActivityPage() {
                           {dayjs(act.createdAt).format("DD MMM, hh:mm A")}
                         </Typography>
                       </Box>
+                      <Tooltip title="View details">
+                        <IconButton
+                          size="small"
+                          aria-label={`View details for ${getActivityDisplayLabel(act.activityType, act.metadata)}`}
+                          onClick={() => setSelectedActivity(act)}
+                          sx={{ color: "text.secondary" }}
+                        >
+                          <ICONS.view sx={{ fontSize: 20 }} />
+                        </IconButton>
+                      </Tooltip>
                       {act.activityType === "visit_history_exported" &&
                         act.metadata?.visitorId &&
                         canReadVisitors ? (
@@ -940,7 +971,7 @@ export default function ActivityPage() {
                           <>
                             {/* Visitor */}
                             <Row>
-                              <FieldLabel>Visitor</FieldLabel>
+                              <FieldLabel>Subject</FieldLabel>
                               {Array.isArray(act.groupMembers) &&
                               act.groupMembers.length > 0 ? (
                                 <Typography
@@ -1102,6 +1133,21 @@ export default function ActivityPage() {
             />
           </Box>
         )}
+
+        <ActivityDetailsDialog
+          activity={selectedActivity}
+          open={Boolean(selectedActivity)}
+          onClose={() => setSelectedActivity(null)}
+          detailLines={
+            selectedActivity
+              ? buildMetadataLines(
+                  selectedActivity.activityType,
+                  selectedActivity.metadata,
+                  userTimeZone(),
+                )
+              : []
+          }
+        />
       </Stack>
     </PermissionRouteGuard>
   );

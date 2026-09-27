@@ -19,6 +19,7 @@ const DEFAULT_FLOW = {
   ndaAccepted: false,
   otpVerified: false,
   isReturning: false,
+  otpChallengeMode: null,
   currentStep: "landing",
 };
 
